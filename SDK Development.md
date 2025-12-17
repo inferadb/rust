@@ -1,343 +1,116 @@
-# InferaDB Rust SDK Development Overview
+# InferaDB Rust SDK Design Document
 
-A best-in-class Rust SDK for InferaDB that provides ergonomic, type-safe access to both the Engine (authorization) and Control (management) APIs through a single unified client.
+Internal design document for SDK implementers. For user-facing documentation, see [README.md](README.md).
+
+---
+
+## Related Documentation
+
+| Document                                                                       | Audience     | Purpose                                        |
+| ------------------------------------------------------------------------------ | ------------ | ---------------------------------------------- |
+| [README.md](README.md)                                                         | SDK Users    | Quick start, installation, basic usage         |
+| [CONTRIBUTING.md](CONTRIBUTING.md)                                             | Contributors | Development setup, PR guidelines               |
+| [CHANGELOG.md](CHANGELOG.md)                                                   | All          | Version history, breaking changes              |
+| [MIGRATION.md](MIGRATION.md)                                                   | SDK Users    | Version upgrades, migration from other systems |
+| [docs/troubleshooting.md](docs/troubleshooting.md)                             | SDK Users    | Common issues and solutions                    |
+| [docs/guides/production-checklist.md](docs/guides/production-checklist.md)     | Operators    | Deployment readiness checklist                 |
+| [docs/guides/performance-tuning.md](docs/guides/performance-tuning.md)         | Operators    | Optimization strategies                        |
+| [docs/guides/integration-patterns.md](docs/guides/integration-patterns.md)     | SDK Users    | Framework integration examples                 |
+| [docs/guides/testing.md](docs/guides/testing.md)                               | SDK Users    | Testing patterns and utilities                 |
+| [docs/guides/caching.md](docs/guides/caching.md)                               | SDK Users    | Caching strategies and invalidation            |
+| [docs/guides/multi-tenant.md](docs/guides/multi-tenant.md)                     | SDK Users    | Multi-organization SaaS patterns               |
+| [docs/guides/temporal-permissions.md](docs/guides/temporal-permissions.md)     | SDK Users    | Time-based permission constraints              |
+| [docs/internal/competitive-analysis.md](docs/internal/competitive-analysis.md) | Internal     | Competitive positioning                        |
 
 ---
 
 ## Table of Contents
 
-### Part 1: Getting Started
-
-- [Quick Start](#quick-start) _(start here)_
-- [Installation](#installation)
-- [Your First Authorization Check](#your-first-authorization-check)
-- [Local Development](#local-development)
-
-### Part 2: Vision & Architecture
+### Part 1: Vision & Architecture
 
 - [Design Philosophy](#design-philosophy)
-- [Competitive Analysis](#competitive-analysis)
 - [Architecture Overview](#architecture-overview)
 - [Crate Structure](#crate-structure)
 
-### Part 3: Client Configuration
+### Part 2: Client Design
 
 - [Client Builder](#client-builder)
+- [Typestate Builder Pattern](#typestate-builder-pattern)
 - [Authentication](#authentication)
 - [Connection Management](#connection-management)
-- [Configuration Options](#configuration-options)
-- [Middleware & Interceptors](#middleware--interceptors)
+  - [Client Cloning Semantics](#client-cloning-semantics)
+- [Health Check & Lifecycle](#health-check--lifecycle)
+- [Vault Scoping](#vault-scoping)
+- [Middleware & Interceptors](#middleware-and-interceptors)
 
-### Part 4: Engine API (Authorization)
+### Part 3: Type System & Safety
+
+- [Type-Safe Relationships](#type-safe-relationships)
+- [Zero-Copy APIs](#zero-copy-apis)
+- [Async Trait Objects & DI](#async-trait-objects--di)
+
+### Part 4: Engine API Design
 
 - [Authorization Checks](#authorization-checks)
-- [Batch Evaluations](#batch-evaluations)
+  - [Batch Size Constraints](#batch-size-constraints)
+- [Structured Decision Traces](#structured-decision-traces)
+- [Explain Permission](#explain-permission)
+- [Simulate (What-If)](#simulate-what-if)
 - [Relationship Management](#relationship-management)
+  - [Relationship History](#relationship-history)
+  - [Relationship Validation](#relationship-validation)
+- [Request ID & Idempotency](#request-id--idempotency)
 - [Lookup Operations](#lookup-operations)
 - [Streaming & Watch](#streaming--watch)
-- [Simulation](#simulation)
+- [Vault Statistics](#vault-statistics)
+- [Bulk Operations](#bulk-operations)
 - [Caching](#caching)
 
-### Part 5: Control API (Management)
+### Part 5: Control API Design
 
+- [Control API Overview](#control-api-overview)
+- [Account Management](#account-management)
 - [Organization Management](#organization-management)
-- [Vault Management](#vault-management)
-- [Client & Certificate Management](#client--certificate-management)
+  - [Organization Members](#organization-members)
+  - [Organization Invitations](#organization-invitations)
+  - [Organization Roles](#organization-roles)
 - [Team Management](#team-management)
+- [Vault Management](#vault-management)
+  - [Vault Roles](#vault-roles)
+  - [Vault Tokens](#vault-tokens)
+- [Client Management](#client-management)
 - [Schema Management](#schema-management)
+  - [Schema Versioning](#schema-versioning)
+  - [Schema Lifecycle](#schema-lifecycle)
+  - [Canary Deployments](#canary-deployments)
+  - [Pre-flight Checks](#pre-flight-checks)
 - [Audit Logs](#audit-logs)
+- [JWKS Operations](#jwks-operations)
 
 ### Part 6: Developer Experience
 
+- [Authentication Flows](#authentication-flows)
+  - [OAuth PKCE Flow](#oauth-pkce-flow)
+  - [Token Management](#token-management)
+  - [Registration](#registration)
 - [Error Handling](#error-handling)
 - [Retry & Resilience](#retry--resilience)
 - [Graceful Degradation](#graceful-degradation)
 - [Observability](#observability)
+  - [Health Checks](#health-checks)
+  - [Ping & Latency](#ping--latency)
+  - [Diagnostics](#diagnostics)
+- [W3C Trace Context Propagation](#w3c-trace-context-propagation)
 - [Testing Support](#testing-support)
-- [Sync API](#sync-api)
 
-### Part 7: Common Patterns & Recipes
+### Part 7: Implementation Details
 
-- [Multi-Tenant SaaS](#multi-tenant-saas)
-- [API Gateway Integration](#api-gateway-integration)
-- [GraphQL & DataLoader](#graphql--dataloader)
-- [Background Jobs](#background-jobs)
-- [Audit Trail Enrichment](#audit-trail-enrichment)
-
-### Part 8: Implementation
-
-- [Type System](#type-system)
 - [Protocol Support](#protocol-support)
 - [Feature Flags](#feature-flags)
-- [Performance](#performance)
+- [Safety Guarantees](#safety-guarantees)
 - [Release Strategy](#release-strategy)
 
-### Part 9: Reference
-
-- [Troubleshooting](#troubleshooting)
-- [Migration Guide](#migration-guide)
-- [Security Considerations](#security-considerations)
-- [Contributing](#contributing)
-
 ---
-
----
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     PART 1: GETTING STARTED
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-## Quick Start
-
-Get up and running with InferaDB in under 5 minutes.
-
-> **TL;DR**: Add `inferadb = "0.1"` to Cargo.toml, create a `Client`, call `.check()`. That's it.
-
-### Minimum Viable Example
-
-Copy-paste this complete working example:
-
-```rust
-// main.rs - Complete working example
-use inferadb::Client;
-use std::error::Error;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    // Create client from environment variables:
-    // INFERADB_URL, INFERADB_CLIENT_ID, INFERADB_PRIVATE_KEY_PATH, INFERADB_VAULT_ID
-    let client = Client::from_env().await?;
-
-    // Check if user has permission
-    let allowed = client
-        .check("user:alice", "view", "document:readme")
-        .await?;
-
-    if allowed {
-        println!("Access granted!");
-    } else {
-        println!("Access denied.");
-    }
-
-    Ok(())
-}
-```
-
-```toml
-# Cargo.toml
-[package]
-name = "my-app"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-inferadb = "0.1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-```
-
-```bash
-# Run it
-export INFERADB_URL=https://api.inferadb.com
-export INFERADB_CLIENT_ID=my_service
-export INFERADB_PRIVATE_KEY_PATH=./private_key.pem
-export INFERADB_VAULT_ID=my_vault
-
-cargo run
-```
-
-### Installation
-
-Add the SDK to your `Cargo.toml`:
-
-```toml
-[dependencies]
-inferadb = "0.1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-```
-
-For minimal builds (REST only, smaller binary):
-
-```toml
-[dependencies]
-inferadb = { version = "0.1", default-features = false, features = ["rest", "rustls"] }
-```
-
-### Your First Authorization Check
-
-```rust
-use inferadb::prelude::*;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Connect to InferaDB
-    let client = Client::builder()
-        .url("https://api.inferadb.com")
-        .client_credentials("your_client_id", "path/to/private_key.pem")
-        .default_vault("your_vault_id")
-        .build()
-        .await?;
-
-    // Check if alice can view the readme document
-    let allowed = client
-        .check("user:alice", "view", "document:readme")
-        .await?;
-
-    println!("Access allowed: {}", allowed);
-
-    Ok(())
-}
-```
-
-That's it! The SDK handles authentication, token refresh, and connection management automatically.
-
-### Next Steps
-
-```rust
-// Add a relationship
-client
-    .write(Relationship::new("document:readme", "viewer", "user:alice"))
-    .await?;
-
-// Check with ABAC context
-let allowed = client
-    .check("user:alice", "view", "document:confidential")
-    .with_context(Context::new()
-        .insert("ip_address", "10.0.0.50")
-        .insert("mfa_verified", true))
-    .await?;
-
-// Get detailed decision with trace
-let decision = client
-    .check("user:alice", "edit", "document:readme")
-    .trace(true)
-    .detailed()
-    .await?;
-
-println!("Allowed: {}, Reason: {:?}", decision.allowed, decision.reason);
-```
-
----
-
-## Local Development
-
-The SDK provides first-class support for local development workflows.
-
-### Connecting to Local InferaDB
-
-```rust
-// Connect to local development instance
-let client = Client::local()
-    .port(8080)  // Default: 8080
-    .vault("dev-vault")
-    .build()
-    .await?;
-
-// Or explicit local URL
-let client = Client::builder()
-    .url("http://localhost:8080")
-    .insecure()  // Allow non-TLS for local dev
-    .default_vault("dev-vault")
-    .build()
-    .await?;
-```
-
-### In-Memory Client for Unit Tests
-
-For pure unit tests that don't need a running server:
-
-```rust
-use inferadb::testing::InMemoryClient;
-
-#[tokio::test]
-async fn test_authorization_logic() {
-    // Create an in-memory client with no network calls
-    let client = InMemoryClient::new();
-
-    // Seed with relationships
-    client.write_batch([
-        Relationship::new("document:readme", "owner", "user:alice"),
-        Relationship::new("document:readme", "viewer", "user:bob"),
-    ]).await?;
-
-    // Test authorization
-    assert!(client.check("user:alice", "delete", "document:readme").await?);
-    assert!(client.check("user:bob", "view", "document:readme").await?);
-    assert!(!client.check("user:bob", "delete", "document:readme").await?);
-}
-```
-
-### Docker Compose Integration
-
-For integration tests with a real InferaDB instance:
-
-```yaml
-# docker-compose.test.yml
-services:
-  inferadb:
-    image: ghcr.io/inferadb/inferadb:latest
-    ports:
-      - "8080:8080"
-    environment:
-      INFERADB__STORAGE__BACKEND: memory
-      INFERADB__AUTH__SKIP_VERIFICATION: true # Dev only!
-```
-
-```rust
-use inferadb::testing::TestContainer;
-
-#[tokio::test]
-async fn integration_test() {
-    // Automatically starts/stops InferaDB container
-    let container = TestContainer::start().await?;
-    let client = container.client().await?;
-
-    // Run integration tests
-    client.write(...).await?;
-    assert!(client.check(...).await?);
-
-    // Container cleaned up on drop
-}
-```
-
-### Development Workflow with Watch Mode
-
-The SDK integrates with `cargo watch` for rapid iteration:
-
-```bash
-# Terminal 1: Start local InferaDB
-cd deploy && ./scripts/dev-up.sh
-
-# Terminal 2: Run tests on file change
-cargo watch -x 'test --features test-utils'
-```
-
-### Schema Development
-
-```rust
-use inferadb::testing::SchemaTestHarness;
-
-#[tokio::test]
-async fn test_schema_changes() {
-    let harness = SchemaTestHarness::new()
-        .with_schema(include_str!("../schemas/v2.ipl"))
-        .build()
-        .await?;
-
-    // Test that new schema works as expected
-    harness.write(Relationship::new("folder:docs", "parent", "folder:root")).await?;
-
-    // Verify permission inheritance works
-    assert!(harness.check("user:alice", "view", "folder:docs").await?);
-}
-```
-
----
-
----
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     PART 2: VISION & ARCHITECTURE
-     ═══════════════════════════════════════════════════════════════════════════ -->
 
 ## Design Philosophy
 
@@ -357,7 +130,7 @@ async fn test_schema_changes() {
 
 7. **Testing as a feature**: Mock clients, simulation mode, and test utilities are first-class SDK features.
 
-### What Sets Us Apart
+### Competitive Differentiation
 
 | Capability          | InferaDB SDK                          | SpiceDB                 | OpenFGA            | Oso             |
 | ------------------- | ------------------------------------- | ----------------------- | ------------------ | --------------- |
@@ -381,7 +154,7 @@ async fn test_schema_changes() {
 │                                                                            │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                             Client                                  │   │
-│  │  (Unified entry point - routes to Engine or Control automatically)  │   │
+│  │  .access() → AccessClient    .control() → ControlClient             │   │
 │  └───────────────────────────────┬─────────────────────────────────────┘   │
 │                                  │                                         │
 │  ┌───────────────────────────────┴─────────────────────────────────────┐   │
@@ -393,18 +166,18 @@ async fn test_schema_changes() {
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
 │  ┌─────────────────────────────┐  ┌─────────────────────────────────────┐  │
-│  │      EngineClient           │  │         ControlClient               │  │
+│  │      AccessClient           │  │         ControlClient               │  │
+│  │  (via .access())            │  │  (via .control())                   │  │
 │  │  ┌───────────────────────┐  │  │  ┌───────────────────────────────┐  │  │
-│  │  │ check()               │  │  │  │ organizations()               │  │  │
-│  │  │ check_batch()         │  │  │  │ vaults()                      │  │  │
-│  │  │ expand()              │  │  │  │ clients()                     │  │  │
-│  │  │ list_resources()      │  │  │  │ teams()                       │  │  │
-│  │  │ list_subjects()       │  │  │  │ schemas()                     │  │  │
-│  │  │ list_relationships()  │  │  │  │ audit_logs()                  │  │  │
-│  │  │ write()               │  │  │  │ users()                       │  │  │
-│  │  │ delete()              │  │  │  │ sessions()                    │  │  │
-│  │  │ watch()               │  │  │  │ tokens()                      │  │  │
-│  │  │ simulate()            │  │  │  └───────────────────────────────┘  │  │
+│  │  │ check()               │  │  │  │ organizations() / organization()│  │
+│  │  │ check_batch()         │  │  │  │ vaults() / vault()            │  │  │
+│  │  │ expand()              │  │  │  │ clients() / client()          │  │  │
+│  │  │ list_resources()      │  │  │  │ account()                     │  │  │
+│  │  │ list_subjects()       │  │  │  │ invitations() / invitation()  │  │  │
+│  │  │ list_relationships()  │  │  │  │ jwks()                        │  │  │
+│  │  │ write() / delete()    │  │  │  └───────────────────────────────┘  │  │
+│  │  │ watch()               │  │  │                                     │  │
+│  │  │ simulate()            │  │  │                                     │  │
 │  │  └───────────────────────┘  │  │                                     │  │
 │  └─────────────────────────────┘  └─────────────────────────────────────┘  │
 │                                                                            │
@@ -500,15 +273,15 @@ inferadb-sdk/
 
 ---
 
----
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     PART 2: CLIENT CONFIGURATION
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
 ## Client Builder
 
-### Quick Start
+### Design Goals
+
+1. **Ergonomic defaults** - Minimize required configuration
+2. **Type-safe construction** - Invalid configurations don't compile
+3. **Lazy connection** - Don't block on network during build
+
+### Builder Pattern
 
 ```rust
 use inferadb::prelude::*;
@@ -516,134 +289,311 @@ use inferadb::prelude::*;
 // Minimal setup with client credentials
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .client_credentials("client_id", "path/to/private_key.pem")
-    .default_vault("vault_id")
+    .credentials("client_id", "path/to/private_key.pem")
     .build()
     .await?;
 
-// Authorization check
-let allowed = client.check("user:alice", "view", "document:readme").await?;
+// Vault must be specified explicitly on each operation
+let allowed = client
+    .vault("vlt_01JFQGK...")
+    .check("user:alice", "view", "document:readme")
+    .await?;
 ```
 
-### Full Configuration
+### Full Configuration Options
 
 ```rust
-use inferadb::{
-    Client,
-    ClientConfig,
-    RetryConfig,
-    auth::{ClientCredentials, Ed25519PrivateKey},
-};
-use std::time::Duration;
-
 let client = Client::builder()
     // Connection
     .url("https://api.inferadb.com")
-    .timeout(Duration::from_secs(30))
-    .connect_timeout(Duration::from_secs(5))
+    .connect_timeout(Duration::from_secs(10))
+    .request_timeout(Duration::from_secs(30))
 
-    // Authentication (client assertion - recommended for services)
-    .client_credentials(ClientCredentials {
-        client_id: "client_id".into(),
-        private_key: Ed25519PrivateKey::from_pem_file("private_key.pem")?,
-        certificate_id: Some("cert_kid".into()),  // Optional: specific cert
+    // Authentication
+    .credentials(Credentials {
+        client_id: "my_service".into(),
+        private_key: Ed25519PrivateKey::from_pem_file("key.pem")?,
+        certificate_id: None,
     })
 
-    // Target vault (can be overridden per-request)
-    .default_vault("production_vault_id")
-    .default_organization("org_id")  // Optional: for control operations
+    // Connection pool
+    .pool_size(20)
+    .idle_timeout(Duration::from_secs(60))
 
-    // Protocol selection
-    .prefer_grpc()  // Use gRPC when available, fall back to REST
-    // .rest_only()  // Force REST (useful for restrictive networks)
-    // .grpc_only()  // Force gRPC (maximum performance)
+    // Retry behavior
+    .retries(Retries::default()
+        .max_retries(3)
+        .initial_backoff(Duration::from_millis(100))
+        .max_backoff(Duration::from_secs(10)))
 
-    // Retry configuration
-    .retry(RetryConfig {
-        max_attempts: 3,
-        initial_backoff: Duration::from_millis(100),
-        max_backoff: Duration::from_secs(10),
-        backoff_multiplier: 2.0,
-        retryable_status_codes: vec![429, 503, 504],
-    })
+    // Protocol preference
+    .prefer_grpc()  // Falls back to REST if unavailable
 
-    // Connection pooling
-    .max_connections(100)
-    .idle_timeout(Duration::from_secs(90))
-
-    // Observability
-    .tracing(true)  // Emit tracing spans
-    .metrics(true)  // Emit metrics
-
+    // Build (validates and creates client)
     .build()
     .await?;
 ```
 
-### Environment-Based Configuration
+### Builder Validation Model
+
+**Design Decision**: All builder methods return `Self` (infallible). Validation is deferred to `build()`.
+
+**Rationale**:
+
+- Cleaner ergonomics - no `?` on every method call
+- Typestate already catches missing required fields at compile time
+- Consistent with established patterns (`reqwest::ClientBuilder`, `tonic::Channel`)
+- Validation errors collected and returned from single point (`build()`)
 
 ```rust
-// Reads from environment variables:
-// INFERADB_URL, INFERADB_CLIENT_ID, INFERADB_PRIVATE_KEY_PATH,
-// INFERADB_VAULT, INFERADB_ORGANIZATION
-let client = Client::from_env().await?;
-
-// Or with a prefix for multiple environments
-let staging = Client::from_env_with_prefix("STAGING_INFERADB").await?;
-let prod = Client::from_env_with_prefix("PROD_INFERADB").await?;
+// Builder methods are infallible - return Self
+let client = Client::builder()
+    .url("https://api.inferadb.com")     // Stores value, validates later
+    .pool_size(20)                        // Stores value, validates later
+    .connect_timeout(Duration::ZERO)      // Will fail at build()
+    .credentials(creds)
+    .build()                              // All validation happens here
+    .await?;                              // BuildError if any validation failed
 ```
 
-#### Environment Variable Error Messages
-
-The SDK provides clear, actionable error messages for configuration issues:
+**Validation in build()**:
 
 ```rust
-// Missing required variable
-let result = Client::from_env().await;
-// Error: Missing required environment variable 'INFERADB_URL'
-//        Set this variable or use Client::builder() for explicit configuration.
-//        Example: export INFERADB_URL=https://api.inferadb.com
+impl ClientBuilder<HasUrl, HasAuth> {
+    pub async fn build(self) -> Result<Client, BuildError> {
+        // Validate URL format
+        let url = Url::parse(&self.url)
+            .map_err(|e| BuildError::InvalidUrl(e))?;
 
-// Invalid URL format
-// INFERADB_URL=not-a-url
-// Error: Invalid value for 'INFERADB_URL': 'not-a-url'
-//        Expected a valid URL (e.g., https://api.inferadb.com)
-
-// File not found
-// INFERADB_PRIVATE_KEY_PATH=/nonexistent/key.pem
-// Error: Cannot read private key from 'INFERADB_PRIVATE_KEY_PATH'
-//        File not found: /nonexistent/key.pem
-//        Ensure the file exists and is readable.
-
-// Invalid PEM format
-// Error: Invalid private key in 'INFERADB_PRIVATE_KEY'
-//        Expected Ed25519 private key in PEM format.
-//        Key should start with '-----BEGIN PRIVATE KEY-----'
-
-// Conflicting variables
-// Both INFERADB_PRIVATE_KEY and INFERADB_PRIVATE_KEY_PATH set
-// Error: Conflicting environment variables
-//        Both 'INFERADB_PRIVATE_KEY' and 'INFERADB_PRIVATE_KEY_PATH' are set.
-//        Use only one: inline key content OR file path.
-```
-
-#### Validation Before Connection
-
-```rust
-// Validate configuration without connecting
-match Client::validate_env() {
-    Ok(config) => {
-        println!("Configuration valid:");
-        println!("  URL: {}", config.url);
-        println!("  Client ID: {}", config.client_id);
-        println!("  Vault: {:?}", config.default_vault);
-    }
-    Err(errors) => {
-        eprintln!("Configuration errors:");
-        for error in errors {
-            eprintln!("  - {}", error);
+        // Validate pool size
+        if self.pool_size == 0 {
+            return Err(BuildError::InvalidConfig("pool_size must be > 0"));
         }
-        std::process::exit(1);
+
+        // Validate timeouts
+        if self.connect_timeout == Duration::ZERO {
+            return Err(BuildError::InvalidConfig("connect_timeout must be > 0"));
+        }
+
+        // ... create client
     }
+}
+```
+
+**BuildError provides actionable context**:
+
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum BuildError {
+    #[error("invalid URL: {0}")]
+    InvalidUrl(#[from] url::ParseError),
+
+    #[error("invalid configuration: {0}")]
+    InvalidConfig(&'static str),
+
+    #[error("authentication error: {0}")]
+    AuthError(#[from] AuthError),
+
+    #[error("connection failed: {0}")]
+    ConnectionFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
+}
+```
+
+### Connection Lifecycle
+
+```text
+Client::builder()
+    │
+    ▼
+┌─────────────────┐
+│ Validate Config │  Fail fast on invalid configuration
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Create AuthMgr  │  Initialize credential handling
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Create Transport│  Set up connection pool (lazy)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ .build().await  │  Optionally validate connectivity
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Client Ready    │  First request triggers connection
+└─────────────────┘
+```
+
+### Lazy vs Eager Connection
+
+```rust
+// Lazy (default) - Don't connect until first request
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(creds)
+    .build()  // Returns immediately
+    .await?;
+
+// Eager - Validate connection during build
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(creds)
+    .eager_connect(true)  // Validates connectivity
+    .build()  // Fails if server unreachable
+    .await?;
+```
+
+### Sync vs Async Build Variants
+
+```rust
+// Async build (default) - for async contexts
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(creds)
+    .build()
+    .await?;
+
+// Sync build - for main() or blocking contexts
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(creds)
+    .build_sync()?;  // Blocks, validates synchronously
+
+// Const configuration - validated at compile time
+const CONFIG: ClientConfig = ClientConfig::const_builder()
+    .url("https://api.inferadb.com")
+    .pool_size(20)
+    .connect_timeout_secs(10)
+    .build_const();  // Compile-time validation
+
+let client = Client::from_config(CONFIG)
+    .credentials(creds)
+    .build()
+    .await?;
+```
+
+---
+
+## Typestate Builder Pattern
+
+Use phantom types to catch builder errors at compile time, not runtime.
+
+### Typestate Design Goals
+
+1. **Compile-time enforcement** - Missing required fields don't compile
+2. **Clear error messages** - Type errors indicate what's missing
+3. **IDE support** - Autocomplete shows only valid next steps
+
+### Type States
+
+```rust
+// Marker types for builder state
+mod state {
+    pub struct NoUrl;
+    pub struct HasUrl;
+    pub struct NoAuth;
+    pub struct HasAuth;
+}
+
+pub struct ClientBuilder<Url, Auth> {
+    url: Option<String>,
+    auth: Option<AuthConfig>,
+    // ... other fields
+    _marker: PhantomData<(Url, Auth)>,
+}
+```
+
+### State Transitions
+
+```rust
+impl ClientBuilder<NoUrl, NoAuth> {
+    pub fn new() -> Self { /* ... */ }
+}
+
+impl<Auth> ClientBuilder<NoUrl, Auth> {
+    // Setting URL transitions NoUrl -> HasUrl
+    // Note: Validation deferred to build() - method is infallible
+    pub fn url(self, url: impl Into<String>) -> ClientBuilder<HasUrl, Auth> {
+        ClientBuilder {
+            url: Some(url.into()),
+            auth: self.auth,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<Url> ClientBuilder<Url, NoAuth> {
+    // Setting credentials transitions NoAuth -> HasAuth
+    pub fn credentials(self, creds: Credentials)
+        -> ClientBuilder<Url, HasAuth>
+    {
+        ClientBuilder {
+            auth: Some(AuthConfig::ClientCredentials(creds)),
+            ..self
+        }
+    }
+}
+
+// build() is ONLY available when all required states are satisfied
+impl ClientBuilder<HasUrl, HasAuth> {
+    pub async fn build(self) -> Result<Client, BuildError> {
+        // All required fields guaranteed present by type system
+        // Validation happens here, not in setter methods
+
+        // Validate URL format
+        let url = Url::parse(&self.url.unwrap())
+            .map_err(BuildError::InvalidUrl)?;
+
+        // Validate other configuration...
+
+        Ok(Client { /* ... */ })
+    }
+
+    pub fn build_sync(self) -> Result<Client, BuildError> {
+        // Blocking variant - same validation
+    }
+}
+```
+
+### Compile-Time Errors
+
+```rust
+// ✅ Compiles - all required fields set
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(creds)
+    .build()
+    .await?;  // Only place where errors can occur
+
+// ❌ Compile error: build() not available without auth
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .build()  // Error: method `build` not found for `ClientBuilder<HasUrl, NoAuth>`
+    .await?;
+
+// ❌ Compile error: build() not available without URL
+let client = Client::builder()
+    .credentials(creds)
+    .build()  // Error: method `build` not found for `ClientBuilder<NoUrl, HasAuth>`
+    .await?;
+```
+
+### Optional Fields
+
+Optional configuration doesn't affect type state:
+
+```rust
+impl<Url, Auth> ClientBuilder<Url, Auth> {
+    // These don't change type state - always available
+    pub fn pool_size(mut self, size: usize) -> Self { /* ... */ }
+    pub fn connect_timeout(mut self, timeout: Duration) -> Self { /* ... */ }
+    pub fn retries(mut self, config: Retries) -> Self { /* ... */ }
 }
 ```
 
@@ -651,1294 +601,2549 @@ match Client::validate_env() {
 
 ## Authentication
 
-> **TL;DR**: Use `ClientCredentials` with Ed25519 keys for services. Token refresh is automatic.
+### Design Decision: OAuth 2.0 JWT Bearer
 
-The SDK supports multiple authentication methods, all with automatic token management.
+We use RFC 7523 (JWT Bearer Client Authentication) for service-to-service auth:
 
-### Client Credentials (Recommended for Services)
+**Rationale:**
 
-Uses OAuth 2.0 JWT Bearer client assertion (RFC 7523) with Ed25519 signatures.
+- Stateless token validation (no token introspection needed)
+- Ed25519 signatures (fast, small, secure)
+- Self-service key rotation via certificate management
+- Industry standard (works with existing infrastructure)
+
+### Authentication Flow
+
+```text
+┌─────────────┐         ┌─────────────┐         ┌─────────────┐
+│ SDK Client  │         │  Token API  │         │ Engine API  │
+└──────┬──────┘         └──────┬──────┘         └──────┬──────┘
+       │                       │                       │
+       │ 1. Create JWT assertion                       │
+       │ (client_id + private_key)                     │
+       │──────────────────────►│                       │
+       │                       │                       │
+       │ 2. Exchange for access token                  │
+       │◄──────────────────────│                       │
+       │ {access_token, refresh_token, expires_in}     │
+       │                       │                       │
+       │ 3. API call with Bearer token                 │
+       │───────────────────────────────────────────────►
+       │                       │                       │
+       │ 4. Response                                   │
+       │◄──────────────────────────────────────────────│
+       │                       │                       │
+       │ [Background: Refresh before expiry]           │
+       │──────────────────────►│                       │
+       │◄──────────────────────│                       │
+```
+
+### Client Assertion JWT
 
 ```rust
-use inferadb::auth::{ClientCredentials, Ed25519PrivateKey};
+// JWT Claims
+{
+  "iss": "client_id",           // Client identifier
+  "sub": "client_id",           // Subject (same as issuer for client creds)
+  "aud": "https://api.inferadb.com/control/v1/auth/token",
+  "iat": 1699000000,            // Issued at
+  "exp": 1699000300,            // Expires (5 min max)
+  "jti": "unique-request-id"    // Prevents replay
+}
 
-// From PEM file
-let creds = ClientCredentials {
-    client_id: "my_service".into(),
-    private_key: Ed25519PrivateKey::from_pem_file("private_key.pem")?,
-    certificate_id: None,  // Uses default certificate
-};
+// Signature: EdDSA with Ed25519 private key
+```
 
-// From PEM string (e.g., from secret manager)
-let pem = std::env::var("PRIVATE_KEY_PEM")?;
-let creds = ClientCredentials {
-    client_id: "my_service".into(),
-    private_key: Ed25519PrivateKey::from_pem(&pem)?,
-    certificate_id: Some("specific_cert_kid".into()),
-};
+### Token Refresh Strategy
+
+```rust
+// Proactive refresh (default)
+// Refresh when token is 80% through its lifetime
+let client = Client::builder()
+    .token_refresh_threshold(0.8)  // Refresh at 80% of lifetime
+    .build()
+    .await?;
+
+// Background refresh task
+// SDK spawns a task to refresh tokens before expiry
+// No request ever blocks on token refresh
+```
+
+### Token Refresh Semantics
+
+Detailed behavior of the token refresh system:
+
+**Cold Start Behavior**:
+
+```rust
+// On first API call after client creation:
+// 1. SDK has no token yet (cold start)
+// 2. First request triggers token acquisition
+// 3. Request waits for token (blocking on auth)
+// 4. Subsequent requests use cached token
 
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .client_credentials(creds)
+    .credentials(creds)
+    .build()
+    .await?;  // Does NOT acquire token (lazy)
+
+// First call triggers token acquisition
+let vault = client.access().vault("vlt_01JFQGK...");
+let result = vault.check("user:alice", "view", "doc:1").await?;
+//           ^^^^^^ This blocks waiting for token
+
+// Optional: Pre-warm token during startup
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(creds)
+    .eager_connect(true)  // Pre-acquires token during build()
+    .build()
+    .await?;  // Blocks until token is acquired
+```
+
+**Singleflight Token Refresh**:
+
+When multiple requests arrive during a cold start or refresh, only one refresh operation executes:
+
+```rust
+// Internal implementation uses singleflight pattern
+struct TokenManager {
+    token: RwLock<Option<CachedToken>>,
+    refresh_in_flight: Mutex<Option<Shared<BoxFuture<'static, Result<Token, Error>>>>>,
+}
+
+impl TokenManager {
+    async fn get_token(&self) -> Result<String, Error> {
+        // Fast path: valid cached token
+        if let Some(token) = self.get_cached_if_valid() {
+            return Ok(token);
+        }
+
+        // Slow path: need refresh - use singleflight
+        self.refresh_with_singleflight().await
+    }
+
+    async fn refresh_with_singleflight(&self) -> Result<String, Error> {
+        let mut in_flight = self.refresh_in_flight.lock().await;
+
+        // If refresh already in progress, join it
+        if let Some(fut) = in_flight.as_ref() {
+            return fut.clone().await;
+        }
+
+        // Start new refresh, share future with waiters
+        let fut = self.do_refresh().boxed().shared();
+        *in_flight = Some(fut.clone());
+
+        let result = fut.await;
+
+        // Clear in-flight state
+        *in_flight = None;
+
+        result
+    }
+}
+```
+
+**Refresh Failure Handling**:
+
+```rust
+// Scenario 1: Background refresh fails, but token still valid
+// - SDK logs warning, continues using current token
+// - Next background refresh retries
+
+// Scenario 2: Background refresh fails, token expired
+// - Next API call triggers synchronous refresh attempt
+// - If sync refresh fails, API call returns AuthError
+
+// Scenario 3: Credentials invalid (key revoked, client deleted)
+// - Refresh returns 401/403
+// - SDK propagates error, does not retry with same credentials
+
+// Configure retry behavior for token refresh
+let client = Client::builder()
+    .token_refresh_config(TokenRefreshConfig {
+        // Retry transient failures (network, 5xx)
+        max_retries: 3,
+        retry_backoff: Duration::from_millis(100),
+
+        // Don't retry auth failures (401, 403)
+        retry_on_auth_failure: false,
+
+        // How long before expiry to start refresh
+        refresh_threshold: Duration::from_secs(60),
+
+        // Fallback: allow requests with soon-expiring token during refresh
+        grace_period: Duration::from_secs(10),
+    })
     .build()
     .await?;
 ```
 
-**How it works internally:**
+**Token Refresh Timeline**:
 
-1. SDK generates JWT assertion signed with Ed25519 private key
-2. Exchanges assertion for vault-scoped access token (5 min TTL)
-3. Receives refresh token (30 day TTL, single-use)
-4. Background task refreshes tokens before expiry
-5. On refresh, receives new access + refresh token pair
-6. All token management is invisible to the caller
+```text
+Token acquired at T=0, expires at T=300s, threshold=0.8
 
-### User Session (CLI/Interactive Apps)
-
-For CLI tools or applications with user interaction.
-
-```rust
-use inferadb::auth::SessionToken;
-
-// From CLI login flow (OAuth PKCE)
-let session = SessionToken::from_cli_login().await?;
-
-// Or from existing session
-let session = SessionToken::new("session_id_from_cookie");
-
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .session(session)
-    .build()
-    .await?;
+T=0       T=240     T=270     T=290     T=300
+│         │         │         │         │
+▼         ▼         ▼         ▼         ▼
+[───valid──┼──refresh─┼──grace──┼─expired─]
+           │ window   │ period  │
+           │          │         │
+           │          │         └─ Requests fail if no new token
+           │          └─ Requests use old token while refresh in-flight
+           └─ Background refresh starts (80% of lifetime)
 ```
 
-### Bearer Token (Simple/Testing)
-
-For cases where you have a pre-obtained token.
+**Observability**:
 
 ```rust
+// Token refresh events are traced
+// Spans: inferadb.token.refresh, inferadb.token.acquire
+// Metrics:
+//   - inferadb_token_refresh_total{status="success|failure"}
+//   - inferadb_token_refresh_duration_seconds
+//   - inferadb_token_expiry_seconds (gauge, time until expiry)
+```
+
+### Credential Types
+
+```rust
+// Ed25519 private key from file
+let creds = ClientCredentials {
+    client_id: "my_service".into(),
+    private_key: Ed25519PrivateKey::from_pem_file("key.pem")?,
+    certificate_id: None,  // Auto-detect from JWKS
+};
+
+// Ed25519 private key from bytes
+let creds = ClientCredentials {
+    client_id: "my_service".into(),
+    private_key: Ed25519PrivateKey::from_pem(include_bytes!("key.pem"))?,
+    certificate_id: Some("kid-123".into()),  // Specific key ID
+};
+
+// Bearer token (for user-initiated requests)
 let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .bearer_token("eyJ...")
+    .bearer_token("eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...")
     .build()
     .await?;
 ```
 
 ### Custom JWT Claims
 
-Add custom claims to client assertions for service-to-service context propagation:
+For advanced use cases, inject custom claims into client assertions:
 
 ```rust
-use inferadb::auth::{ClientCredentials, CustomClaims};
-
-let creds = ClientCredentials {
-    client_id: "my_service".into(),
-    private_key: Ed25519PrivateKey::from_pem_file("private_key.pem")?,
-    certificate_id: None,
-    // Add custom claims to every JWT assertion
-    custom_claims: Some(CustomClaims::new()
-        .insert("service_name", "order-processor")
-        .insert("environment", "production")
-        .insert("deployment_id", "deploy-abc123")),
-};
-
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .build()
-    .await?;
-```
-
-#### Dynamic Claims Per-Request
-
-For claims that vary per request (correlation IDs, tenant hints):
-
-```rust
-// Set claims that will be included in token refresh requests
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    // Dynamic claims evaluated on each token request
-    .dynamic_claims(|| {
-        CustomClaims::new()
-            .insert("correlation_id", Uuid::new_v4().to_string())
-            .insert("request_time", Utc::now().to_rfc3339())
+    .credentials(creds)
+    .custom_claims(|claims| {
+        claims.insert("environment", "production");
+        claims.insert("region", "us-east-1");
+        claims.insert("deployment_id", "deploy-abc123");
     })
     .build()
     .await?;
 ```
 
-#### Per-Request Claim Override
+### CredentialsProvider Abstraction
+
+For dynamic credential management (key rotation, secrets managers, HSMs), use the `CredentialsProvider` trait:
 
 ```rust
-// Override claims for a specific operation
-let allowed = client
-    .check("user:alice", "view", "doc:1")
-    .with_claims(CustomClaims::new()
-        .insert("audit_reason", "support_ticket_12345")
-        .insert("operator_id", "admin:bob"))
-    .await?;
-```
+/// Trait for dynamic credential resolution.
+/// Implement this for custom key management integrations.
+#[async_trait]
+pub trait CredentialsProvider: Send + Sync + 'static {
+    /// Returns the current credentials for signing.
+    /// Called before each token refresh, allowing for key rotation.
+    async fn get_credentials(&self) -> Result<ClientCredentials, CredentialsError>;
 
-#### Claim Validation
-
-Custom claims are validated before being added to assertions:
-
-```rust
-// Claims must follow these rules:
-// - Keys must be strings matching [a-z_][a-z0-9_]*
-// - Values must be JSON-serializable
-// - Reserved claim names (iss, sub, aud, exp, iat, jti) cannot be overridden
-// - Total claims size must not exceed 4KB
-
-let claims = CustomClaims::new()
-    .insert("valid_key", "value")           // ✅ OK
-    .insert("nested", json!({"a": 1}))      // ✅ OK - JSON object
-    .insert("iss", "override")?;            // ❌ Error: reserved claim
-
-// Validate claims before use
-match claims.validate() {
-    Ok(_) => println!("Claims valid"),
-    Err(e) => eprintln!("Invalid claims: {}", e),
+    /// Optional: Called when credentials fail authentication.
+    /// Allows providers to invalidate cached credentials.
+    async fn on_auth_failure(&self, _error: &AuthError) {
+        // Default: no-op
+    }
 }
 ```
 
-#### Use Cases for Custom Claims
+**Built-in Implementations**:
 
-| Claim | Purpose | Example |
-|-------|---------|---------|
-| `correlation_id` | Distributed tracing | `"corr-abc123"` |
-| `tenant_hint` | Multi-tenant routing | `"tenant:acme"` |
-| `audit_reason` | Compliance logging | `"GDPR data request"` |
-| `operator_id` | Admin impersonation tracking | `"admin:bob"` |
-| `deployment_id` | Canary/blue-green identification | `"deploy-v2.3.1"` |
-| `region` | Geographic context | `"us-east-1"` |
+```rust
+// Static credentials (default) - credentials never change
+impl CredentialsProvider for ClientCredentials {
+    async fn get_credentials(&self) -> Result<ClientCredentials, CredentialsError> {
+        Ok(self.clone())
+    }
+}
 
-### Authentication Flow Diagram
+// Environment variable provider
+pub struct EnvCredentialsProvider {
+    client_id_var: String,
+    private_key_var: String,
+}
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    Client Credentials Authentication Flow                    │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  1. Initial Authentication                                                  │
-│  ─────────────────────────                                                  │
-│                                                                             │
-│  SDK                              Control API                               │
-│   │                                   │                                     │
-│   │  POST /control/v1/token           │                                     │
-│   │  ┌─────────────────────────────┐  │                                     │
-│   │  │ grant_type: client_assertion│  │                                     │
-│   │  │ assertion: <ed25519_jwt>    │  │                                     │
-│   │  │ vault_id: <target_vault>    │──│                                     │
-│   │  │ scopes: [check, write, ...] │  │                                     │
-│   │  └─────────────────────────────┘  │                                     │
-│   │                                   │                                     │
-│   │  ┌─────────────────────────────┐  │                                     │
-│   │  │ access_token: <jwt>         │  │                                     │
-│   │◄─│ refresh_token: <opaque>     │──│                                     │
-│   │  │ expires_in: 300             │  │                                     │
-│   │  └─────────────────────────────┘  │                                     │
-│   │                                   │                                     │
-│                                                                             │
-│  2. Token Usage (Automatic)                                                 │
-│  ──────────────────────────                                                 │
-│                                                                             │
-│  SDK                              Engine API                                │
-│   │                                   │                                     │
-│   │  POST /access/v1/evaluation       │                                     │
-│   │  Authorization: Bearer <access>   │                                     │
-│   │──────────────────────────────────►│                                     │
-│   │                                   │                                     │
-│   │◄──────────────────────────────────│                                     │
-│   │  { "decision": true }             │                                     │
-│   │                                   │                                     │
-│                                                                             │
-│  3. Background Token Refresh (at ~4 minutes)                                │
-│  ───────────────────────────────────────────                                │
-│                                                                             │
-│  SDK (background)                 Control API                               │
-│   │                                   │                                     │
-│   │  POST /control/v1/tokens/refresh  │                                     │
-│   │  Authorization: Bearer <refresh>  │                                     │
-│   │──────────────────────────────────►│                                     │
-│   │                                   │                                     │
-│   │  ┌─────────────────────────────┐  │                                     │
-│   │◄─│ access_token: <new_jwt>     │──│                                     │
-│   │  │ refresh_token: <new_opaque> │  │  (old refresh token invalidated)    │
-│   │  └─────────────────────────────┘  │                                     │
-│   │                                   │                                     │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+impl EnvCredentialsProvider {
+    pub fn new(client_id_var: &str, private_key_var: &str) -> Self {
+        Self {
+            client_id_var: client_id_var.into(),
+            private_key_var: private_key_var.into(),
+        }
+    }
+}
+
+#[async_trait]
+impl CredentialsProvider for EnvCredentialsProvider {
+    async fn get_credentials(&self) -> Result<ClientCredentials, CredentialsError> {
+        let client_id = std::env::var(&self.client_id_var)
+            .map_err(|_| CredentialsError::NotFound(self.client_id_var.clone()))?;
+        let private_key_pem = std::env::var(&self.private_key_var)
+            .map_err(|_| CredentialsError::NotFound(self.private_key_var.clone()))?;
+
+        Ok(ClientCredentials {
+            client_id,
+            private_key: Ed25519PrivateKey::from_pem(private_key_pem.as_bytes())?,
+            certificate_id: None,
+        })
+    }
+}
+```
+
+**AWS Secrets Manager Integration**:
+
+```rust
+pub struct AwsSecretsProvider {
+    client: aws_sdk_secretsmanager::Client,
+    secret_id: String,
+    cache: RwLock<Option<(ClientCredentials, Instant)>>,
+    cache_ttl: Duration,
+}
+
+#[async_trait]
+impl CredentialsProvider for AwsSecretsProvider {
+    async fn get_credentials(&self) -> Result<ClientCredentials, CredentialsError> {
+        // Check cache first
+        if let Some((creds, fetched_at)) = &*self.cache.read().await {
+            if fetched_at.elapsed() < self.cache_ttl {
+                return Ok(creds.clone());
+            }
+        }
+
+        // Fetch from Secrets Manager
+        let secret = self.client
+            .get_secret_value()
+            .secret_id(&self.secret_id)
+            .send()
+            .await
+            .map_err(|e| CredentialsError::ProviderError(e.into()))?;
+
+        let secret_string = secret.secret_string()
+            .ok_or(CredentialsError::InvalidFormat("missing secret_string"))?;
+
+        let parsed: SecretsPayload = serde_json::from_str(secret_string)
+            .map_err(|e| CredentialsError::InvalidFormat(e))?;
+
+        let creds = ClientCredentials {
+            client_id: parsed.client_id,
+            private_key: Ed25519PrivateKey::from_pem(parsed.private_key.as_bytes())?,
+            certificate_id: parsed.certificate_id,
+        };
+
+        // Update cache
+        *self.cache.write().await = Some((creds.clone(), Instant::now()));
+
+        Ok(creds)
+    }
+
+    async fn on_auth_failure(&self, _error: &AuthError) {
+        // Invalidate cache on auth failure to force re-fetch
+        *self.cache.write().await = None;
+    }
+}
+```
+
+**Usage with Client Builder**:
+
+```rust
+// Static credentials (existing API, unchanged)
+let client = Client::builder()
+    .credentials(creds)
+    .build()
+    .await?;
+
+// Dynamic credentials via provider
+let client = Client::builder()
+    .credentials_provider(AwsSecretsProvider::new(
+        secrets_client,
+        "inferadb/production/credentials",
+    ))
+    .build()
+    .await?;
+
+// Environment-based credentials
+let client = Client::builder()
+    .credentials_provider(EnvCredentialsProvider::new(
+        "INFERADB_CLIENT_ID",
+        "INFERADB_PRIVATE_KEY",
+    ))
+    .build()
+    .await?;
+```
+
+**Key Rotation Without Restart**:
+
+```rust
+// With CredentialsProvider, key rotation happens automatically:
+// 1. Deploy new key to secrets manager
+// 2. On next token refresh, SDK calls get_credentials()
+// 3. New key is used for signing
+// 4. Old key remains valid until its tokens expire
+
+// For zero-downtime rotation:
+// 1. Add new key to secrets (don't remove old yet)
+// 2. SDK picks up new key on refresh
+// 3. Wait for old tokens to expire (typically 5-15 min)
+// 4. Remove old key from secrets
 ```
 
 ---
 
 ## Connection Management
 
-### Connection Lifecycle
-
-Understanding connection lifecycle helps debug connectivity issues and optimize performance.
-
-#### Connection State Machine
-
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Connection Pool State Machine                        │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   ┌─────────────┐                                                           │
-│   │   Created   │  Client::builder().build()                                │
-│   └──────┬──────┘                                                           │
-│          │                                                                  │
-│          ▼                                                                  │
-│   ┌─────────────┐                                                           │
-│   │    Idle     │◄────────────────────────────────────────┐                 │
-│   │  (no conn)  │                                         │                 │
-│   └──────┬──────┘                                         │                 │
-│          │ First request                                  │                 │
-│          ▼                                                │                 │
-│   ┌─────────────┐     Success      ┌─────────────┐       │                 │
-│   │ Connecting  │─────────────────►│   Active    │       │                 │
-│   │             │                  │ (pooled)    │       │                 │
-│   └──────┬──────┘                  └──────┬──────┘       │                 │
-│          │                                │               │                 │
-│          │ Failure                        │ Idle timeout  │                 │
-│          ▼                                ▼               │                 │
-│   ┌─────────────┐                  ┌─────────────┐       │                 │
-│   │   Retry     │                  │   Closing   │───────┘                 │
-│   │  (backoff)  │                  │             │                         │
-│   └──────┬──────┘                  └─────────────┘                         │
-│          │                                                                  │
-│          │ Max retries                                                      │
-│          ▼                                                                  │
-│   ┌─────────────┐                                                           │
-│   │   Failed    │──► Returns Error to caller                                │
-│   └─────────────┘                                                           │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-#### Token Refresh Lifecycle
-
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          Token Refresh Lifecycle                             │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   Timeline ────────────────────────────────────────────────────────►        │
-│                                                                             │
-│   t=0          t=4min        t=5min                   t=30 days             │
-│    │              │             │                         │                 │
-│    ▼              ▼             ▼                         ▼                 │
-│  ┌────┐       ┌────────┐    ┌────────┐              ┌────────────┐          │
-│  │Auth│       │Refresh │    │ Token  │              │  Refresh   │          │
-│  │    │       │Started │    │Expires │              │Token Expires│          │
-│  └────┘       └────────┘    └────────┘              └────────────┘          │
-│    │              │             │                         │                 │
-│    │              │             │                         │                 │
-│  Access         New access    Old token                Re-auth              │
-│  token          token         invalid                  required             │
-│  issued         ready                                                       │
-│                                                                             │
-│  ┌─────────────────────────────────────────────────────────────────┐        │
-│  │ Background refresh at ~80% of token lifetime (4 min for 5 min)  │        │
-│  │ Ensures seamless operation without request delays               │        │
-│  └─────────────────────────────────────────────────────────────────┘        │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-#### Watch Stream Reconnection
-
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        Watch Stream Reconnection                             │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   ┌──────────────┐                                                          │
-│   │  Connected   │◄─────────────────────────────────┐                       │
-│   │  (streaming) │                                  │                       │
-│   └──────┬───────┘                                  │                       │
-│          │                                          │                       │
-│          │ Disconnect (network/server)              │                       │
-│          ▼                                          │                       │
-│   ┌──────────────┐                                  │                       │
-│   │ Disconnected │                                  │                       │
-│   │              │                                  │                       │
-│   └──────┬───────┘                                  │                       │
-│          │                                          │                       │
-│          │ Start backoff                            │ Success               │
-│          ▼                                          │                       │
-│   ┌──────────────┐    Retry with    ┌────────────┐ │                       │
-│   │   Backoff    │───────────────►  │ Reconnect  │─┘                       │
-│   │  (1s→2s→4s)  │     cursor       │ from cursor│                         │
-│   └──────┬───────┘                  └────────────┘                         │
-│          │                                                                  │
-│          │ Max backoff (5 min)                                              │
-│          ▼                                                                  │
-│   ┌──────────────┐                                                          │
-│   │    Error     │──► Emits WatchError, caller decides                      │
-│   │  (give up)   │                                                          │
-│   └──────────────┘                                                          │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-#### API Version Negotiation
-
-The SDK handles API version compatibility automatically:
-
-```rust
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    // Specify minimum required API version
-    .min_api_version("2024.1")
-    // Or require specific version
-    .api_version("2024.2")
-    .build()
-    .await?;
-```
-
-**How version negotiation works:**
-
-1. SDK sends `Accept-Version: 2024.2` header
-2. Server responds with `API-Version: 2024.2` if supported
-3. If server only supports older version, returns error with supported versions
-4. SDK caches negotiated version for connection lifetime
-
-```rust
-// Check negotiated version
-let info = client.server_info().await?;
-println!("Server API version: {}", info.api_version);
-println!("Supported versions: {:?}", info.supported_versions);
-
-// Conditional feature usage based on version
-if info.api_version >= Version::new(2024, 2) {
-    // Use new batch API
-    client.check_batch_v2(checks).await?;
-} else {
-    // Fall back to original
-    client.check_batch(checks).collect().await?;
-}
-```
-
-#### Lazy vs Eager Connection
-
-Connections are established **lazily** by default:
-
-```rust
-// No connections made yet
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .build()  // Token fetch happens here
-    .await?;
-
-// First connection established on first request
-let allowed = client.check("user:alice", "view", "doc:1").await?;
-```
-
-For eager connection establishment (useful for fail-fast at startup):
-
-```rust
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .eager_connect(true)  // Establish connection on build()
-    .build()
-    .await?;  // Fails here if server unreachable
-
-// Connection already established
-let allowed = client.check("user:alice", "view", "doc:1").await?;
-```
-
 ### Connection Pooling
 
-The SDK maintains connection pools for both gRPC and HTTP transports.
-
 ```rust
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .client_credentials(creds)
-
-    // HTTP connection pool (for REST endpoints)
-    .http_pool_max_idle_per_host(10)
-    .http_pool_idle_timeout(Duration::from_secs(90))
-
-    // gRPC connection pool (for streaming endpoints)
-    .grpc_concurrency_limit(100)
-    .grpc_keep_alive(Duration::from_secs(60))
-
+    // Pool configuration
+    .pool_size(20)                          // Max connections per host
+    .idle_timeout(Duration::from_secs(60))  // Close idle connections
     .build()
     .await?;
 ```
 
-### Multi-Vault Support
+### Connection Lifecycle Diagram
 
-```rust
-// Client with default vault
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .default_vault("vault_a")
-    .build()
-    .await?;
-
-// Use default vault
-client.check("user:alice", "view", "document:readme").await?;
-
-// Override vault for specific operation
-client
-    .with_vault("vault_b")
-    .check("user:alice", "view", "document:readme")
-    .await?;
-
-// Or use scoped client for many operations
-let vault_b = client.scoped_to_vault("vault_b");
-vault_b.check("user:alice", "view", "doc:1").await?;
-vault_b.check("user:bob", "edit", "doc:2").await?;
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│                         Connection Pool                               │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                       │
+│  Request arrives                                                      │
+│       │                                                               │
+│       ▼                                                               │
+│  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐ │
+│  │ Check pool for  │ YES │ Validate conn   │ OK  │ Return to       │ │
+│  │ idle connection │────►│ (health check)  │────►│ caller          │ │
+│  └────────┬────────┘     └────────┬────────┘     └─────────────────┘ │
+│           │ NO                    │ FAILED                           │
+│           ▼                       ▼                                  │
+│  ┌─────────────────┐     ┌─────────────────┐                        │
+│  │ Pool at max?    │     │ Discard & retry │                        │
+│  └────────┬────────┘     └─────────────────┘                        │
+│      YES  │  NO                                                      │
+│       ▼   ▼                                                          │
+│  ┌─────────────────┐     ┌─────────────────┐                        │
+│  │ Wait for conn   │     │ Create new      │                        │
+│  │ (with timeout)  │     │ connection      │                        │
+│  └─────────────────┘     └────────┬────────┘                        │
+│                                   │                                  │
+│                                   ▼                                  │
+│                          ┌─────────────────┐                        │
+│                          │ TLS handshake   │                        │
+│                          │ (if HTTPS)      │                        │
+│                          └────────┬────────┘                        │
+│                                   │                                  │
+│                                   ▼                                  │
+│                          ┌─────────────────┐                        │
+│                          │ Return to pool  │                        │
+│                          │ after request   │                        │
+│                          └─────────────────┘                        │
+│                                                                       │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-### Clone Semantics
+### Keep-Alive and Timeouts
 
-The `Client` is cheap to clone and safe to share across threads and tasks:
+```rust
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    // TCP keep-alive
+    .tcp_keepalive(Duration::from_secs(60))
+    // HTTP/2 keep-alive ping
+    .http2_keepalive_interval(Duration::from_secs(30))
+    .http2_keepalive_timeout(Duration::from_secs(10))
+    // Connection timeouts
+    .connect_timeout(Duration::from_secs(10))
+    .request_timeout(Duration::from_secs(30))
+    .build()
+    .await?;
+```
+
+### Client Cloning Semantics
+
+The `Client` is designed to be cheaply cloned and shared across threads:
 
 ```rust
 // Client uses Arc internally - cloning is O(1)
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .client_credentials(creds)
+    .credentials(creds)
     .build()
     .await?;
 
-// Clone for use in multiple tasks
-let client_clone = client.clone();  // Cheap, shares connection pool
+// Cheap clone - shares connection pool, auth manager, config
+let client2 = client.clone();  // Increments Arc refcount only
 
-tokio::spawn(async move {
-    client_clone.check("user:alice", "view", "doc:1").await
+// Safe to move across threads
+tokio::spawn({
+    let vault = client.access().vault("vlt_01JFQGK...");
+    async move {
+        vault.check("user:alice", "view", "doc:1").await
+    }
 });
 
-// Original client still usable
-client.check("user:bob", "view", "doc:2").await?;
+// Safe to share via Arc (but Clone is already cheap)
+let shared: Arc<Client> = Arc::new(client);
 ```
 
-#### What's Shared vs Cloned
+#### Internal Structure
 
-| Component          | Behavior | Notes                          |
-| ------------------ | -------- | ------------------------------ |
-| Connection pools   | Shared   | HTTP and gRPC connections      |
-| Token cache        | Shared   | All clones use same tokens     |
-| Configuration      | Shared   | Immutable after build          |
-| Middleware stack   | Shared   | Same middleware for all clones |
-| Metrics/tracing    | Shared   | Single set of metrics          |
-| Cache (if enabled) | Shared   | Same cache backend             |
+```rust
+/// Client is a thin wrapper around Arc<Inner>
+#[derive(Clone)]
+pub struct Client {
+    inner: Arc<ClientInner>,
+}
+
+struct ClientInner {
+    config: ClientConfig,
+    transport: Transport,          // Connection pool (shared)
+    auth_manager: AuthManager,     // Token cache (shared)
+    cache: Option<DecisionCache>,  // Decision cache (shared)
+}
+```
+
+#### Clone Behavior Summary
+
+| Component       | Cloning Behavior       |
+| --------------- | ---------------------- |
+| Connection pool | Shared (Arc)           |
+| Auth tokens     | Shared (`Arc<RwLock>`) |
+| Decision cache  | Shared (Arc)           |
+| Config          | Shared (Arc)           |
+| Metrics         | Shared (Arc)           |
 
 #### Thread Safety
 
 ```rust
-// Client is Send + Sync - safe to use from any thread
+// Client is Send + Sync
 fn assert_send_sync<T: Send + Sync>() {}
 assert_send_sync::<Client>();
 
-// Safe to store in lazy_static or once_cell
-use once_cell::sync::OnceCell;
+// Safe patterns
+static CLIENT: OnceLock<Client> = OnceLock::new();
 
-static CLIENT: OnceCell<Client> = OnceCell::new();
-
-async fn init_client() {
-    let client = Client::builder()
-        .url("https://api.inferadb.com")
-        .client_credentials(creds)
-        .build()
-        .await
-        .unwrap();
-
-    CLIENT.set(client).unwrap();
+// In Axum
+#[derive(Clone)]
+struct AppState {
+    client: Client,  // Clone is cheap
 }
 
-async fn get_client() -> &'static Client {
-    CLIENT.get().expect("Client not initialized")
+// In Actix
+let client = web::Data::new(client);  // Wraps in Arc unnecessarily but harmless
+```
+
+---
+
+## Health Check & Lifecycle
+
+Production applications require health checking and graceful shutdown.
+
+### Health Check API
+
+```rust
+// Simple health check - verifies connectivity
+let healthy = client.health_check().await?;
+
+// Detailed health with component status
+let health = client.health().await?;
+println!("Status: {:?}", health.status);  // Healthy, Degraded, Unhealthy
+println!("Latency: {:?}", health.latency);
+println!("Components: {:?}", health.components);
+
+// Blocking wait for readiness (for startup orchestration)
+client.wait_ready(Duration::from_secs(30)).await?;
+
+// With custom readiness criteria
+client.wait_ready_with(ReadinessConfig {
+    timeout: Duration::from_secs(30),
+    check_interval: Duration::from_millis(100),
+    require_auth: true,      // Verify token exchange works
+    require_vault: true,     // Verify vault is accessible
+}).await?;
+```
+
+### Health Response Structure
+
+```rust
+#[derive(Debug, Clone)]
+pub struct HealthResponse {
+    pub status: HealthStatus,
+    pub latency: Duration,
+    pub components: HashMap<String, ComponentHealth>,
+    pub server_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HealthStatus {
+    Healthy,
+    Degraded,  // Partial functionality
+    Unhealthy,
+}
+
+#[derive(Debug, Clone)]
+pub struct ComponentHealth {
+    pub status: HealthStatus,
+    pub message: Option<String>,
+    pub latency: Option<Duration>,
 }
 ```
 
 ### Graceful Shutdown
 
-Properly drain connections and complete in-flight requests:
-
 ```rust
 use tokio::signal;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = Client::builder()
-        .url("https://api.inferadb.com")
-        .client_credentials(creds)
-        .build()
-        .await?;
+// Create client with shutdown handle
+let (client, shutdown_handle) = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(creds)
+    .build_with_shutdown()
+    .await?;
 
-    // Start your application
-    let app_handle = tokio::spawn(run_application(client.clone()));
+// In shutdown handler
+tokio::select! {
+    _ = signal::ctrl_c() => {
+        println!("Shutting down...");
 
-    // Wait for shutdown signal
-    signal::ctrl_c().await?;
-    tracing::info!("Shutdown signal received");
+        // Graceful shutdown - drains in-flight requests
+        shutdown_handle.shutdown().await;
 
-    // Graceful shutdown with timeout
-    match client.shutdown_timeout(Duration::from_secs(30)).await {
-        Ok(stats) => {
-            tracing::info!(
-                "Shutdown complete: {} requests drained, {} connections closed",
-                stats.requests_drained,
-                stats.connections_closed
-            );
-        }
-        Err(e) => {
-            tracing::warn!("Shutdown timeout: {}", e);
+        // Or with timeout
+        shutdown_handle.shutdown_timeout(Duration::from_secs(30)).await;
+    }
+    _ = run_server(client) => {}
+}
+```
+
+### Shutdown Semantics
+
+```rust
+impl ShutdownHandle {
+    /// Initiate graceful shutdown
+    /// - Stops accepting new requests
+    /// - Waits for in-flight requests to complete
+    /// - Closes connections cleanly
+    pub async fn shutdown(self) {
+        self.inner.shutdown().await
+    }
+
+    /// Shutdown with deadline
+    /// - After timeout, forcefully closes connections
+    pub async fn shutdown_timeout(self, timeout: Duration) {
+        tokio::select! {
+            _ = self.inner.shutdown() => {}
+            _ = tokio::time::sleep(timeout) => {
+                self.inner.force_shutdown();
+            }
         }
     }
 
-    // Wait for application to finish
-    app_handle.await??;
-
-    Ok(())
+    /// Check if shutdown has been initiated
+    pub fn is_shutting_down(&self) -> bool {
+        self.inner.is_shutting_down()
+    }
 }
 ```
 
-#### Shutdown Behavior
+### Integration with Kubernetes
 
 ```rust
-// Immediate shutdown - cancels in-flight requests
-client.shutdown().await?;
-
-// Graceful shutdown - waits for in-flight requests
-client.shutdown_timeout(Duration::from_secs(30)).await?;
-
-// Check if client is shutting down
-if client.is_shutting_down() {
-    return Err(Error::ShuttingDown);
-}
-
-// Shutdown hook for cleanup
-client
-    .on_shutdown(|| async {
-        tracing::info!("Client shutting down, saving state...");
-        save_cursor_position().await?;
-        Ok(())
-    })
-    .build()
-    .await?;
-```
-
-#### Watch Stream Shutdown
-
-```rust
-// Watch streams respect shutdown signals
-let (watch, shutdown_tx) = client
-    .watch()
-    .with_shutdown_signal()
-    .run()
-    .await?;
-
-// Later, signal shutdown
-shutdown_tx.send(()).await?;
-
-// Or automatically via client shutdown
-// client.shutdown() will stop all watch streams
-```
-
-### Resource Cleanup and Drop Behavior
-
-Understanding how the SDK handles resource cleanup is critical for long-running applications.
-
-#### What Happens on Drop
-
-When a `Client` is dropped without calling `shutdown()`:
-
-```rust
-{
-    let client = Client::builder()
-        .url("https://api.inferadb.com")
-        .client_credentials(creds)
-        .build()
-        .await?;
-
-    // Use client...
-
-}  // Client dropped here - what happens?
-```
-
-**Automatic cleanup on drop:**
-
-- ✅ HTTP connections returned to OS (via reqwest/hyper)
-- ✅ gRPC channels closed
-- ✅ Memory freed
-- ⚠️ Background token refresh task cancelled (may log warning)
-- ⚠️ Watch streams abruptly terminated (no graceful close)
-- ⚠️ In-flight requests cancelled (may leave server-side state inconsistent)
-
-**Recommendation**: Always call `shutdown()` for production applications:
-
-```rust
-// Explicit shutdown is cleaner
-client.shutdown_timeout(Duration::from_secs(5)).await?;
-// Now safe to drop
-```
-
-#### Async Drop Pattern
-
-Rust doesn't have async `Drop`. For cleanup that requires async operations, use explicit shutdown:
-
-```rust
-pub struct MyService {
-    client: Client,
-}
-
-impl MyService {
-    /// Call this before dropping
-    pub async fn close(self) -> Result<(), Error> {
-        // Stop accepting new requests
-        self.client.shutdown_timeout(Duration::from_secs(30)).await?;
-        Ok(())
+// Liveness probe endpoint
+async fn liveness(client: &Client) -> impl IntoResponse {
+    // Simple connectivity check
+    match client.health_check().await {
+        Ok(true) => StatusCode::OK,
+        _ => StatusCode::SERVICE_UNAVAILABLE,
     }
 }
 
-// Usage
-let service = MyService::new(client);
-// ... use service ...
-service.close().await?;  // Explicit cleanup
-// service is now consumed and cannot be used
+// Readiness probe endpoint
+async fn readiness(client: &Client) -> impl IntoResponse {
+    match client.health().await {
+        Ok(health) if health.status == HealthStatus::Healthy => StatusCode::OK,
+        Ok(health) if health.status == HealthStatus::Degraded => StatusCode::OK,
+        _ => StatusCode::SERVICE_UNAVAILABLE,
+    }
+}
 ```
 
-#### Detecting Resource Leaks
+---
 
-Enable leak detection in development:
+## Vault Scoping
+
+All authorization operations require explicit vault specification to prevent accidental cross-vault operations.
+
+### Quick Start
 
 ```rust
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    // Warn if dropped without shutdown (debug builds only)
-    .warn_on_drop_without_shutdown(true)
+    .credentials(creds)
     .build()
+    .await?;
+
+// Access API: authorization checks and relationship management
+let allowed = client
+    .access()
+    .vault("vlt_01JFQGK...")
+    .check("user:alice", "view", "doc:1")
+    .await?;
+
+// Control API: management operations
+let orgs = client.control().organizations().list().await?;
+```
+
+### API Conventions
+
+The SDK provides two distinct API surfaces accessible from the `Client`:
+
+| Method      | Returns         | Use Case                                       |
+| ----------- | --------------- | ---------------------------------------------- |
+| `access()`  | `AccessClient`  | Authorization checks, relationships, streaming |
+| `control()` | `ControlClient` | Organizations, vaults, schemas, audit logs     |
+
+Both clients use noun-based scoping for resource hierarchy:
+
+| Method                        | Returns       | Use Case                         |
+| ----------------------------- | ------------- | -------------------------------- |
+| `access().vault(id)`          | `VaultAccess` | Vault-scoped authorization ops   |
+| `control().organization(id)`  | `OrgClient`   | Organization-scoped management   |
+| `control().vault(id)`         | `VaultClient` | Vault-scoped management          |
+
+### Single Operation
+
+```rust
+// Vault specified inline for each operation
+let allowed = client
+    .access()
+    .vault("vlt_01JFQGK...")
+    .check("user:alice", "view", "doc:1")
     .await?;
 ```
 
-This emits a warning if the client is dropped without `shutdown()`:
+### Multiple Operations (Same Vault)
+
+```rust
+// Scoped client for multiple operations on same vault
+let production = client.access().vault("vlt_01JFQGK...");
+production.check("user:alice", "view", "doc:1").await?;
+production.write(Relationship::new("doc:1", "viewer", "user:bob")).await?;
+
+// Different vault for staging
+let staging = client.access().vault("vlt_02STAGING...");
+staging.check("user:alice", "view", "doc:1").await?;
+```
+
+### Organization and Vault Hierarchy
+
+Vaults are owned by organizations. You can chain scoping to express this hierarchy:
+
+```rust
+// Access API with explicit organization + vault chain
+let allowed = client
+    .access()
+    .organization("org_8675309")
+    .vault("vlt_01JFQGK...")
+    .check("user:alice", "view", "doc:1")
+    .await?;
+
+// Direct vault access (when organization is implicit/known)
+let allowed = client
+    .access()
+    .vault("vlt_01JFQGK...")
+    .check("user:alice", "view", "doc:1")
+    .await?;
+```
+
+### VaultAccess Design
+
+`VaultAccess` is owned and cheaply cloneable (uses `Arc` internally, like `Client`):
+
+```rust
+/// A client scoped to a specific vault for authorization operations.
+/// Cheaply cloneable - can be stored, passed to tasks, shared across threads.
+#[derive(Clone)]
+pub struct VaultAccess {
+    inner: AccessClient,  // AccessClient uses Arc internally - clone is O(1)
+    vault_id: String,
+}
+
+impl AccessClient {
+    /// Create a vault-scoped access client
+    pub fn vault(&self, vault_id: impl Into<String>) -> VaultAccess {
+        VaultAccess {
+            inner: self.clone(),  // Cheap Arc clone
+            vault_id: vault_id.into(),
+        }
+    }
+}
+
+impl VaultAccess {
+    pub async fn check(&self, subject: &str, permission: &str, resource: &str) -> Result<bool, Error>;
+    pub async fn write(&self, relationship: Relationship<'_>) -> Result<(), Error>;
+    pub async fn delete(&self, relationship: Relationship<'_>) -> Result<(), Error>;
+    pub fn list_resources(&self, subject: &str, permission: &str) -> ResourceStream;
+    pub fn list_subjects(&self, permission: &str, resource: &str) -> SubjectStream;
+    pub fn watch(&self) -> WatchStream;
+    // ... all authorization operations, scoped to vault
+}
+```
+
+**Design Rationale:**
+
+We considered offering both borrowed (`VaultAccess<'a>`) and owned (`VaultAccess`) variants, but rejected this for simplicity:
+
+- `Client` already uses `Arc` internally - cloning is just a refcount increment (O(1))
+- The borrowed variant would save only one atomic increment per call
+- Two variants would force users to understand Rust lifetimes and choose between methods
+- Standard practice in Rust SDKs (`reqwest::Client`, AWS SDK) is to make clients cheaply clonable
+
+**Usage Examples**:
+
+```rust
+// Inline use
+client.access().vault("vlt_01JFQGK...").check("user:alice", "view", "doc:1").await?;
+
+// Store for reuse
+let vault = client.access().vault("vlt_01JFQGK...");
+vault.check("user:alice", "view", "doc:1").await?;
+vault.check("user:alice", "edit", "doc:1").await?;
+
+// Store in struct (no lifetime parameter needed)
+struct MyService {
+    authz: VaultAccess,
+}
+
+// Pass to spawned task (VaultAccess is 'static)
+let vault = client.access().vault("vlt_01JFQGK...");
+tokio::spawn(async move {
+    vault.check("user:alice", "view", "doc:1").await
+});
+```
+
+### AccessClient and ControlClient
+
+The SDK separates authorization operations from management operations:
+
+```rust
+/// Client for authorization operations (checks, relationships, streaming)
+#[derive(Clone)]
+pub struct AccessClient {
+    inner: Client,
+}
+
+impl Client {
+    /// Get the access client for authorization operations
+    pub fn access(&self) -> AccessClient {
+        AccessClient { inner: self.clone() }
+    }
+}
+
+impl AccessClient {
+    /// Scope to a vault
+    pub fn vault(&self, vault_id: impl Into<String>) -> VaultAccess { ... }
+
+    /// Scope to an organization first, then vault
+    pub fn organization(&self, org_id: impl Into<String>) -> OrgAccess { ... }
+}
+
+/// Client for control plane operations (management, schemas, audit)
+#[derive(Clone)]
+pub struct ControlClient {
+    inner: Client,
+}
+
+impl Client {
+    /// Get the control client for management operations
+    pub fn control(&self) -> ControlClient {
+        ControlClient { inner: self.clone() }
+    }
+}
+
+impl ControlClient {
+    pub fn organizations(&self) -> OrganizationsClient { ... }
+    pub fn organization(&self, id: &str) -> OrgClient { ... }
+    pub fn vaults(&self) -> VaultsClient { ... }
+    pub fn vault(&self, id: &str) -> VaultClient { ... }
+    // ... management operations
+}
+```
+
+### Multi-Organization SaaS Pattern
+
+For multi-organization applications where each organization has their own vault:
+
+```rust
+// Extract organization from request and scope to their vault
+async fn handle_request(
+    client: &Client,
+    org_vault_id: &str,  // Vault ID for this organization
+    request: Request,
+) -> Result<Response, Error> {
+    // All authorization in this handler uses organization's vault
+    let vault = client.access().vault(org_vault_id);
+
+    let user = extract_user(&request);
+    let resource = extract_resource(&request);
+
+    if !vault.check(&user, "access", &resource).await? {
+        return Err(Error::Forbidden);
+    }
+
+    // Process request...
+}
+```
+
+### Vault Validation
+
+```rust
+// Validate vault exists before operations
+let vault = client.vault("vlt_01JFQGK...");
+vault.validate().await?;  // Fails if vault doesn't exist or no access
+
+// Or check access without failing
+if client.has_vault_access("vlt_01JFQGK...").await? {
+    // Safe to use vault
+}
+```
+
+---
+
+## Middleware and Interceptors
+
+### Design Pattern
+
+Middleware wraps the transport layer, allowing cross-cutting concerns:
 
 ```text
-[WARN inferadb] Client dropped without shutdown(). This may leave resources
-               unreleased. Call client.shutdown() for clean cleanup.
-               Created at: src/main.rs:42
+┌─────────────────────────────────────────────────────────────────────┐
+│                          Request Pipeline                            │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  vault.check(...)                                                    │
+│       │                                                              │
+│       ▼                                                              │
+│  ┌─────────────────┐                                                │
+│  │ Logging Layer   │  Log request/response                          │
+│  └────────┬────────┘                                                │
+│           │                                                          │
+│           ▼                                                          │
+│  ┌─────────────────┐                                                │
+│  │ Metrics Layer   │  Record latency, count                         │
+│  └────────┬────────┘                                                │
+│           │                                                          │
+│           ▼                                                          │
+│  ┌─────────────────┐                                                │
+│  │ Retry Layer     │  Handle transient failures                     │
+│  └────────┬────────┘                                                │
+│           │                                                          │
+│           ▼                                                          │
+│  ┌─────────────────┐                                                │
+│  │ Auth Layer      │  Inject Bearer token                           │
+│  └────────┬────────┘                                                │
+│           │                                                          │
+│           ▼                                                          │
+│  ┌─────────────────┐                                                │
+│  │ Transport       │  HTTP/gRPC call                                │
+│  └─────────────────┘                                                │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-#### Preventing Leaks in Long-Running Applications
+### Adding Custom Middleware
 
 ```rust
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use inferadb::middleware::{Middleware, Request, Response};
 
-pub struct ApplicationState {
-    client: Arc<Client>,
-    shutdown_complete: Arc<Mutex<bool>>,
+struct AuditLogger {
+    logger: Logger,
 }
 
-impl ApplicationState {
-    pub async fn shutdown(&self) {
-        let mut complete = self.shutdown_complete.lock().await;
-        if !*complete {
-            if let Err(e) = self.client.shutdown_timeout(Duration::from_secs(30)).await {
-                tracing::error!("Client shutdown error: {}", e);
-            }
-            *complete = true;
-        }
-    }
-}
+impl Middleware for AuditLogger {
+    async fn handle(&self, req: Request, next: Next) -> Result<Response, Error> {
+        let start = Instant::now();
+        let operation = req.operation().to_string();
 
-// Ensure shutdown on process exit
-impl Drop for ApplicationState {
-    fn drop(&mut self) {
-        if !*self.shutdown_complete.blocking_lock() {
-            tracing::warn!("ApplicationState dropped without shutdown()");
-        }
-    }
-}
-```
+        let response = next.call(req).await;
 
-#### Background Task Lifecycle
-
-The SDK spawns background tasks that must be cleaned up:
-
-| Task | Created When | Cleaned Up By |
-|------|--------------|---------------|
-| Token refresh | Client with credentials | `shutdown()` or Drop |
-| Watch streams | `client.watch().run()` | Stream drop or `shutdown()` |
-| Metrics reporter | `metrics(true)` | `shutdown()` or Drop |
-| Health monitor | `health_check_interval()` | `shutdown()` or Drop |
-
-```rust
-// Check for orphaned background tasks
-let stats = client.background_task_stats();
-println!("Active tasks: {}", stats.active_count);
-println!("Token refresh running: {}", stats.token_refresh_active);
-println!("Watch streams: {}", stats.watch_stream_count);
-```
-
----
-
-## Configuration Options
-
-### Full Configuration Reference
-
-| Option                     | Type       | Default  | Description                                     |
-| -------------------------- | ---------- | -------- | ----------------------------------------------- |
-| `url`                      | `String`   | Required | Service URL (routes to both Engine and Control) |
-| `timeout`                  | `Duration` | 30s      | Request timeout                                 |
-| `connect_timeout`          | `Duration` | 5s       | Connection establishment timeout                |
-| `default_vault`            | `String`   | None     | Default vault for Engine operations             |
-| `default_organization`     | `String`   | None     | Default organization for Control operations     |
-| `prefer_grpc`              | `bool`     | true     | Use gRPC when available                         |
-| `max_connections`          | `usize`    | 100      | HTTP connection pool size                       |
-| `idle_timeout`             | `Duration` | 90s      | Idle connection timeout                         |
-| `retry.max_attempts`       | `u32`      | 3        | Maximum retry attempts                          |
-| `retry.initial_backoff`    | `Duration` | 100ms    | Initial retry delay                             |
-| `retry.max_backoff`        | `Duration` | 10s      | Maximum retry delay                             |
-| `retry.backoff_multiplier` | `f64`      | 2.0      | Exponential backoff factor                      |
-| `tracing`                  | `bool`     | false    | Enable tracing spans                            |
-| `metrics`                  | `bool`     | false    | Enable metrics emission                         |
-
-### Environment Variables
-
-| Variable                    | Description                      |
-| --------------------------- | -------------------------------- |
-| `INFERADB_URL`              | Service URL                      |
-| `INFERADB_CLIENT_ID`        | Client ID for authentication     |
-| `INFERADB_PRIVATE_KEY_PATH` | Path to Ed25519 private key PEM  |
-| `INFERADB_PRIVATE_KEY`      | Ed25519 private key PEM contents |
-| `INFERADB_CERTIFICATE_ID`   | Specific certificate KID to use  |
-| `INFERADB_VAULT`            | Default vault ID                 |
-| `INFERADB_ORGANIZATION`     | Default organization ID          |
-| `INFERADB_TIMEOUT_SECS`     | Request timeout in seconds       |
-| `INFERADB_PREFER_GRPC`      | "true" or "false"                |
-
----
-
-## Middleware & Interceptors
-
-The SDK provides a composable middleware stack for customizing request/response handling.
-
-### Built-in Middleware
-
-```rust
-use inferadb::middleware::{LoggingMiddleware, MetricsMiddleware, TracingMiddleware};
-
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    // Add middleware (executed in order)
-    .with_middleware(TracingMiddleware::new())
-    .with_middleware(MetricsMiddleware::new())
-    .with_middleware(LoggingMiddleware::new().level(log::Level::Debug))
-    .build()
-    .await?;
-```
-
-### Custom Headers Middleware
-
-Inject headers into every request (useful for correlation IDs, tenant context):
-
-```rust
-use inferadb::middleware::HeadersMiddleware;
-
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .with_middleware(HeadersMiddleware::new()
-        .static_header("X-Service-Name", "my-api")
-        .dynamic_header("X-Request-ID", || uuid::Uuid::new_v4().to_string()))
-    .build()
-    .await?;
-```
-
-### Custom Middleware
-
-Implement your own middleware for advanced use cases:
-
-```rust
-use inferadb::middleware::{Middleware, Next, Request, Response};
-use async_trait::async_trait;
-
-struct AuditMiddleware {
-    audit_log: Arc<AuditLogger>,
-}
-
-#[async_trait]
-impl Middleware for AuditMiddleware {
-    async fn handle(&self, request: Request, next: Next<'_>) -> Result<Response, Error> {
-        let start = std::time::Instant::now();
-        let operation = request.operation().to_string();
-
-        // Call the next middleware/handler
-        let response = next.run(request).await;
-
-        // Log after completion
-        self.audit_log.record(AuditEntry {
+        self.logger.log(AuditEntry {
             operation,
             duration: start.elapsed(),
             success: response.is_ok(),
-            request_id: response.as_ref().ok().and_then(|r| r.request_id()),
-        }).await;
+        });
 
         response
     }
 }
 
-// Use it
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .with_middleware(AuditMiddleware { audit_log })
+    .middleware(AuditLogger::new())
     .build()
     .await?;
 ```
 
-### Request/Response Transformation
+---
+
+## Type-Safe Relationships
+
+Compile-time schema validation is our key differentiator vs SpiceDB/OpenFGA.
+
+### The Problem with Stringly-Typed APIs
 
 ```rust
-use inferadb::middleware::TransformMiddleware;
+// Runtime errors only - typos compile fine
+vault.check("user:alice", "veiw", "document:readme").await?;  // "veiw" typo
+vault.write(Relationship::new("doc:1", "viwer", "user:alice")).await?;  // "viwer" typo
+```
 
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .with_middleware(TransformMiddleware::new()
-        .on_request(|req| {
-            // Add tenant prefix to all resources
-            req.transform_resource(|r| format!("tenant_123:{}", r))
+### Schema-Derived Types
+
+With the `derive` feature, generate types from your IPL schema:
+
+```rust
+// schema.ipl
+// entity User {}
+// entity Document {
+//     relations { viewer: User, editor: User, owner: User }
+//     permissions { view: viewer | editor | owner, edit: editor | owner }
+// }
+
+use inferadb::derive::schema;
+
+// Generate types at compile time from schema
+schema!("schema.ipl");
+
+// Now you have type-safe entities and relations
+let doc = Document::new("readme");
+let user = User::new("alice");
+
+// ✅ Compiles - valid relation
+doc.viewer().add(&user);
+
+// ❌ Compile error - "viwer" doesn't exist
+doc.viwer().add(&user);  // Error: no method named `viwer`
+
+// ❌ Compile error - wrong subject type
+let other_doc = Document::new("other");
+doc.viewer().add(&other_doc);  // Error: expected User, found Document
+```
+
+### Derive Macro Implementation
+
+```rust
+use inferadb::derive::{Entity, Relation};
+
+#[derive(Entity)]
+#[entity(type = "document")]
+pub struct Document {
+    id: String,
+}
+
+#[derive(Entity)]
+#[entity(type = "user")]
+pub struct User {
+    id: String,
+}
+
+// Generated by macro:
+impl Document {
+    pub fn viewer(&self) -> RelationBuilder<User> { /* ... */ }
+    pub fn editor(&self) -> RelationBuilder<User> { /* ... */ }
+    pub fn owner(&self) -> RelationBuilder<User> { /* ... */ }
+}
+
+// Type-safe checks
+impl Document {
+    pub fn can_view(&self, subject: &User) -> CheckBuilder { /* ... */ }
+    pub fn can_edit(&self, subject: &User) -> CheckBuilder { /* ... */ }
+}
+```
+
+### Type-Safe Check API
+
+```rust
+// Stringly-typed (still supported for dynamic use cases)
+vault.check("user:alice", "view", "document:readme").await?;
+
+// Type-safe (preferred)
+let allowed = vault
+    .check_typed(&user, Document::VIEW, &doc)
+    .await?;
+
+// Or using entity methods
+let allowed = doc.can_view(&user).check(&vault).await?;
+```
+
+### Type-Safe Relationship Builder
+
+```rust
+// Stringly-typed
+vault.write(Relationship::new("document:readme", "viewer", "user:alice")).await?;
+
+// Type-safe builder
+vault.write(
+    doc.viewer().is(&user)
+).await?;
+
+// Batch with mixed types
+vault.write_batch([
+    doc.viewer().is(&alice),
+    doc.editor().is(&bob),
+    folder.parent().is(&root_folder),
+]).await?;
+```
+
+### Schema Validation at Compile Time
+
+```rust
+// build.rs - validate schema during compilation
+fn main() {
+    inferadb_build::validate_schema("schema.ipl")
+        .expect("Invalid schema");
+
+    // Generate types
+    inferadb_build::generate_types("schema.ipl", "src/generated.rs")
+        .expect("Failed to generate types");
+}
+```
+
+### Strong ID Types
+
+Beyond schema-derived types, the SDK provides strongly-typed ID wrappers that prevent mixing up different identifier types:
+
+```rust
+use std::borrow::Cow;
+
+/// A reference to an entity (resource or subject) in the format "type:id"
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct EntityRef<'a> {
+    entity_type: Cow<'a, str>,
+    entity_id: Cow<'a, str>,
+}
+
+impl<'a> EntityRef<'a> {
+    /// Parse from "type:id" format
+    pub fn parse(s: &'a str) -> Result<Self, ParseError> {
+        let (entity_type, entity_id) = s.split_once(':')
+            .ok_or(ParseError::MissingColon)?;
+        Ok(Self {
+            entity_type: Cow::Borrowed(entity_type),
+            entity_id: Cow::Borrowed(entity_id),
         })
-        .on_response(|resp| {
-            // Strip tenant prefix from responses
-            resp.transform_resource(|r| r.strip_prefix("tenant_123:").unwrap_or(r).to_string())
-        }))
-    .build()
-    .await?;
-```
-
-### Middleware Order
-
-Middleware executes in the order added, wrapping around the core client:
-
-```text
-Request Flow:
-┌─────────────────────────────────────────────────────────────┐
-│  Your Code                                                  │
-│      │                                                      │
-│      ▼                                                      │
-│  ┌─────────────────┐                                        │
-│  │ TracingMiddleware │ ◄─── Outermost (first added)         │
-│  └────────┬────────┘                                        │
-│           ▼                                                 │
-│  ┌─────────────────┐                                        │
-│  │ MetricsMiddleware│                                       │
-│  └────────┬────────┘                                        │
-│           ▼                                                 │
-│  ┌─────────────────┐                                        │
-│  │ LoggingMiddleware│ ◄─── Innermost (last added)           │
-│  └────────┬────────┘                                        │
-│           ▼                                                 │
-│  ┌─────────────────┐                                        │
-│  │   Core Client   │ ◄─── Actual HTTP/gRPC call             │
-│  └─────────────────┘                                        │
-│                                                             │
-│  Response flows back up through the same stack              │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
----
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     PART 4: ENGINE API (AUTHORIZATION)
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-## Authorization Checks
-
-### Simple Check
-
-```rust
-// Boolean result
-let allowed = client.check("user:alice", "view", "document:readme").await?;
-
-if allowed {
-    // Grant access
-}
-```
-
-### Check with Context (ABAC)
-
-```rust
-use inferadb::Context;
-
-let allowed = client
-    .check("user:alice", "view", "document:confidential")
-    .with_context(Context::new()
-        .insert("ip_address", "10.0.0.50")
-        .insert("time_of_day", "14:30")
-        .insert("mfa_verified", true))
-    .await?;
-```
-
-### Check with Decision Details
-
-```rust
-use inferadb::CheckOptions;
-
-let decision = client
-    .check("user:alice", "edit", "document:readme")
-    .with_options(CheckOptions {
-        trace: true,  // Include evaluation trace
-    })
-    .detailed()
-    .await?;
-
-println!("Allowed: {}", decision.allowed);
-println!("Reason: {:?}", decision.reason);
-
-if let Some(trace) = decision.trace {
-    println!("Evaluation path:");
-    for step in trace.steps {
-        println!("  {} -> {}", step.relation, step.result);
     }
-}
-```
 
-### Type-Safe Checks (with macros)
-
-The SDK provides derive macros for compile-time type safety.
-
-#### Basic Resource and Permission Types
-
-```rust
-use inferadb::prelude::*;
-
-// Define your schema types
-#[derive(Resource)]
-#[inferadb(type = "document")]
-struct Document {
-    id: String,
-}
-
-#[derive(Resource)]
-#[inferadb(type = "user")]
-struct User {
-    id: String,
-}
-
-#[derive(Permission)]
-enum DocumentPermission {
-    View,
-    Edit,
-    Delete,
-    Share,
-}
-
-// Type-safe check
-let doc = Document { id: "readme".into() };
-let user = User { id: "alice".into() };
-
-let allowed = client
-    .check_typed(&user, DocumentPermission::View, &doc)
-    .await?;
-```
-
-#### Advanced Macro Attributes
-
-```rust
-use inferadb::prelude::*;
-
-// Resource with custom ID field
-#[derive(Resource)]
-#[inferadb(type = "document", id_field = "doc_id")]
-struct Document {
-    doc_id: Uuid,
-    title: String,
-}
-
-// Resource with composite ID
-#[derive(Resource)]
-#[inferadb(type = "document", id_expr = "format!(\"{}/{}\", self.tenant, self.id)")]
-struct TenantDocument {
-    tenant: String,
-    id: String,
-}
-
-// Subject with userset support
-#[derive(Subject)]
-#[inferadb(type = "group")]
-struct Group {
-    id: String,
-    #[inferadb(relation)]
-    relation: Option<String>,  // For group:eng#member
-}
-
-impl Group {
-    fn members(id: impl Into<String>) -> Self {
+    /// Create from components
+    pub fn new(entity_type: impl Into<Cow<'a, str>>, entity_id: impl Into<Cow<'a, str>>) -> Self {
         Self {
-            id: id.into(),
-            relation: Some("member".into()),
+            entity_type: entity_type.into(),
+            entity_id: entity_id.into(),
+        }
+    }
+
+    pub fn entity_type(&self) -> &str { &self.entity_type }
+    pub fn entity_id(&self) -> &str { &self.entity_id }
+
+    pub fn into_owned(self) -> EntityRef<'static> {
+        EntityRef {
+            entity_type: Cow::Owned(self.entity_type.into_owned()),
+            entity_id: Cow::Owned(self.entity_id.into_owned()),
         }
     }
 }
 
-// Usage
-let allowed = client
-    .check_typed(
-        &Group::members("engineering"),
-        DocumentPermission::View,
-        &doc,
-    )
-    .await?;
-```
-
-#### Permission Hierarchies
-
-```rust
-#[derive(Permission)]
-#[inferadb(entity = "document")]
-enum DocumentPermission {
-    #[inferadb(name = "view")]
-    View,
-
-    #[inferadb(name = "edit", implies = ["view"])]
-    Edit,
-
-    #[inferadb(name = "delete", implies = ["edit", "view"])]
-    Delete,
-
-    #[inferadb(name = "share")]
-    Share,
-
-    #[inferadb(name = "admin", implies = ["delete", "share"])]
-    Admin,
-}
-
-// Compile-time validation
-// If schema doesn't define "admin" permission, macro emits error
-```
-
-#### Compile-Time Schema Validation
-
-```rust
-// Enable schema validation at compile time
-#[derive(Resource)]
-#[inferadb(
-    type = "document",
-    schema = "schemas/production.ipl",  // Path to schema file
-    validate = true,                     // Enable validation
-)]
-struct Document {
-    id: String,
-}
-
-// If "document" entity doesn't exist in schema, compilation fails:
-// error: Entity 'document' not found in schema 'schemas/production.ipl'
-//        Available entities: user, folder, team
-```
-
-#### Relation Types
-
-```rust
-#[derive(Relation)]
-#[inferadb(from = "document", to = "user")]
-struct DocumentViewer;
-
-#[derive(Relation)]
-#[inferadb(from = "folder", to = "document")]
-struct FolderContains;
-
-// Type-safe relationship creation
-let rel = DocumentViewer::new(&doc, &user);
-client.write(rel).await?;
-
-// Compile error if types don't match:
-// let rel = DocumentViewer::new(&folder, &user);  // ERROR: expected Document, found Folder
-```
-
-#### Macro Error Messages
-
-The macros provide helpful error messages:
-
-```rust
-#[derive(Resource)]
-#[inferadb(type = "document")]
-struct Document {
-    // Missing id field!
-}
-// error: Resource 'Document' must have an 'id' field or specify 'id_field' attribute
-//   --> src/models.rs:5:1
-//    |
-// 5  | struct Document {
-//    | ^^^^^^^^^^^^^^^^
-//    |
-//    = help: Add a field named 'id' or use #[inferadb(id_field = "your_field")]
-
-#[derive(Permission)]
-enum InvalidPermission {
-    // Empty enum!
-}
-// error: Permission enum must have at least one variant
-//   --> src/models.rs:10:1
-
-#[derive(Resource)]
-#[inferadb(type = "has spaces")]  // Invalid type name
-struct Bad;
-// error: Resource type must match pattern [a-z][a-z0-9_]*
-//   --> src/models.rs:15:17
-//    |
-// 15 | #[inferadb(type = "has spaces")]
-//    |                   ^^^^^^^^^^^^
-```
-
-#### Generated Code Example
-
-For transparency, here's what the macros generate:
-
-```rust
-// Input:
-#[derive(Resource)]
-#[inferadb(type = "document")]
-struct Document {
-    id: String,
-}
-
-// Generated:
-impl inferadb::Resource for Document {
-    fn resource_type() -> &'static str {
-        "document"
-    }
-
-    fn resource_id(&self) -> String {
-        self.id.clone()
-    }
-
-    fn to_resource_string(&self) -> String {
-        format!("document:{}", self.id)
-    }
-}
-
-impl std::fmt::Display for Document {
+impl std::fmt::Display for EntityRef<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "document:{}", self.id)
+        write!(f, "{}:{}", self.entity_type, self.entity_id)
     }
 }
 
-impl From<Document> for inferadb::types::Resource {
-    fn from(doc: Document) -> Self {
-        inferadb::types::Resource::new("document", doc.id)
-    }
+/// A subject reference, which can be an entity or entity#relation (userset)
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SubjectRef<'a> {
+    entity: EntityRef<'a>,
+    relation: Option<Cow<'a, str>>,  // For usersets like "group:admins#member"
 }
 
-impl From<&Document> for inferadb::types::Resource {
-    fn from(doc: &Document) -> Self {
-        inferadb::types::Resource::new("document", &doc.id)
+impl<'a> SubjectRef<'a> {
+    /// Parse from "type:id" or "type:id#relation" format
+    pub fn parse(s: &'a str) -> Result<Self, ParseError> {
+        if let Some((entity_part, relation)) = s.split_once('#') {
+            Ok(Self {
+                entity: EntityRef::parse(entity_part)?,
+                relation: Some(Cow::Borrowed(relation)),
+            })
+        } else {
+            Ok(Self {
+                entity: EntityRef::parse(s)?,
+                relation: None,
+            })
+        }
     }
+
+    /// Create a userset subject (e.g., "group:admins#member")
+    pub fn userset(entity: EntityRef<'a>, relation: impl Into<Cow<'a, str>>) -> Self {
+        Self { entity, relation: Some(relation.into()) }
+    }
+
+    pub fn is_userset(&self) -> bool { self.relation.is_some() }
+}
+
+/// Strongly-typed vault identifier
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct VaultId(String);
+
+impl VaultId {
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    pub fn as_str(&self) -> &str { &self.0 }
+}
+
+impl From<&str> for VaultId {
+    fn from(s: &str) -> Self { Self(s.to_string()) }
+}
+
+impl From<String> for VaultId {
+    fn from(s: String) -> Self { Self(s) }
+}
+```
+
+**Benefits of Strong ID Types**:
+
+```rust
+// Without strong types - easy to mix up parameters
+fn check_permission(subject: &str, resource: &str, permission: &str) { /* ... */ }
+check_permission("doc:readme", "user:alice", "view");  // Oops! Subject/resource swapped
+
+// With strong types - compiler catches mistakes
+fn check_permission(subject: SubjectRef<'_>, permission: &str, resource: EntityRef<'_>) { /* ... */ }
+// check_permission(resource, "view", subject);  // ❌ Compile error: type mismatch
+
+// Parsing validates format at boundaries
+let subject = SubjectRef::parse("user:alice")?;  // ✅ Valid
+let subject = SubjectRef::parse("invalid")?;     // ❌ ParseError::MissingColon
+```
+
+**Interop with String-Based APIs**:
+
+```rust
+// Strong types implement Display and Into<String>
+let entity = EntityRef::new("document", "readme");
+let as_string: String = entity.to_string();  // "document:readme"
+
+// VaultAccess methods accept both strong types and strings
+vault.check(subject, "view", resource).await?;  // Strong types
+vault.check("user:alice", "view", "doc:readme").await?;  // Strings (still works)
+
+// Relationship accepts EntityRef for resource/subject
+let rel = Relationship::new(
+    EntityRef::new("document", "readme"),
+    "viewer",
+    SubjectRef::parse("user:alice")?,
+);
+```
+
+---
+
+## Zero-Copy APIs
+
+Support borrowed data for high-volume paths where allocation matters.
+
+### Borrowed Relationships
+
+```rust
+// Owned (default) - allocates strings
+let rel = Relationship::new("document:readme", "viewer", "user:alice");
+
+// Borrowed - zero allocation
+let rel = Relationship::borrowed("document:readme", "viewer", "user:alice");
+
+// From existing strings without copying
+let resource = "document:readme";
+let relation = "viewer";
+let subject = "user:alice";
+let rel = Relationship::from_refs(resource, relation, subject);
+```
+
+### Relationship Type with Cow
+
+```rust
+use std::borrow::Cow;
+
+#[derive(Debug, Clone)]
+pub struct Relationship<'a> {
+    pub resource: Cow<'a, str>,
+    pub relation: Cow<'a, str>,
+    pub subject: Cow<'a, str>,
+}
+
+/// Convenience alias for owned relationships
+pub type OwnedRelationship = Relationship<'static>;
+
+impl<'a> Relationship<'a> {
+    /// Ergonomic constructor - creates owned relationship from any string-like types.
+    /// This is the most common constructor for typical use cases.
+    pub fn new(
+        resource: impl Into<String>,
+        relation: impl Into<String>,
+        subject: impl Into<String>,
+    ) -> Relationship<'static> {
+        Relationship {
+            resource: Cow::Owned(resource.into()),
+            relation: Cow::Owned(relation.into()),
+            subject: Cow::Owned(subject.into()),
+        }
+    }
+
+    /// Zero-copy constructor for string literals and borrowed data.
+    /// Use this in hot paths where allocation overhead matters.
+    pub fn borrowed(
+        resource: &'a str,
+        relation: &'a str,
+        subject: &'a str,
+    ) -> Self {
+        Self {
+            resource: Cow::Borrowed(resource),
+            relation: Cow::Borrowed(relation),
+            subject: Cow::Borrowed(subject),
+        }
+    }
+
+    /// Explicit owned constructor (same as new(), more explicit naming)
+    pub fn owned(
+        resource: impl Into<String>,
+        relation: impl Into<String>,
+        subject: impl Into<String>,
+    ) -> Relationship<'static> {
+        Self::new(resource, relation, subject)
+    }
+
+    /// Convert to owned for storage/sending across threads
+    pub fn into_owned(self) -> Relationship<'static> {
+        Relationship {
+            resource: Cow::Owned(self.resource.into_owned()),
+            relation: Cow::Owned(self.relation.into_owned()),
+            subject: Cow::Owned(self.subject.into_owned()),
+        }
+    }
+}
+```
+
+### Zero-Copy Batch Checks
+
+```rust
+// Borrowed batch - no allocation per check
+let checks: Vec<(&str, &str, &str)> = vec![
+    ("user:alice", "view", "doc:1"),
+    ("user:alice", "edit", "doc:1"),
+    ("user:bob", "view", "doc:1"),
+];
+
+let results = client
+    .check_batch_borrowed(&checks)
+    .collect()
+    .await?;
+
+// Compare to owned version (allocates)
+let checks: Vec<CheckRequest> = vec![
+    CheckRequest::new("user:alice", "view", "doc:1"),
+    // ...
+];
+```
+
+### When to Use Borrowed APIs
+
+| Scenario                   | Recommended API                                   |
+| -------------------------- | ------------------------------------------------- |
+| Static strings/literals    | `Relationship::borrowed()`                        |
+| Hot path, many checks      | `check_batch_borrowed()`                          |
+| Data from parsed input     | `Relationship::borrowed()` if input outlives call |
+| Cross-thread/async storage | `Relationship::owned()` or `.into_owned()`        |
+| Unknown lifetime           | `Relationship::owned()`                           |
+
+---
+
+## Async Trait Objects & DI
+
+Enable dependency injection and testing with trait objects.
+
+### Dual Trait Design
+
+The SDK provides two trait variants optimized for different use cases:
+
+1. **Generic trait** (`Authorize`) - Maximum performance, no allocation overhead
+2. **Object-safe trait** (`AuthorizationClient`) - Enables `dyn` usage and dependency injection
+
+**Why Two Traits?**
+
+| Consideration        | Generic Trait                | Object-Safe Trait         |
+| -------------------- | ---------------------------- | ------------------------- |
+| Performance          | Monomorphized, zero overhead | vtable dispatch           |
+| Allocation           | Borrows possible             | May require owned data    |
+| `dyn` compatible     | No (uses generics)           | Yes                       |
+| Dependency injection | Generics only                | Works with `Arc<dyn ...>` |
+| Testing mocks        | Direct                       | Via trait object          |
+
+### The Authorize Trait (Generic, High-Performance)
+
+```rust
+/// High-performance authorization trait.
+/// Uses generics and associated types for zero-cost abstractions.
+/// NOT object-safe - use AuthorizationClient for dyn.
+pub trait Authorize {
+    type CheckFuture<'a>: Future<Output = Result<bool, Error>> + Send + 'a
+    where
+        Self: 'a;
+
+    type WriteFuture<'a>: Future<Output = Result<(), Error>> + Send + 'a
+    where
+        Self: 'a;
+
+    /// Check authorization with borrowed parameters (zero allocation)
+    fn check<'a>(
+        &'a self,
+        subject: &'a str,
+        permission: &'a str,
+        resource: &'a str,
+    ) -> Self::CheckFuture<'a>;
+
+    /// Check with context
+    fn check_with_context<'a>(
+        &'a self,
+        subject: &'a str,
+        permission: &'a str,
+        resource: &'a str,
+        context: &'a Context,
+    ) -> Self::CheckFuture<'a>;
+
+    /// Write relationship
+    fn write<'a>(&'a self, relationship: &'a Relationship<'_>) -> Self::WriteFuture<'a>;
+}
+
+// Client implements the generic trait with concrete future types
+impl Authorize for Client {
+    type CheckFuture<'a> = impl Future<Output = Result<bool, Error>> + Send + 'a;
+    type WriteFuture<'a> = impl Future<Output = Result<(), Error>> + Send + 'a;
+
+    fn check<'a>(
+        &'a self,
+        subject: &'a str,
+        permission: &'a str,
+        resource: &'a str,
+    ) -> Self::CheckFuture<'a> {
+        async move {
+            // Direct implementation, no boxing
+            self.inner_check(subject, permission, resource).await
+        }
+    }
+    // ...
+}
+```
+
+### The AuthorizationClient Trait (Object-Safe)
+
+```rust
+use async_trait::async_trait;
+
+/// Object-safe authorization trait for dependency injection.
+/// Implemented by Client, MockClient, InMemoryClient.
+/// Use this when you need `dyn AuthorizationClient`.
+#[async_trait]
+pub trait AuthorizationClient: Send + Sync {
+    async fn check(
+        &self,
+        subject: &str,
+        permission: &str,
+        resource: &str,
+    ) -> Result<bool, Error>;
+
+    async fn check_with_context(
+        &self,
+        subject: &str,
+        permission: &str,
+        resource: &str,
+        context: &Context,
+    ) -> Result<bool, Error>;
+
+    async fn check_batch(
+        &self,
+        checks: &[(&str, &str, &str)],
+    ) -> Result<Vec<bool>, Error>;
+
+    async fn write(&self, relationship: &Relationship<'_>) -> Result<(), Error>;
+
+    async fn delete(&self, relationship: &Relationship<'_>) -> Result<(), Error>;
+
+    async fn health_check(&self) -> Result<bool, Error>;
+}
+
+// Auto-implement object-safe trait for anything implementing generic trait
+impl<T: Authorize + Send + Sync> AuthorizationClient for T {
+    async fn check(
+        &self,
+        subject: &str,
+        permission: &str,
+        resource: &str,
+    ) -> Result<bool, Error> {
+        Authorize::check(self, subject, permission, resource).await
+    }
+    // ... delegate other methods
+}
+```
+
+### Choosing Between Traits
+
+```rust
+// For maximum performance: Use generic bounds
+async fn process_request<A: Authorize>(
+    authz: &A,
+    request: Request,
+) -> Result<Response, Error> {
+    // Monomorphized - no vtable, inlinable
+    authz.check(&request.user, "access", &request.resource).await?;
+    // ...
+}
+
+// For flexibility/DI: Use trait objects
+async fn authorize_request(
+    authz: &dyn AuthorizationClient,
+    user: &str,
+    action: &str,
+    resource: &str,
+) -> Result<bool, Error> {
+    // vtable dispatch - slight overhead, but enables runtime polymorphism
+    authz.check(user, action, resource).await
+}
+
+// For application state: Store as trait object
+type SharedAuthz = Arc<dyn AuthorizationClient>;
+
+struct AppState {
+    authz: SharedAuthz,
+}
+```
+
+### Trait Object Usage
+
+```rust
+// Accept any implementation
+async fn authorize_request(
+    authz: &dyn AuthorizationClient,
+    user: &str,
+    action: &str,
+    resource: &str,
+) -> Result<bool, Error> {
+    authz.check(user, action, resource).await
+}
+
+// Or with Arc for shared ownership
+type SharedAuthz = Arc<dyn AuthorizationClient>;
+
+struct AppState {
+    authz: SharedAuthz,
+}
+```
+
+### Dependency Injection Pattern
+
+```rust
+// Production
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(creds)
+    .build()
+    .await?;
+
+let app = App::new(Arc::new(client) as SharedAuthz);
+
+// Testing
+let mock = MockClient::builder()
+    .check("user:alice", "view", "doc:1", true)
+    .build();
+
+let app = App::new(Arc::new(mock) as SharedAuthz);
+```
+
+### Generic Bounds
+
+```rust
+// Function generic over authorization implementation
+async fn process_request<A: AuthorizationClient>(
+    authz: &A,
+    request: Request,
+) -> Result<Response, Error> {
+    let allowed = authz.check(&request.user, "access", &request.resource).await?;
+    // ...
+}
+
+// Struct generic over authorization
+struct RequestHandler<A: AuthorizationClient> {
+    authz: A,
+}
+
+impl<A: AuthorizationClient> RequestHandler<A> {
+    pub async fn handle(&self, req: Request) -> Result<Response, Error> {
+        // ...
+    }
+}
+```
+
+### Testing with Trait Objects
+
+```rust
+#[tokio::test]
+async fn test_authorization_flow() {
+    // Create mock with expected calls
+    let mock = MockClient::builder()
+        .expect_check("user:alice", "view", "doc:1")
+        .returning(true)
+        .expect_check("user:bob", "view", "doc:1")
+        .returning(false)
+        .build();
+
+    // Test through trait object
+    let authz: &dyn AuthorizationClient = &mock;
+
+    assert!(authz.check("user:alice", "view", "doc:1").await.unwrap());
+    assert!(!authz.check("user:bob", "view", "doc:1").await.unwrap());
+
+    // Verify all expected calls were made
+    mock.verify();
 }
 ```
 
 ---
 
-## Batch Evaluations
+## Authorization Checks
 
-### Parallel Batch Check
+All authorization operations require vault scoping via `client.access().vault(...)`.
+
+### API Design
 
 ```rust
-use inferadb::BatchCheck;
+// Get vault-scoped client for authorization operations
+let vault = client.access().vault("vlt_01JFQGK...");
 
-let checks = vec![
-    ("user:alice", "view", "document:1"),
-    ("user:alice", "edit", "document:1"),
-    ("user:bob", "view", "document:1"),
-    ("user:bob", "view", "document:2"),
-];
+// Simple check - returns bool
+let allowed = vault
+    .check("user:alice", "view", "document:readme")
+    .await?;
 
-// Returns results as they complete (streaming)
-let mut results = client.check_batch(checks).await?;
+// Check with ABAC context
+let allowed = vault
+    .check("user:alice", "view", "document:confidential")
+    .with_context(Context::new()
+        .insert("ip_address", "10.0.0.50")
+        .insert("mfa_verified", true))
+    .await?;
 
-while let Some(result) = results.next().await {
-    let (index, decision) = result?;
-    println!("Check {}: {}", index, decision.allowed);
+// Detailed decision with trace
+let decision = vault
+    .check("user:alice", "edit", "document:readme")
+    .trace(true)
+    .detailed()
+    .await?;
+
+println!("Allowed: {}, Reason: {:?}", decision.allowed, decision.reason);
+for step in &decision.trace {
+    println!("  {} -> {}", step.rule, step.result);
 }
 ```
 
-### Batch with Shared Context
+### CheckRequest Builder with IntoFuture
+
+The `check()` method returns a builder that implements `IntoFuture`, enabling both simple one-liner usage and optional configuration:
 
 ```rust
-let context = Context::new()
-    .insert("ip_address", "10.0.0.50");
+/// Builder for authorization check requests.
+/// Implements IntoFuture for ergonomic await syntax.
+pub struct CheckRequest<'a> {
+    vault: &'a VaultAccess,
+    subject: Cow<'a, str>,
+    permission: Cow<'a, str>,
+    resource: Cow<'a, str>,
+    context: Option<Context>,
+    trace: bool,
+    consistency: Option<ConsistencyToken>,
+}
 
-let results = client
-    .check_batch(checks)
-    .with_context(context)
-    .collect()  // Collect all results
-    .await?;
+impl<'a> CheckRequest<'a> {
+    /// Add ABAC context to the check
+    pub fn with_context(mut self, context: Context) -> Self {
+        self.context = Some(context);
+        self
+    }
 
-// results: Vec<(usize, Decision)>
+    /// Enable decision trace for debugging
+    pub fn trace(mut self, enabled: bool) -> Self {
+        self.trace = enabled;
+        self
+    }
+
+    /// Request detailed decision (not just bool)
+    pub fn detailed(self) -> DetailedCheckRequest<'a> {
+        DetailedCheckRequest { inner: self }
+    }
+
+    /// Ensure read-after-write consistency with a token
+    pub fn at_least_as_fresh_as(mut self, token: ConsistencyToken) -> Self {
+        self.consistency = Some(token);
+        self
+    }
+}
+
+// IntoFuture enables direct .await on the builder
+impl<'a> IntoFuture for CheckRequest<'a> {
+    type Output = Result<bool, Error>;
+    type IntoFuture = impl Future<Output = Self::Output>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        async move {
+            self.vault.execute_check(self).await
+        }
+    }
+}
 ```
 
-### Batch Check All/Any
+**Usage patterns enabled by IntoFuture**:
 
 ```rust
-// Check if ALL permissions are granted
-let all_allowed = client
-    .check_batch(checks)
-    .all()
+// Get vault-scoped client for authorization operations
+let vault = client.access().vault("vlt_01JFQGK...");
+
+// Pattern 1: Simple one-liner (IntoFuture converts builder to future)
+let allowed = vault.check("user:alice", "view", "doc:1").await?;
+
+// Pattern 2: Builder with options (still uses IntoFuture)
+let allowed = vault
+    .check("user:alice", "view", "doc:1")
+    .with_context(ctx)
+    .trace(true)
     .await?;
 
-// Check if ANY permission is granted
-let any_allowed = client
-    .check_batch(checks)
-    .any()
+// Pattern 3: Store builder for later execution
+let check = vault.check("user:alice", "view", "doc:1");
+// ... do other work ...
+let allowed = check.await?;  // Execute when ready
+```
+
+### Type-Transforming Methods
+
+Some methods transform the builder into a different type with a different return value. These are **terminal transformations** - you cannot chain further options after calling them:
+
+| Method        | Transforms To          | Returns                 | Notes                    |
+| ------------- | ---------------------- | ----------------------- | ------------------------ |
+| `.detailed()` | `DetailedCheckRequest` | `Decision`              | Full decision with trace |
+| `.require()`  | `RequireCheckRequest`  | `Result<(), Forbidden>` | Early-return pattern     |
+
+```rust
+// ✅ Correct: Options before transformation
+let decision = vault
+    .check("user:alice", "view", "doc:1")
+    .with_context(ctx)   // Option on CheckRequest
+    .trace(true)          // Option on CheckRequest
+    .detailed()           // Transform to DetailedCheckRequest
+    .await?;              // Returns Decision
+
+// ❌ Won't compile: Can't add options after transformation
+vault
+    .check("user:alice", "view", "doc:1")
+    .detailed()           // Now DetailedCheckRequest
+    .with_context(ctx)    // Error: method doesn't exist on DetailedCheckRequest
     .await?;
+```
+
+**Why IntoFuture over async methods**:
+
+| Approach                        | Pros                     | Cons                         |
+| ------------------------------- | ------------------------ | ---------------------------- |
+| `async fn check()`              | Simple                   | Can't add options after call |
+| `fn check() -> impl Future`     | Options via builder      | Verbose `.execute().await`   |
+| `fn check() -> impl IntoFuture` | Options + clean `.await` | Requires Rust 1.64+          |
+
+### Result Ergonomics
+
+The SDK provides three core patterns for handling authorization results. Choose the simplest that fits your use case.
+
+| Pattern               | Use When                             | Returns                    |
+| --------------------- | ------------------------------------ | -------------------------- |
+| `require()`           | Early-return on denial (most common) | `Result<(), Forbidden>`    |
+| `then(closure)`       | Conditionally execute on success     | `Result<Option<T>, Error>` |
+| `filter_authorized()` | Filter collections by permission     | `Result<Vec<T>, Error>`    |
+
+#### Require Pattern (Early Return on Denial)
+
+```rust
+// Most common pattern - fail fast on denial:
+vault.check("user:alice", "view", "doc:1")
+    .require()  // Converts bool to Result<(), Forbidden>
+    .await?;    // Early returns on denial
+
+// Continue with authorized operation...
+let doc = fetch_document("doc:1").await?;
+
+// For custom errors, use standard Rust composition:
+let allowed = vault.check("user:alice", "view", "doc:1").await?;
+if !allowed {
+    return Err(AppError::AccessDenied {
+        user: user_id.clone(),
+        resource: doc_id.clone(),
+    });
+}
+```
+
+#### Then Pattern (Conditional Execution)
+
+```rust
+// Execute action only if authorized:
+let document = vault.check("user:alice", "view", "doc:1")
+    .then(|| fetch_document(doc_id))
+    .await?;  // Returns Option<Document>
+
+match document {
+    Some(doc) => Ok(Json(doc)),
+    None => Err(StatusCode::FORBIDDEN),
+}
+```
+
+#### Filter Pattern (Batch Authorization)
+
+```rust
+// Filter a collection to only authorized items:
+let accessible_docs = vault
+    .filter_authorized("user:alice", "view", &documents, |doc| format!("document:{}", doc.id))
+    .await?;
+```
+
+#### Require Types
+
+```rust
+/// Error returned when authorization is denied
+#[derive(Debug, Clone)]
+pub struct Forbidden {
+    pub subject: String,
+    pub permission: String,
+    pub resource: String,
+    pub request_id: Option<String>,
+}
+
+impl std::error::Error for Forbidden {}
+
+impl Forbidden {
+    /// Convert to HTTP status code
+    pub fn status_code(&self) -> u16 { 403 }
+
+    /// Convert to a user-safe message
+    pub fn user_message(&self) -> &'static str {
+        "You don't have permission to perform this action"
+    }
+}
+
+// Integrates with common error types
+impl From<Forbidden> for axum::http::StatusCode {
+    fn from(_: Forbidden) -> Self { Self::FORBIDDEN }
+}
+
+impl From<Forbidden> for actix_web::error::Error {
+    fn from(e: Forbidden) -> Self {
+        actix_web::error::ErrorForbidden(e.user_message())
+    }
+}
+```
+
+### Batch Checks
+
+```rust
+// Batch check - single round-trip for multiple checks
+let results = vault
+    .check_batch([
+        ("user:alice", "view", "doc:1"),
+        ("user:alice", "edit", "doc:1"),
+        ("user:bob", "view", "doc:1"),
+    ])
+    .collect()
+    .await?;
+
+for (check, allowed) in results {
+    println!("{} {} {} = {}", check.0, check.1, check.2, allowed);
+}
+
+// Streaming batch results
+let mut stream = vault
+    .check_batch(checks)
+    .stream();
+
+while let Some(result) = stream.next().await {
+    let (check, allowed) = result?;
+    handle_result(check, allowed);
+}
+```
+
+### Batch Size Constraints
+
+Understanding batch limits prevents surprises in production:
+
+| Operation            | Max Batch Size | Recommended   | Notes                                    |
+| -------------------- | -------------- | ------------- | ---------------------------------------- |
+| `check_batch()`      | 1,000          | 100-500       | Larger batches increase latency variance |
+| `write_batch()`      | 10,000         | 1,000-5,000   | Transactional - all or nothing           |
+| `delete_batch()`     | 10,000         | 1,000-5,000   | Transactional - all or nothing           |
+| `list_*().collect()` | Unlimited      | Use streaming | Memory-bound by client                   |
+
+```rust
+// Exceeding limits returns an error
+let checks: Vec<_> = (0..2000).map(|i| ("user:alice", "view", format!("doc:{}", i))).collect();
+let result = vault.check_batch(&checks).collect().await;
+// Err(Error { kind: InvalidInput, message: "Batch size 2000 exceeds limit of 1000" })
+
+// Chunk large batches automatically
+use futures::stream::{self, StreamExt, TryStreamExt};
+
+async fn chunked_batch_check(
+    vault: &VaultAccess,
+    checks: Vec<(&str, &str, &str)>,
+) -> Result<Vec<bool>, Error> {
+    const CHUNK_SIZE: usize = 500;
+
+    stream::iter(checks.chunks(CHUNK_SIZE))
+        .map(|chunk| vault.check_batch(chunk).collect())
+        .buffer_unordered(4)  // 4 concurrent batches
+        .try_concat()
+        .await
+}
+```
+
+### Batch Operation Semantics
+
+Understanding the difference between atomic and streaming batch behavior:
+
+| Operation                 | Semantics     | Failure Behavior                                 |
+| ------------------------- | ------------- | ------------------------------------------------ |
+| `check_batch()`           | **Streaming** | Individual check failures don't affect others    |
+| `write_batch()`           | **Atomic**    | All or nothing - partial failure rolls back      |
+| `delete_batch()`          | **Atomic**    | All or nothing - partial failure rolls back      |
+| `write_batch_streaming()` | **Streaming** | Each write independent, partial success possible |
+
+**Atomic Batches (write_batch, delete_batch)**:
+
+```rust
+// Atomic: Either all writes succeed, or none do
+let result = vault
+    .write_batch([
+        Relationship::new("doc:1", "viewer", "user:alice"),
+        Relationship::new("doc:1", "viewer", "user:bob"),
+        Relationship::new("doc:1", "viewer", "user:charlie"),
+    ])
+    .await;
+
+match result {
+    Ok(_) => {
+        // All three relationships created
+    }
+    Err(e) => {
+        // None of the relationships created
+        // Transaction was rolled back
+    }
+}
+```
+
+**Streaming Batches (check_batch, write_batch_streaming)**:
+
+```rust
+// Streaming: Each operation is independent
+let mut stream = vault
+    .check_batch([
+        ("user:alice", "view", "doc:1"),
+        ("user:bob", "view", "doc:1"),      // This might fail individually
+        ("user:charlie", "view", "doc:1"),
+    ])
+    .stream();
+
+while let Some(result) = stream.next().await {
+    match result {
+        Ok((check, allowed)) => {
+            println!("{}: {}", check.subject, allowed);
+        }
+        Err(e) => {
+            // One check failed, but stream continues
+            println!("Check failed: {}", e);
+        }
+    }
+}
+
+// For writes that tolerate partial success:
+let mut stream = vault
+    .write_batch_streaming([
+        Relationship::new("doc:1", "viewer", "user:alice"),
+        Relationship::new("doc:1", "viewer", "user:bob"),
+    ])
+    .stream();
+
+let mut successes = 0;
+let mut failures = 0;
+
+while let Some(result) = stream.next().await {
+    match result {
+        Ok(_) => successes += 1,
+        Err(_) => failures += 1,
+    }
+}
+```
+
+**Choosing Atomic vs Streaming**:
+
+| Use Case                               | Recommended                 |
+| -------------------------------------- | --------------------------- |
+| Adding user to multiple resources      | `write_batch()` (atomic)    |
+| Bulk import (tolerate partial failure) | `write_batch_streaming()`   |
+| Authorization checks                   | `check_batch()` (streaming) |
+| Remove user from all resources         | `delete_batch()` (atomic)   |
+| Cleanup/migration                      | `delete_batch_streaming()`  |
+
+### Expand Operation
+
+```rust
+// Expand shows why a permission would be granted/denied
+let expansion = vault
+    .expand("user:alice", "edit", "document:readme")
+    .await?;
+
+fn print_tree(node: &ExpansionNode, depth: usize) {
+    let indent = "  ".repeat(depth);
+    println!("{}{:?}: {}", indent, node.operation, node.description);
+    for child in &node.children {
+        print_tree(child, depth + 1);
+    }
+}
+print_tree(&expansion, 0);
+
+// Output:
+// Union: edit permission
+//   Direct: user:alice is owner of document:readme
+//   Intersection: edit via folder
+//     Direct: document:readme parent is folder:docs
+//     Union: folder edit permission
+//       Computed: user:alice has folder:docs#editor via group:engineering
+```
+
+---
+
+## Structured Decision Traces
+
+Decision traces must be queryable, not just printable.
+
+### DecisionNode Tree Structure
+
+```rust
+#[derive(Debug, Clone)]
+pub struct Decision {
+    pub allowed: bool,
+    pub reason: DecisionReason,
+    pub trace: Option<DecisionNode>,
+    pub metadata: DecisionMetadata,
+}
+
+#[derive(Debug, Clone)]
+pub struct DecisionNode {
+    /// Unique identifier for this node
+    pub id: NodeId,
+
+    /// Type of operation at this node
+    pub operation: NodeOperation,
+
+    /// Human-readable description
+    pub description: String,
+
+    /// Result of this node's evaluation
+    pub result: NodeResult,
+
+    /// Child nodes (for compound operations)
+    pub children: Vec<DecisionNode>,
+
+    /// Performance metrics for this node
+    pub metrics: NodeMetrics,
+
+    /// Source location in schema (for debugging)
+    pub source: Option<SchemaLocation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeOperation {
+    /// Direct relationship lookup
+    Direct,
+    /// Computed permission (union/intersection)
+    Computed,
+    /// Union of multiple paths
+    Union,
+    /// Intersection of multiple paths
+    Intersection,
+    /// Exclusion (NOT)
+    Exclusion,
+    /// ABAC condition evaluation
+    Condition,
+    /// Recursive/transitive lookup
+    Recursive,
+}
+
+#[derive(Debug, Clone)]
+pub struct NodeResult {
+    pub satisfied: bool,
+    pub cached: bool,
+    pub short_circuited: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct NodeMetrics {
+    pub duration: Duration,
+    pub db_queries: u32,
+    pub cache_hits: u32,
+    pub cache_misses: u32,
+    pub relationships_traversed: u32,
+}
+```
+
+### Querying Decision Trees
+
+```rust
+let decision = client
+    .check("user:alice", "edit", "document:readme")
+    .trace(true)
+    .await?;
+
+// Find all paths that contributed to the decision
+let contributing_paths = decision.trace
+    .as_ref()
+    .map(|t| t.find_satisfied_paths())
+    .unwrap_or_default();
+
+for path in contributing_paths {
+    println!("Access granted via: {}", path.description());
+}
+
+// Find slow nodes for debugging
+let slow_nodes = decision.trace
+    .as_ref()
+    .map(|t| t.find_nodes_slower_than(Duration::from_millis(10)))
+    .unwrap_or_default();
+
+for node in slow_nodes {
+    println!("Slow operation: {:?} took {:?}", node.operation, node.metrics.duration);
+}
+
+// Get cache efficiency
+let stats = decision.trace
+    .as_ref()
+    .map(|t| t.aggregate_metrics());
+if let Some(stats) = stats {
+    println!("Cache hit rate: {:.1}%",
+        stats.cache_hits as f64 / (stats.cache_hits + stats.cache_misses) as f64 * 100.0
+    );
+}
+```
+
+### DecisionNode Query Methods
+
+```rust
+impl DecisionNode {
+    /// Find all leaf nodes (actual relationship lookups)
+    pub fn find_leaves(&self) -> Vec<&DecisionNode>;
+
+    /// Find all nodes matching a predicate
+    pub fn find_nodes<F>(&self, predicate: F) -> Vec<&DecisionNode>
+    where
+        F: Fn(&DecisionNode) -> bool;
+
+    /// Find all paths from root to satisfied leaves
+    pub fn find_satisfied_paths(&self) -> Vec<DecisionPath>;
+
+    /// Find nodes slower than threshold
+    pub fn find_nodes_slower_than(&self, threshold: Duration) -> Vec<&DecisionNode>;
+
+    /// Aggregate metrics across all nodes
+    pub fn aggregate_metrics(&self) -> AggregateMetrics;
+
+    /// Convert to JSON for external analysis
+    pub fn to_json(&self) -> serde_json::Value;
+
+    /// Render as human-readable tree
+    pub fn render_tree(&self) -> String;
+
+    /// Get depth of the tree
+    pub fn depth(&self) -> usize;
+}
+```
+
+### Decision Serialization
+
+```rust
+// Serialize for logging/analysis
+let decision = client
+    .check("user:alice", "edit", "document:readme")
+    .trace(true)
+    .await?;
+
+// JSON for external tools
+let json = serde_json::to_string_pretty(&decision)?;
+
+// Structured logging
+tracing::info!(
+    allowed = decision.allowed,
+    reason = ?decision.reason,
+    duration_ms = decision.metadata.duration.as_millis(),
+    cache_hit = decision.metadata.cached,
+    trace = %decision.trace.as_ref().map(|t| t.render_tree()).unwrap_or_default(),
+    "Authorization decision"
+);
+```
+
+---
+
+## Explain Permission
+
+Deep permission explanation goes beyond simple allow/deny to provide full reasoning about why access was granted or denied.
+
+### ExplainPermission API
+
+```rust
+let explanation = client
+    .explain_permission("user:alice", "view", "document:readme")
+    .await?;
+
+// Check the result
+if explanation.allowed {
+    println!("Access granted via: {:?}", explanation.resolution_path);
+} else {
+    println!("Access denied. Reasons:");
+    for reason in &explanation.denial_reasons {
+        println!("  - {}", reason);
+    }
+}
+```
+
+### Explanation Response Type
+
+```rust
+/// Comprehensive permission explanation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PermissionExplanation {
+    /// Whether the permission was granted
+    pub allowed: bool,
+
+    /// The subject being checked
+    pub subject: String,
+
+    /// The permission being checked
+    pub permission: String,
+
+    /// The resource being accessed
+    pub resource: String,
+
+    /// The path that granted access (if allowed)
+    pub resolution_path: Option<Vec<PathNode>>,
+
+    /// Alternative paths that could grant access
+    pub alternative_paths: Vec<Vec<PathNode>>,
+
+    /// Reasons why access was denied (if denied)
+    pub denial_reasons: Vec<DenialReason>,
+
+    /// Schema context for the permission
+    pub schema_context: SchemaContext,
+
+    /// Attribute conditions that were evaluated
+    pub attribute_conditions: Vec<EvaluatedCondition>,
+
+    /// Suggestions for granting/revoking access
+    pub suggestions: Vec<AccessSuggestion>,
+
+    /// Query execution metadata
+    pub metadata: ExplanationMetadata,
+}
+
+/// A node in the access path
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathNode {
+    /// The entity being traversed
+    pub entity: String,
+
+    /// The relation traversed
+    pub relation: String,
+
+    /// How this node was reached
+    pub via: PathVia,
+
+    /// Whether this node contributed to the result
+    pub matched: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PathVia {
+    /// Direct relationship exists
+    Direct,
+    /// Through group membership
+    GroupMembership { group: String },
+    /// Through relation inheritance
+    Inheritance { from_relation: String },
+    /// Through parent resource
+    ParentResource { parent: String },
+    /// Through computed permission
+    Computed { expression: String },
+}
+
+/// Reason for access denial
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DenialReason {
+    pub kind: DenialKind,
+    pub message: String,
+    pub details: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DenialKind {
+    /// No direct relationship
+    NoDirectRelationship,
+    /// No group membership grants access
+    NoGroupAccess,
+    /// No inherited access from parent
+    NoParentAccess,
+    /// Attribute condition not satisfied
+    ConditionNotMet { condition: String },
+    /// Permission not defined in schema
+    PermissionNotDefined,
+}
+
+/// Suggestion for modifying access
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccessSuggestion {
+    pub action: SuggestionAction,
+    pub description: String,
+    /// SDK code to execute this suggestion
+    pub code_example: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SuggestionAction {
+    AddRelationship { relationship: String },
+    AddToGroup { group: String },
+    ModifyAttribute { attribute: String, value: String },
+}
+```
+
+### Explanation Options
+
+```rust
+// Get all possible access paths (not just the first match)
+let explanation = client
+    .explain_permission("user:alice", "view", "document:readme")
+    .all_paths(true)
+    .await?;
+
+// Limit traversal depth for performance
+let explanation = client
+    .explain_permission("user:alice", "view", "document:readme")
+    .max_depth(5)
+    .await?;
+
+// Include schema definition in response
+let explanation = client
+    .explain_permission("user:alice", "view", "document:readme")
+    .include_schema(true)
+    .await?;
+```
+
+### Rendering Explanations
+
+```rust
+impl PermissionExplanation {
+    /// Render as human-readable text
+    pub fn render_text(&self) -> String;
+
+    /// Render as ASCII tree diagram
+    pub fn render_tree(&self) -> String;
+
+    /// Render as Mermaid diagram
+    pub fn render_mermaid(&self) -> String;
+
+    /// Render as DOT (Graphviz)
+    pub fn render_dot(&self) -> String;
+}
+
+// Example usage
+let explanation = client
+    .explain_permission("user:alice", "view", "document:readme")
+    .await?;
+
+println!("{}", explanation.render_tree());
+// Output:
+// user:alice
+//   └─ direct ─────────────────────────────────────┐
+//      └─ viewer on document:readme ✓              │
+//                                                  ▼
+//                                     document:readme [view ✓]
+```
+
+---
+
+## Simulate (What-If)
+
+Test authorization decisions with ephemeral (hypothetical) relationships without persisting changes.
+
+### Basic Simulation
+
+```rust
+// Check what would happen if we add a relationship
+let result = client
+    .simulate()
+    .check("user:alice", "view", "document:secret")
+    .with_relationship(Relationship::new("user:alice", "viewer", "document:secret"))
+    .await?;
+
+assert!(result.allowed);
+```
+
+### Complex Scenarios
+
+```rust
+// Simulate multiple relationships
+let result = client
+    .simulate()
+    .check("user:alice", "edit", "document:report")
+    .with_relationships([
+        Relationship::new("user:alice", "member", "group:editors"),
+        Relationship::new("group:editors", "editor", "document:report"),
+    ])
+    .await?;
+
+// Simulate relationship removal
+let result = client
+    .simulate()
+    .check("user:bob", "view", "document:readme")
+    .without_relationship(Relationship::new("user:bob", "viewer", "document:readme"))
+    .await?;
+
+// Combined add and remove
+let result = client
+    .simulate()
+    .check("user:alice", "view", "document:readme")
+    .with_relationship(Relationship::new("user:alice", "viewer", "document:readme"))
+    .without_relationship(Relationship::new("group:all", "viewer", "document:readme"))
+    .await?;
+```
+
+### Batch Simulation
+
+```rust
+// Simulate multiple checks with the same hypothetical state
+let results = client
+    .simulate()
+    .with_relationships([
+        Relationship::new("user:alice", "viewer", "document:secret"),
+        Relationship::new("user:alice", "editor", "document:draft"),
+    ])
+    .check_batch([
+        ("user:alice", "view", "document:secret"),
+        ("user:alice", "edit", "document:secret"),
+        ("user:alice", "view", "document:draft"),
+        ("user:alice", "edit", "document:draft"),
+    ])
+    .collect()
+    .await?;
+
+// Results: [true, false, true, true]
+```
+
+### Simulation Response
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimulationResult {
+    /// The authorization result
+    pub allowed: bool,
+
+    /// The check that was performed
+    pub check: AuthorizationCheck,
+
+    /// Relationships that were added for simulation
+    pub added_relationships: Vec<Relationship<'static>>,
+
+    /// Relationships that were removed for simulation
+    pub removed_relationships: Vec<Relationship<'static>>,
+
+    /// Full decision trace (if requested)
+    pub trace: Option<DecisionNode>,
+
+    /// Whether the result differs from current state
+    pub differs_from_current: bool,
+}
+
+// Check if simulation changes the outcome
+let result = client
+    .simulate()
+    .check("user:alice", "view", "document:readme")
+    .with_relationship(Relationship::new("user:alice", "viewer", "document:readme"))
+    .compare_to_current(true)  // Also check without the hypothetical
+    .await?;
+
+if result.differs_from_current {
+    println!("Adding this relationship would change access from deny to allow");
+}
 ```
 
 ---
 
 ## Relationship Management
 
-### Write Relationships
+### Write Operations
 
 ```rust
-use inferadb::Relationship;
-
-// Single relationship
+// Single write
 client
     .write(Relationship::new("document:readme", "viewer", "user:alice"))
     .await?;
 
-// Multiple relationships
-let relationships = vec![
-    Relationship::new("document:readme", "viewer", "user:alice"),
-    Relationship::new("document:readme", "viewer", "user:bob"),
-    Relationship::new("document:readme", "editor", "user:charlie"),
-    Relationship::new("folder:docs", "viewer", "group:engineering#member"),
-];
-
-let result = client.write_batch(relationships).await?;
-println!("Written: {}, Revision: {}", result.count, result.revision);
-```
-
-### Write with Touch (Idempotent)
-
-```rust
-// Touch operation: create if not exists, update timestamp if exists
+// Batch write
 client
-    .touch(Relationship::new("document:readme", "viewer", "user:alice"))
+    .write_batch([
+        Relationship::new("folder:docs", "viewer", "group:engineering#member"),
+        Relationship::new("document:readme", "parent", "folder:docs"),
+    ])
+    .await?;
+
+// Conditional write (only if doesn't exist)
+client
+    .write(Relationship::new("document:readme", "viewer", "user:bob"))
+    .unless_exists()
     .await?;
 ```
 
-### Delete Relationships
+### Delete Operations
 
 ```rust
 // Delete specific relationship
@@ -1946,210 +3151,469 @@ client
     .delete(Relationship::new("document:readme", "viewer", "user:alice"))
     .await?;
 
-// Delete with filter (bulk)
-use inferadb::RelationshipFilter;
-
-let deleted = client
-    .delete_where(RelationshipFilter::new()
-        .resource("document:readme")
-        .relation("viewer"))
+// Delete all relationships matching filter
+client
+    .delete_all()
+    .resource("document:readme")
+    .relation("viewer")
+    .execute()
     .await?;
-
-println!("Deleted {} relationships", deleted.count);
 ```
 
-### Conditional Write (Optimistic Concurrency)
+### Relationship Type Design
+
+The `Relationship` type uses `Cow<'a, str>` for zero-copy efficiency while supporting both borrowed and owned data. See [Zero-Copy APIs](#zero-copy-apis) for the full type definition.
+
+**API Convenience**: For ergonomic use, `Relationship::new()` accepts anything implementing `Into<String>`:
 
 ```rust
-// Write only if at specific revision
-let result = client
-    .write_batch(relationships)
-    .expect_revision("abc123")
-    .await;
+// These all work - new() uses Into<String> for convenience
+Relationship::new("document:readme", "viewer", "user:alice");
+Relationship::new(doc_id, "viewer", user_id);  // String variables
+Relationship::new(format!("doc:{}", id), "viewer", subject);
 
-match result {
-    Ok(r) => println!("Written at revision {}", r.revision),
-    Err(Error::RevisionMismatch { expected, actual }) => {
-        println!("Conflict: expected {}, actual {}", expected, actual);
-    }
-    Err(e) => return Err(e.into()),
+// For hot paths, use borrowed() to avoid allocation
+Relationship::borrowed("document:readme", "viewer", "user:alice");
+```
+
+**Type Alias for Owned Data**: When you need `'static` lifetime (e.g., storing in collections, sending across threads):
+
+```rust
+/// Convenience alias for owned relationships
+pub type OwnedRelationship = Relationship<'static>;
+
+// Use when storing or sending
+let rel: OwnedRelationship = Relationship::owned("doc:1", "viewer", "user:alice");
+```
+
+### Relationship History
+
+Query the change history of relationships for auditing and debugging:
+
+```rust
+// Get history for a specific relationship
+let history = client
+    .relationships()
+    .history("user:alice", "viewer", "document:readme")
+    .await?;
+
+for event in history {
+    println!(
+        "{}: {} by {}",
+        event.timestamp,
+        event.action,
+        event.actor.unwrap_or("system".into())
+    );
 }
 ```
 
-### Transaction Semantics
-
-Understanding atomicity guarantees for relationship operations.
-
-#### Batch Atomicity
+**History Query Builder**:
 
 ```rust
-// Batch writes are atomic - all succeed or all fail
-let result = client.write_batch([
-    Relationship::new("doc:1", "owner", "user:alice"),
-    Relationship::new("doc:1", "viewer", "user:bob"),
-    Relationship::new("doc:1", "viewer", "group:eng#member"),
-]).await?;
+// Query history with filters
+let history = client
+    .relationships()
+    .history_query()
+    .resource("document:readme")
+    .from(Utc::now() - Duration::days(30))
+    .to(Utc::now())
+    .include_actor(true)
+    .limit(100)
+    .stream();
 
-// All three relationships are written atomically
-// If any fails (e.g., validation error), none are written
-println!("All {} relationships written at revision {}", result.count, result.revision);
+while let Some(event) = history.next().await {
+    let event = event?;
+    process_event(event);
+}
 ```
 
-#### Partial Failure Handling
+**History Event Type**:
 
 ```rust
-use inferadb::WriteMode;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RelationshipHistoryEvent {
+    /// When the change occurred
+    pub timestamp: DateTime<Utc>,
 
-// Default: Atomic (all-or-nothing)
+    /// The action performed
+    pub action: HistoryAction,
+
+    /// The relationship that was changed
+    pub relationship: Relationship<'static>,
+
+    /// Who made the change (if audit logging enabled)
+    pub actor: Option<String>,
+
+    /// Request ID of the original operation
+    pub request_id: Option<String>,
+
+    /// Additional metadata
+    pub metadata: HashMap<String, Value>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum HistoryAction {
+    Created,
+    Deleted,
+}
+```
+
+### Relationship Validation
+
+Validate relationships against the schema before writing:
+
+```rust
+// Validate a single relationship
 let result = client
-    .write_batch(relationships)
-    .mode(WriteMode::Atomic)
+    .relationships()
+    .validate(Relationship::new("user:alice", "viewer", "document:readme"))
     .await?;
 
-// Alternative: Best-effort (write as many as possible)
-let result = client
-    .write_batch(relationships)
-    .mode(WriteMode::BestEffort)
-    .await?;
-
-// Check for partial failures
-if result.failed.len() > 0 {
-    for failure in &result.failed {
-        tracing::warn!(
-            index = failure.index,
-            error = %failure.error,
-            "Relationship write failed"
-        );
+if !result.valid {
+    println!("Invalid: {}", result.error.unwrap());
+    for suggestion in result.suggestions {
+        println!("  Did you mean: {}", suggestion);
     }
 }
-println!("Written: {}, Failed: {}", result.succeeded, result.failed.len());
 ```
 
-#### Multi-Resource Transactions
-
-For operations spanning multiple resources that must be atomic:
+**Validate Against Specific Schema Version**:
 
 ```rust
-use inferadb::Transaction;
-
-// Start a transaction
-let tx = client.transaction().await?;
-
-// Queue multiple operations
-tx.write(Relationship::new("folder:docs", "owner", "user:alice")).await?;
-tx.write(Relationship::new("doc:readme", "parent", "folder:docs")).await?;
-tx.delete(Relationship::new("doc:readme", "owner", "user:old-owner")).await?;
-
-// Commit atomically
-let result = tx.commit().await?;
-println!("Transaction committed at revision {}", result.revision);
-
-// Or rollback on error
-// tx.rollback().await?;
-```
-
-#### Precondition Checks
-
-Ensure state hasn't changed before writing:
-
-```rust
-use inferadb::Precondition;
-
+// Validate against a schema version (not the active one)
 let result = client
-    .write_batch([
-        Relationship::new("doc:1", "owner", "user:alice"),
+    .relationships()
+    .validate(Relationship::new("user:alice", "viewer", "document:readme"))
+    .against_schema(schema_id)
+    .await?;
+```
+
+**Batch Validation**:
+
+```rust
+// Validate multiple relationships efficiently
+let results = client
+    .relationships()
+    .validate_batch([
+        Relationship::new("user:alice", "viewer", "document:readme"),
+        Relationship::new("user:bob", "invalid_relation", "document:readme"),
+        Relationship::new("group:eng", "member", "user:charlie"),
     ])
-    .preconditions([
-        // Only write if doc:1 doesn't already have an owner
-        Precondition::must_not_exist("doc:1", "owner", "*"),
+    .collect()
+    .await?;
 
-        // Only write if user:alice is a member of org
-        Precondition::must_exist("org:acme", "member", "user:alice"),
-    ])
-    .await;
-
-match result {
-    Ok(r) => println!("Written successfully"),
-    Err(Error::PreconditionFailed { failed }) => {
-        for precondition in failed {
-            println!("Precondition failed: {:?}", precondition);
-        }
+for (rel, result) in relationships.iter().zip(results) {
+    if !result.valid {
+        println!("{} -> {}: {}", rel.subject, rel.resource, result.error.unwrap());
     }
-    Err(e) => return Err(e.into()),
 }
 ```
 
-#### Idempotency Keys
+**Validation Result Type**:
 
-For safe retries without duplicate writes:
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidationResult {
+    /// Whether the relationship is valid
+    pub valid: bool,
+
+    /// Error message if invalid
+    pub error: Option<String>,
+
+    /// The schema entity this relationship targets
+    pub entity: Option<String>,
+
+    /// Valid relations for this entity (for suggestions)
+    pub available_relations: Vec<RelationInfo>,
+
+    /// Suggestions for fixing invalid relationships
+    pub suggestions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RelationInfo {
+    pub name: String,
+    pub accepted_types: Vec<String>,
+}
+```
+
+**Dry-Run Writes**:
+
+```rust
+// Preview what a write would do without committing
+let preview = client
+    .write(Relationship::new("user:alice", "viewer", "document:readme"))
+    .dry_run(true)
+    .await?;
+
+println!("Would create: {}", preview.would_create);
+println!("Validation: {:?}", preview.validation);
+```
+
+---
+
+## Request ID & Idempotency
+
+Safe retries for mutations require request ID support.
+
+### Request ID for Mutations
 
 ```rust
 use uuid::Uuid;
 
-let idempotency_key = Uuid::new_v4().to_string();
+// Explicit request ID for idempotent retries
+let request_id = Uuid::new_v4();
 
-// First attempt
-let result = client
-    .write_batch(relationships)
-    .idempotency_key(&idempotency_key)
+client
+    .write(Relationship::new("doc:1", "viewer", "user:alice"))
+    .request_id(request_id)
     .await?;
 
-// Retry with same key - returns same result, no duplicate writes
-let retry_result = client
-    .write_batch(relationships)
-    .idempotency_key(&idempotency_key)
+// Safe to retry with same request ID - server deduplicates
+client
+    .write(Relationship::new("doc:1", "viewer", "user:alice"))
+    .request_id(request_id)  // Same ID = same operation
+    .await?;
+```
+
+### Auto-Generated Request IDs
+
+```rust
+// SDK can auto-generate request IDs
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .auto_request_id(true)  // Generate UUID for each mutation
+    .build()
     .await?;
 
-assert_eq!(result.revision, retry_result.revision);
+// Each write gets unique request ID automatically
+vault.write(Relationship::new("doc:1", "viewer", "user:alice")).await?;
+```
+
+### Request ID in Responses
+
+```rust
+// All responses include request ID for debugging
+let result = vault
+    .write(Relationship::new("doc:1", "viewer", "user:alice"))
+    .await;
+
+match result {
+    Ok(response) => {
+        println!("Request ID: {}", response.request_id);
+    }
+    Err(e) => {
+        // Errors also include request ID
+        if let Some(request_id) = e.request_id() {
+            eprintln!("Failed request: {}", request_id);
+        }
+    }
+}
+```
+
+### Batch Operations with Request IDs
+
+```rust
+// Batch with single request ID (atomic)
+vault
+    .write_batch([
+        Relationship::new("doc:1", "viewer", "user:alice"),
+        Relationship::new("doc:1", "editor", "user:bob"),
+    ])
+    .request_id(Uuid::new_v4())
+    .await?;
+
+// Or individual IDs per operation
+vault
+    .write_batch_with_ids([
+        (Uuid::new_v4(), Relationship::new("doc:1", "viewer", "user:alice")),
+        (Uuid::new_v4(), Relationship::new("doc:1", "editor", "user:bob")),
+    ])
+    .await?;
+```
+
+### Idempotency Window
+
+```rust
+// Server maintains idempotency window (default: 24 hours)
+// Requests with same ID within window return cached result
+
+// First call - executes
+vault.write(rel).request_id(id).await?;  // Executes, returns Ok
+
+// Second call within window - returns cached result
+vault.write(rel).request_id(id).await?;  // Returns cached Ok
+
+// After window expires - executes again
+// (may fail if relationship already exists)
+```
+
+### Conditional Writes
+
+```rust
+// Write only if not exists (idempotent by nature)
+vault
+    .write(Relationship::new("doc:1", "viewer", "user:alice"))
+    .unless_exists()
+    .await?;
+
+// Write with precondition
+vault
+    .write(Relationship::new("doc:1", "owner", "user:alice"))
+    .precondition(Precondition::not_exists("doc:1", "owner", "*"))
+    .await?;
+
+// Atomic compare-and-swap
+vault
+    .write(Relationship::new("doc:1", "owner", "user:bob"))
+    .precondition(Precondition::exists("doc:1", "owner", "user:alice"))
+    .await?;
+```
+
+### Consistency Tokens (Revision Semantics)
+
+For read-after-write consistency across distributed nodes, use consistency tokens:
+
+```rust
+/// Opaque token representing a point-in-time snapshot of the authorization graph.
+/// Obtained from write operations, used to ensure subsequent reads see the write.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConsistencyToken(String);
+
+impl ConsistencyToken {
+    /// Create from raw string (e.g., from external storage)
+    pub fn from_raw(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Get the raw token for external storage
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+```
+
+**Write-then-Read Pattern**:
+
+```rust
+// Write returns a consistency token
+let write_result = vault
+    .write(Relationship::new("doc:1", "viewer", "user:alice"))
+    .await?;
+
+let token = write_result.consistency_token();
+
+// Immediately read with consistency guarantee
+let allowed = vault
+    .check("user:alice", "view", "doc:1")
+    .at_least_as_fresh_as(token.clone())  // Ensures read sees the write
+    .await?;
+
+assert!(allowed);  // Guaranteed to see the write we just made
+```
+
+**Propagating Tokens Across Services**:
+
+```rust
+// Service A: Writes relationship, returns token to client
+async fn add_viewer(vault: &VaultAccess, doc: &str, user: &str) -> Result<ConsistencyToken, Error> {
+    let result = vault
+        .write(Relationship::new(doc, "viewer", user))
+        .await?;
+    Ok(result.consistency_token())
+}
+
+// Service B: Uses token from Service A to ensure consistency
+async fn check_access(
+    vault: &VaultAccess,
+    user: &str,
+    doc: &str,
+    token: Option<ConsistencyToken>,  // Passed from Service A
+) -> Result<bool, Error> {
+    let mut check = vault.check(user, "view", doc);
+
+    if let Some(token) = token {
+        check = check.at_least_as_fresh_as(token);
+    }
+
+    check.await
+}
+```
+
+**Consistency Levels**:
+
+```rust
+/// Consistency level for reads
+pub enum Consistency {
+    /// Eventually consistent - fastest, may not see recent writes
+    Eventual,
+
+    /// Bounded staleness - reads within N seconds of latest
+    BoundedStaleness(Duration),
+
+    /// At least as fresh as the given token
+    AtLeastAsFreshAs(ConsistencyToken),
+
+    /// Fully consistent - always reads latest (highest latency)
+    Strong,
+}
+
+// Configure per-request
+let allowed = vault
+    .check("user:alice", "view", "doc:1")
+    .consistency(Consistency::BoundedStaleness(Duration::from_secs(5)))
+    .await?;
+
+// Or set default for client
+let client = Client::builder()
+    .default_consistency(Consistency::Strong)
+    .build()
+    .await?;
+```
+
+**Token Lifecycle**:
+
+```text
+Write ───► Token Created ───► Token Valid ───► Token Expired
+                │                   │                │
+                │                   │                └─ Reads with expired token
+                │                   │                   fall back to eventual
+                │                   │
+                │                   └─ Reads guaranteed to see
+                │                      at least this write
+                │
+                └─ Opaque string, can be serialized/stored
 ```
 
 ---
 
 ## Lookup Operations
 
-### List Resources (What can user access?)
+### List Resources
 
 ```rust
-// Stream resources user can view
-let mut resources = client
-    .list_resources("user:alice", "view", "document")
-    .await?;
-
-while let Some(resource) = resources.next().await {
-    let resource = resource?;
-    println!("Can view: {}", resource);
-}
-
-// Collect all (be careful with large result sets)
-let all_resources: Vec<String> = client
-    .list_resources("user:alice", "view", "document")
+// Find all documents Alice can view
+let resources = client
+    .list_resources("user:alice", "view")
+    .resource_type("document")
     .collect()
     .await?;
 
-// With filtering
-let filtered = client
-    .list_resources("user:alice", "view", "document")
-    .filter_id("project-*")  // Wildcard pattern
-    .limit(100)
+// Paginated results
+let page = client
+    .list_resources("user:alice", "view")
+    .resource_type("document")
+    .page_size(100)
+    .page(1)
     .await?;
 ```
 
-### List Subjects (Who can access resource?)
+### List Subjects
 
 ```rust
-// Stream users who can edit document
-let mut subjects = client
-    .list_subjects("document:readme", "edit")
-    .await?;
-
-while let Some(subject) = subjects.next().await {
-    let subject = subject?;
-    println!("Can edit: {}", subject);
-}
-
-// Filter by subject type
-let editors = client
-    .list_subjects("document:readme", "edit")
+// Find all users who can edit this document
+let subjects = client
+    .list_subjects("edit", "document:readme")
     .subject_type("user")
     .collect()
     .await?;
@@ -2158,309 +3622,283 @@ let editors = client
 ### List Relationships
 
 ```rust
-use inferadb::RelationshipFilter;
-
-// All relationships for a resource
-let mut rels = client
+// List all relationships for a resource
+let relationships = client
     .list_relationships()
     .resource("document:readme")
+    .collect()
     .await?;
 
-// With multiple filters
-let rels = client
+// Filter by relation
+let viewers = client
     .list_relationships()
     .resource("document:readme")
     .relation("viewer")
-    .subject_type("user")
-    .limit(50)
     .collect()
     .await?;
-```
 
-### Expand (Userset Tree)
-
-```rust
-// Get all subjects in the "viewer" userset
-let expansion = client
-    .expand("document:readme", "viewer")
+// Filter by subject
+let alice_rels = client
+    .list_relationships()
+    .subject("user:alice")
+    .collect()
     .await?;
-
-println!("Direct viewers:");
-for user in expansion.direct {
-    println!("  {}", user);
-}
-
-println!("Via groups:");
-for (group, members) in expansion.via_groups {
-    println!("  {} ->", group);
-    for member in members {
-        println!("    {}", member);
-    }
-}
-
-// Full tree structure
-println!("Tree: {:?}", expansion.tree);
 ```
 
 ---
 
 ## Streaming & Watch
 
-### Watch for Changes (Real-time)
+True streaming without hidden buffering - `.collect()` is opt-in, not the default path.
+
+### API Principle: Single vs Multi-Value Returns
+
+The SDK uses different patterns based on return cardinality:
+
+| Return Type         | Pattern                              | Example                                                       |
+| ------------------- | ------------------------------------ | ------------------------------------------------------------- |
+| **Single value**    | `IntoFuture` (direct `.await`)       | `vault.check(...).await?` → `bool`                           |
+| **Multiple values** | Explicit `.stream()` or `.collect()` | `vault.list_resources(...).collect().await?` → `Vec<String>` |
+
+**Why this distinction?**
+
+- Single-value operations are always bounded and predictable
+- Multi-value operations could return thousands of items - you must explicitly choose streaming vs collecting
 
 ```rust
+// Single value: use IntoFuture, await directly
+let allowed = vault.check("user:alice", "view", "doc:1").await?;
+
+// Multiple values: must choose .stream() or .collect()
+let docs = vault.list_resources("user:alice", "view").collect().await?;
+// OR
+let mut stream = vault.list_resources("user:alice", "view").stream();
+```
+
+### Explicit Stream API
+
+```rust
+use futures::{Stream, StreamExt, TryStreamExt};
+
+// Returns impl Stream - NO buffering, NO collect
+let stream = vault
+    .list_resources("user:alice", "view")
+    .resource_type("document")
+    .stream();  // Explicit: returns Stream, not collected Vec
+
+// Process items as they arrive
+pin_mut!(stream);
+while let Some(resource) = stream.try_next().await? {
+    process_resource(resource);
+}
+
+// Or with stream combinators
+let processed: Vec<_> = stream
+    .map(|r| r.map(transform))
+    .try_collect()
+    .await?;
+```
+
+### Stream vs Collect
+
+```rust
+// ❌ Anti-pattern: Defeats streaming, buffers everything
+let resources = vault
+    .list_resources("user:alice", "view")
+    .collect()  // Loads ALL into memory
+    .await?;
+
+// ✅ True streaming: Process without buffering
+let mut stream = vault
+    .list_resources("user:alice", "view")
+    .stream();
+
+while let Some(resource) = stream.try_next().await? {
+    // Process one at a time, constant memory
+}
+
+// ✅ Bounded collection: When you need a Vec but want limits
+let resources = vault
+    .list_resources("user:alice", "view")
+    .take(100)  // Limit before collecting
+    .collect()
+    .await?;
+```
+
+### Stream Types
+
+```rust
+// All list operations return Stream types
+pub trait ListResourcesExt {
+    /// Returns a Stream of resources (preferred)
+    fn stream(self) -> impl Stream<Item = Result<String, Error>>;
+
+    /// Convenience: collect all into Vec (use with caution)
+    async fn collect(self) -> Result<Vec<String>, Error>;
+
+    /// Paginated: returns page at a time
+    async fn page(self, page: usize, page_size: usize) -> Result<Page<String>, Error>;
+}
+
+// Batch checks also stream
+let stream = vault
+    .check_batch(checks)
+    .stream();  // Stream<Item = Result<(Check, bool), Error>>
+```
+
+### Streaming Guarantees & Transport Differences
+
+Understanding streaming behavior across transports:
+
+| Guarantee              | gRPC                          | REST (SSE)                        |
+| ---------------------- | ----------------------------- | --------------------------------- |
+| Backpressure           | Native (HTTP/2 flow control)  | Client-side only (drop or buffer) |
+| Ordering               | Guaranteed                    | Guaranteed                        |
+| Reconnection           | Manual (SDK provides helpers) | Automatic (SSE built-in)          |
+| Resume from checkpoint | Server-side cursor            | Revision token parameter          |
+| Max message size       | 4MB default (configurable)    | No limit (chunked)                |
+| Binary data            | Efficient (protobuf)          | Base64 encoded                    |
+
+**gRPC Streaming Semantics**:
+
+```rust
+// gRPC streams maintain a persistent HTTP/2 connection
+// Server can push items as they become available
+// Backpressure: If consumer is slow, server sees flow control signals
+
+let mut stream = vault
+    .list_resources("user:alice", "view")
+    .stream();  // Opens gRPC server stream
+
+// Each .next() pulls one item from the stream
+// If stream buffer is empty, awaits server
+// If stream buffer is full, server is backpressured
+while let Some(resource) = stream.try_next().await? {
+    // Processing speed affects server delivery rate
+}
+```
+
+**REST/SSE Streaming Semantics**:
+
+```rust
+// REST streams use Server-Sent Events (SSE)
+// Server pushes events; client has no backpressure mechanism
+// SDK buffers incoming events to prevent data loss
+
+let mut stream = vault
+    .list_resources("user:alice", "view")
+    .stream();
+
+// Events buffer while consumer processes
+// If buffer fills, oldest events may be dropped (depends on config)
+while let Some(resource) = stream.try_next().await? {
+    // Processing should be fast to avoid buffer growth
+}
+```
+
+**Stream Error Handling**:
+
+```rust
+// Streams surface errors as items, not panics
+let mut stream = vault.list_resources("user:alice", "view").stream();
+
+while let Some(result) = stream.next().await {
+    match result {
+        Ok(resource) => process(resource),
+        Err(e) if e.is_transient() => {
+            // Network hiccup - stream may continue
+            tracing::warn!("Transient error: {}", e);
+        }
+        Err(e) => {
+            // Fatal error - stream is terminated
+            return Err(e);
+        }
+    }
+}
+
+// After error, stream is fused (returns None forever)
+// Must create new stream to retry
+```
+
+**Transport-Specific Configuration**:
+
+```rust
+// Configure streaming behavior per transport
+let client = Client::builder()
+    .grpc_config(GrpcConfig {
+        max_message_size: 16 * 1024 * 1024,  // 16MB
+        stream_window_size: 1024 * 1024,      // 1MB flow control window
+        keep_alive_interval: Duration::from_secs(30),
+    })
+    .rest_config(RestConfig {
+        sse_buffer_size: 1000,  // Max events to buffer
+        sse_retry_interval: Duration::from_secs(3),
+    })
+    .build()
+    .await?;
+```
+
+### Watch for Changes
+
+```rust
+use futures::StreamExt;
+
 // Watch all changes
-let mut changes = client.watch().await?;
+let mut stream = client
+    .watch()
+    .run()
+    .await?;
 
-while let Some(change) = changes.next().await {
+while let Some(change) = stream.next().await {
     let change = change?;
-    match change.operation {
-        Operation::Create => println!("Created: {:?}", change.relationship),
-        Operation::Delete => println!("Deleted: {:?}", change.relationship),
-    }
-    println!("Revision: {}", change.revision);
+    println!("{:?}: {} -[{}]-> {}",
+        change.operation,
+        change.relationship.subject,
+        change.relationship.relation,
+        change.relationship.resource
+    );
 }
 
-// Watch specific resource types
-let mut doc_changes = client
+// Filtered watch
+let mut stream = client
     .watch()
-    .resource_types(["document", "folder"])
-    .await?;
-
-// Resume from cursor (e.g., after reconnection)
-let mut changes = client
-    .watch()
-    .cursor("last_seen_cursor")
-    .await?;
-```
-
-### Watch with Handler
-
-```rust
-use inferadb::WatchHandler;
-
-client
-    .watch()
-    .resource_types(["document"])
-    .on_change(|change| async move {
-        // Update local cache
-        cache.invalidate(&change.relationship.resource);
-        Ok(())
-    })
-    .on_error(|err| async move {
-        tracing::error!("Watch error: {}", err);
-        // Return true to reconnect, false to stop
-        true
-    })
+    .filter(WatchFilter::resource_type("document"))
+    .filter(WatchFilter::operations([Operation::Create]))
+    .from_revision(12345)  // Resume from checkpoint
     .run()
     .await?;
 ```
 
-### Watch Reconnection Strategy
-
-The SDK provides robust reconnection handling for long-lived watch streams.
-
-#### Automatic Reconnection with Backoff
+### Resumable Streams
 
 ```rust
-use inferadb::watch::{WatchConfig, BackoffConfig};
-
-let watch = client
+// Automatic reconnection with resume
+let stream = client
     .watch()
-    .config(WatchConfig {
-        // Reconnection settings
-        reconnect: true,
-        backoff: BackoffConfig {
-            initial_delay: Duration::from_millis(100),
-            max_delay: Duration::from_secs(30),
-            multiplier: 2.0,
-            jitter: 0.1,  // Add 10% random jitter
-        },
-        max_reconnect_attempts: None,  // Unlimited retries
-
-        // Heartbeat detection
-        heartbeat_interval: Duration::from_secs(30),
-        heartbeat_timeout: Duration::from_secs(90),
-    })
+    .resumable()  // Auto-handles disconnects
+    .run()
     .await?;
 ```
 
-#### Cursor Management for Gap-Free Streaming
+### Backpressure Handling
 
 ```rust
-use inferadb::watch::CursorStore;
+// Stream respects backpressure - server won't overwhelm client
+let mut stream = client
+    .list_resources("user:alice", "view")
+    .stream();
 
-// Persist cursors to survive restarts
-struct RedisCursorStore {
-    redis: redis::Client,
-    key: String,
+// Slow consumer is fine - server pauses
+while let Some(resource) = stream.try_next().await? {
+    slow_operation(resource).await;  // Won't cause unbounded buffering
 }
 
-#[async_trait]
-impl CursorStore for RedisCursorStore {
-    async fn save(&self, cursor: &str) -> Result<(), Error> {
-        self.redis.set(&self.key, cursor).await?;
-        Ok(())
-    }
+// Or with explicit buffer limits
+use futures::stream::StreamExt;
 
-    async fn load(&self) -> Result<Option<String>, Error> {
-        Ok(self.redis.get(&self.key).await?)
-    }
-}
-
-// Use persistent cursor store
-let watch = client
-    .watch()
-    .cursor_store(RedisCursorStore {
-        redis: redis_client,
-        key: "inferadb:watch:cursor".into(),
-    })
-    .on_change(|change| async move {
-        process_change(change).await?;
-        // Cursor automatically saved after successful processing
-        Ok(())
-    })
-    .run()
-    .await?;
-```
-
-#### Handling Cursor Gaps
-
-When reconnecting after extended downtime, cursors may expire:
-
-```rust
-client
-    .watch()
-    .cursor_store(cursor_store)
-    .on_cursor_expired(|expired_cursor| async move {
-        tracing::warn!(
-            cursor = %expired_cursor,
-            "Watch cursor expired, performing full resync"
-        );
-
-        // Option 1: Full resync of affected data
-        resync_all_relationships().await?;
-
-        // Option 2: Start from a known-good snapshot
-        Ok(CursorRecovery::StartFromSnapshot("snapshot_id"))
-
-        // Option 3: Start fresh (may miss changes)
-        // Ok(CursorRecovery::StartFresh)
-    })
-    .run()
-    .await?;
-```
-
-#### Tombstone Handling
-
-Deleted relationships may be compacted after some time:
-
-```rust
-client
-    .watch()
-    .on_change(|change| async move {
-        match change.operation {
-            Operation::Create => {
-                // Add to local state
-                local_store.insert(change.relationship).await?;
-            }
-            Operation::Delete => {
-                // Remove from local state
-                local_store.remove(&change.relationship).await?;
-            }
-            Operation::Tombstone { deleted_at, compacted } => {
-                // Historical delete - may be from compaction
-                if compacted {
-                    tracing::debug!(
-                        "Received compacted tombstone from {}",
-                        deleted_at
-                    );
-                }
-                local_store.remove(&change.relationship).await?;
-            }
-        }
-        Ok(())
-    })
-    .run()
-    .await?;
-```
-
-#### Health Monitoring for Watch Streams
-
-```rust
-use inferadb::watch::WatchHealth;
-
-let (watch, health_handle) = client
-    .watch()
-    .with_health_handle()
-    .run()
-    .await?;
-
-// Monitor watch health in background
-tokio::spawn(async move {
-    let mut interval = tokio::time::interval(Duration::from_secs(10));
-    loop {
-        interval.tick().await;
-
-        let health = health_handle.status();
-        metrics::gauge!("inferadb.watch.connected")
-            .set(if health.connected { 1.0 } else { 0.0 });
-        metrics::gauge!("inferadb.watch.lag_seconds")
-            .set(health.lag.as_secs_f64());
-        metrics::counter!("inferadb.watch.reconnects")
-            .absolute(health.reconnect_count);
-
-        if health.lag > Duration::from_secs(60) {
-            tracing::warn!("Watch stream lagging by {:?}", health.lag);
-        }
-    }
-});
-```
-
----
-
-## Simulation
-
-Test authorization decisions without persisting changes.
-
-```rust
-// What if we add these relationships?
-let result = client
-    .simulate()
-    .with_relationships([
-        Relationship::new("document:secret", "viewer", "user:alice"),
-    ])
-    .check("user:alice", "view", "document:secret")
-    .await?;
-
-assert!(result.decision.allowed);
-assert_eq!(result.context_relationships_used, 1);
-```
-
-### Complex Simulation
-
-```rust
-// Simulate removing relationships
-let result = client
-    .simulate()
-    .without_relationships([
-        Relationship::new("document:readme", "viewer", "user:alice"),
-    ])
-    .check("user:alice", "view", "document:readme")
-    .await?;
-
-assert!(!result.decision.allowed);
-
-// Simulate both additions and removals
-let result = client
-    .simulate()
-    .with_relationships([
-        Relationship::new("folder:docs", "viewer", "user:alice"),
-    ])
-    .without_relationships([
-        Relationship::new("document:readme", "viewer", "user:alice"),
-    ])
-    .check("user:alice", "view", "document:readme")
+let buffered = stream
+    .buffered(10)  // Max 10 in-flight
+    .try_for_each(|r| async { process(r) })
     .await?;
 ```
 
@@ -2468,190 +3906,950 @@ let result = client
 
 ## Caching
 
-Authorization checks are latency-sensitive. The SDK provides built-in caching with automatic invalidation.
-
-### Enable Caching
+### Local Decision Cache
 
 ```rust
-use inferadb::cache::{CacheConfig, MemoryCache};
-
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .default_vault("vault_id")
-    .cache(CacheConfig {
-        backend: MemoryCache::new(),
-        ttl: Duration::from_secs(60),           // Cache decisions for 60 seconds
-        max_entries: 10_000,                     // Maximum cached decisions
-        negative_ttl: Duration::from_secs(30),  // Cache denials shorter
-    })
+    .cache(CacheConfig::default()
+        .max_entries(10_000)
+        .ttl(Duration::from_secs(60))
+        .negative_ttl(Duration::from_secs(10)))  // Cache denials shorter
     .build()
     .await?;
-
-// First call hits the server
-let allowed = client.check("user:alice", "view", "doc:1").await?;
-
-// Second call served from cache (sub-millisecond)
-let allowed = client.check("user:alice", "view", "doc:1").await?;
 ```
 
-### Cache Invalidation with Watch
-
-Combine caching with real-time invalidation for consistency:
+### Cache Invalidation via Watch
 
 ```rust
-use inferadb::cache::{CacheConfig, WatchInvalidation};
-
+// Combined caching + watch for real-time consistency
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .default_vault("vault_id")
-    .cache(CacheConfig {
-        backend: MemoryCache::new(),
-        ttl: Duration::from_secs(300),  // 5 minute TTL
-        invalidation: WatchInvalidation::new()
-            .on_relationship_change(|change| {
-                // Invalidate cache entries affected by this change
-                vec![
-                    CacheKey::resource(&change.relationship.resource),
-                    CacheKey::subject(&change.relationship.subject),
-                ]
-            }),
-    })
-    .build()
-    .await?;
-
-// Cache is automatically invalidated when relationships change
-```
-
-### External Cache Backend (Redis)
-
-For distributed deployments:
-
-```rust
-use inferadb::cache::RedisCache;
-
-let redis_cache = RedisCache::new("redis://localhost:6379")
-    .prefix("inferadb:")
-    .build()
-    .await?;
-
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .cache(CacheConfig {
-        backend: redis_cache,
-        ttl: Duration::from_secs(60),
-    })
+    .cache(CacheConfig::default())
+    .cache_invalidation(CacheInvalidation::Watch)  // Use watch stream
     .build()
     .await?;
 ```
-
-### Cache Bypass
-
-For sensitive operations that must hit the server:
-
-```rust
-// Bypass cache for this check
-let allowed = client
-    .check("user:alice", "delete", "document:sensitive")
-    .no_cache()
-    .await?;
-
-// Force cache refresh
-let allowed = client
-    .check("user:alice", "view", "document:readme")
-    .refresh_cache()
-    .await?;
-```
-
-### Cache Statistics
-
-```rust
-let stats = client.cache_stats();
-
-println!("Hit rate: {:.2}%", stats.hit_rate() * 100.0);
-println!("Hits: {}, Misses: {}", stats.hits, stats.misses);
-println!("Entries: {}, Size: {} bytes", stats.entries, stats.size_bytes);
-println!("Evictions: {}", stats.evictions);
-```
-
-### Consistency Guarantees
-
-| Mode              | Consistency        | Latency | Use Case                |
-| ----------------- | ------------------ | ------- | ----------------------- |
-| No cache          | Strong             | High    | Financial transactions  |
-| TTL-based         | Eventual (bounded) | Low     | Most applications       |
-| Watch-invalidated | Near-real-time     | Low     | Real-time collaboration |
-| Write-through     | Strong             | Medium  | Write-heavy workloads   |
 
 ---
 
+## Vault Statistics
+
+Understanding vault usage patterns with comprehensive statistics.
+
+### Basic Statistics
+
+```rust
+// Get vault statistics
+let stats = client.vault_stats(vault_id).await?;
+
+println!("Total relationships: {}", stats.total_relationships);
+println!("Entity types: {:?}", stats.entity_type_counts);
+println!("Relation distribution: {:?}", stats.relation_counts);
+println!("Last modified: {:?}", stats.last_modified);
+```
+
+### Statistics by Type
+
+```rust
+// Detailed breakdown by entity type
+let stats = client
+    .vault_stats(vault_id)
+    .group_by(GroupBy::EntityType)
+    .await?;
+
+for (entity_type, count) in &stats.by_entity_type {
+    println!("{}: {} relationships", entity_type, count);
+}
+
+// Breakdown by relation
+let stats = client
+    .vault_stats(vault_id)
+    .group_by(GroupBy::Relation)
+    .await?;
+
+for (relation, count) in &stats.by_relation {
+    println!("{}: {} relationships", relation, count);
+}
+```
+
+### Historical Trends
+
+```rust
+// Get trends over time
+let trends = client
+    .vault_stats(vault_id)
+    .trends(TrendPeriod::Days(7))
+    .resolution(Resolution::Hourly)
+    .await?;
+
+for point in &trends.data_points {
+    println!("{}: {} total, +{} / -{}",
+        point.timestamp,
+        point.total_relationships,
+        point.relationships_added,
+        point.relationships_removed
+    );
+}
+```
+
+### Statistics Types
+
+```rust
+/// Vault statistics summary
+#[derive(Debug, Clone)]
+pub struct VaultStats {
+    /// Total number of relationships in the vault
+    pub total_relationships: u64,
+
+    /// Relationships grouped by subject entity type
+    pub by_subject_type: HashMap<String, u64>,
+
+    /// Relationships grouped by resource entity type
+    pub by_resource_type: HashMap<String, u64>,
+
+    /// Relationships grouped by relation name
+    pub by_relation: HashMap<String, u64>,
+
+    /// Active schema version
+    pub schema_version: String,
+
+    /// Timestamp of last relationship modification
+    pub last_modified: Option<DateTime<Utc>>,
+
+    /// Vault creation timestamp
+    pub created_at: DateTime<Utc>,
+}
+
+/// Historical trend data
+#[derive(Debug, Clone)]
+pub struct VaultTrends {
+    /// Time period covered
+    pub period: TrendPeriod,
+
+    /// Data resolution
+    pub resolution: Resolution,
+
+    /// Individual data points
+    pub data_points: Vec<TrendDataPoint>,
+
+    /// Summary statistics
+    pub summary: TrendSummary,
+}
+
+#[derive(Debug, Clone)]
+pub struct TrendDataPoint {
+    pub timestamp: DateTime<Utc>,
+    pub total_relationships: u64,
+    pub relationships_added: u64,
+    pub relationships_removed: u64,
+    pub unique_subjects: u64,
+    pub unique_resources: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct TrendSummary {
+    pub net_change: i64,
+    pub peak_relationships: u64,
+    pub peak_timestamp: DateTime<Utc>,
+    pub average_daily_writes: f64,
+}
+
+/// Time period for trend analysis
+#[derive(Debug, Clone, Copy)]
+pub enum TrendPeriod {
+    Hours(u32),
+    Days(u32),
+    Weeks(u32),
+    Months(u32),
+}
+
+/// Data point resolution
+#[derive(Debug, Clone, Copy)]
+pub enum Resolution {
+    Minute,
+    Hourly,
+    Daily,
+    Weekly,
+}
+```
+
 ---
 
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     PART 5: CONTROL API (MANAGEMENT)
-     ═══════════════════════════════════════════════════════════════════════════ -->
+## Bulk Operations
+
+High-performance export and import operations for vault data.
+
+### Export Relationships
+
+```rust
+// Stream export for memory efficiency
+let mut stream = client
+    .export(vault_id)
+    .stream();
+
+while let Some(batch) = stream.try_next().await? {
+    for relationship in batch.relationships {
+        process(relationship);
+    }
+}
+
+// Collect all (use with caution for large vaults)
+let export = client
+    .export(vault_id)
+    .collect()
+    .await?;
+
+println!("Exported {} relationships", export.relationships.len());
+```
+
+### Filtered Export
+
+```rust
+// Export specific entity types
+let export = client
+    .export(vault_id)
+    .resource_types(&["document", "folder"])
+    .subject_types(&["user", "group"])
+    .collect()
+    .await?;
+
+// Export with time filter
+let export = client
+    .export(vault_id)
+    .changed_since(timestamp)
+    .collect()
+    .await?;
+```
+
+### Export with Schema
+
+```rust
+// Include schema in export
+let export = client
+    .export(vault_id)
+    .include_schema(true)
+    .collect()
+    .await?;
+
+println!("Schema version: {}", export.schema.as_ref().unwrap().version);
+
+// Include metadata (timestamps, actors)
+let export = client
+    .export(vault_id)
+    .include_metadata(true)
+    .collect()
+    .await?;
+
+for rel in &export.relationships {
+    if let Some(meta) = &rel.metadata {
+        println!("{} created by {} at {}",
+            rel.relationship,
+            meta.created_by,
+            meta.created_at
+        );
+    }
+}
+```
+
+### Export to File
+
+```rust
+// Direct export to file (streaming, no memory buffering)
+client
+    .export(vault_id)
+    .to_file("backup.json")
+    .format(ExportFormat::JsonLines)
+    .await?;
+
+// With compression
+client
+    .export(vault_id)
+    .to_file("backup.json.gz")
+    .format(ExportFormat::JsonLines)
+    .compress(Compression::Gzip)
+    .await?;
+```
+
+### Import Relationships
+
+```rust
+// Import from file
+let result = client
+    .import(vault_id)
+    .from_file("backup.json")
+    .await?;
+
+println!("Imported: {} created, {} updated, {} skipped",
+    result.created,
+    result.updated,
+    result.skipped
+);
+
+// Import from stream
+let relationships = vec![
+    Relationship::new("user:alice", "viewer", "document:readme"),
+    Relationship::new("user:bob", "editor", "document:readme"),
+];
+
+let result = client
+    .import(vault_id)
+    .relationships(relationships)
+    .await?;
+```
+
+### Import Modes
+
+```rust
+/// How to handle existing relationships during import
+#[derive(Debug, Clone, Copy, Default)]
+pub enum ImportMode {
+    /// Skip existing relationships, only add new ones
+    #[default]
+    Merge,
+
+    /// Update existing relationships, add new ones
+    Upsert,
+
+    /// Replace all relationships (dangerous - deletes existing)
+    Replace,
+}
+
+// Merge mode (default) - skip conflicts
+let result = client
+    .import(vault_id)
+    .from_file("backup.json")
+    .mode(ImportMode::Merge)
+    .await?;
+
+// Upsert mode - update existing
+let result = client
+    .import(vault_id)
+    .from_file("backup.json")
+    .mode(ImportMode::Upsert)
+    .await?;
+
+// Replace mode - full replacement (use with caution!)
+let result = client
+    .import(vault_id)
+    .from_file("backup.json")
+    .mode(ImportMode::Replace)
+    .confirm_replace(true)  // Required safety flag
+    .await?;
+```
+
+### Conflict Resolution
+
+```rust
+/// How to handle conflicts during import
+#[derive(Debug, Clone, Copy, Default)]
+pub enum ConflictResolution {
+    /// Skip conflicting relationships
+    #[default]
+    Skip,
+
+    /// Overwrite with imported data
+    Overwrite,
+
+    /// Fail the entire import on first conflict
+    Fail,
+}
+
+let result = client
+    .import(vault_id)
+    .from_file("backup.json")
+    .on_conflict(ConflictResolution::Skip)
+    .await?;
+
+// With detailed conflict reporting
+let result = client
+    .import(vault_id)
+    .from_file("backup.json")
+    .on_conflict(ConflictResolution::Skip)
+    .report_conflicts(true)
+    .await?;
+
+for conflict in &result.conflicts {
+    println!("Conflict: {} ({})",
+        conflict.relationship,
+        conflict.reason
+    );
+}
+```
+
+### Atomic Import
+
+```rust
+// All-or-nothing import (transactional)
+let result = client
+    .import(vault_id)
+    .from_file("backup.json")
+    .atomic(true)
+    .await?;
+
+// If any relationship fails, entire import is rolled back
+```
+
+### Async Import (Background Job)
+
+```rust
+// Start import as background job
+let job = client
+    .import(vault_id)
+    .from_file("large-backup.json")
+    .start_async()
+    .await?;
+
+println!("Import job started: {}", job.id);
+
+// Check job status
+loop {
+    let status = client.import_status(&job.id).await?;
+
+    match status.state {
+        JobState::Pending => println!("Waiting to start..."),
+        JobState::Running => {
+            println!("Progress: {}/{} ({:.1}%)",
+                status.processed,
+                status.total,
+                status.progress_percent()
+            );
+        }
+        JobState::Completed => {
+            println!("Import completed: {} imported", status.processed);
+            break;
+        }
+        JobState::Failed => {
+            println!("Import failed: {}", status.error.unwrap());
+            break;
+        }
+    }
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+}
+
+// Cancel a running job
+client.cancel_import(&job.id).await?;
+```
+
+### Import/Export Types
+
+```rust
+/// Export result containing relationships and optional metadata
+#[derive(Debug, Clone)]
+pub struct ExportData {
+    /// Exported relationships
+    pub relationships: Vec<ExportedRelationship>,
+
+    /// Schema (if include_schema was true)
+    pub schema: Option<Schema>,
+
+    /// Export metadata
+    pub metadata: ExportMetadata,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExportedRelationship {
+    pub relationship: Relationship,
+    pub metadata: Option<RelationshipMetadata>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RelationshipMetadata {
+    pub created_at: DateTime<Utc>,
+    pub created_by: String,
+    pub modified_at: Option<DateTime<Utc>>,
+    pub modified_by: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExportMetadata {
+    pub vault_id: String,
+    pub exported_at: DateTime<Utc>,
+    pub total_relationships: u64,
+    pub export_duration: Duration,
+}
+
+/// Import result with detailed statistics
+#[derive(Debug, Clone)]
+pub struct ImportResult {
+    /// Number of relationships created
+    pub created: u64,
+
+    /// Number of relationships updated
+    pub updated: u64,
+
+    /// Number of relationships skipped
+    pub skipped: u64,
+
+    /// Conflicts encountered (if report_conflicts was true)
+    pub conflicts: Vec<ImportConflict>,
+
+    /// Validation errors
+    pub errors: Vec<ImportError>,
+
+    /// Import duration
+    pub duration: Duration,
+}
+
+#[derive(Debug, Clone)]
+pub struct ImportConflict {
+    pub relationship: Relationship,
+    pub reason: ConflictReason,
+    pub existing: Option<Relationship>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ConflictReason {
+    AlreadyExists,
+    DifferentRelation,
+    SchemaViolation(String),
+}
+
+/// Background job status
+#[derive(Debug, Clone)]
+pub struct ImportJobStatus {
+    pub id: String,
+    pub state: JobState,
+    pub total: u64,
+    pub processed: u64,
+    pub created: u64,
+    pub skipped: u64,
+    pub errors: u64,
+    pub started_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub error: Option<String>,
+}
+
+impl ImportJobStatus {
+    pub fn progress_percent(&self) -> f64 {
+        if self.total == 0 { 0.0 }
+        else { (self.processed as f64 / self.total as f64) * 100.0 }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobState {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+/// Export format options
+#[derive(Debug, Clone, Copy, Default)]
+pub enum ExportFormat {
+    /// JSON array of relationships
+    #[default]
+    Json,
+
+    /// Newline-delimited JSON (one relationship per line)
+    JsonLines,
+
+    /// CSV format
+    Csv,
+}
+
+/// Compression options for export
+#[derive(Debug, Clone, Copy)]
+pub enum Compression {
+    None,
+    Gzip,
+    Zstd,
+}
+```
+
+---
+
+## Control API Overview
+
+The Control API handles organization and resource management.
+
+### Common Operations
+
+```rust
+// Access control plane
+let control = client.control();
+
+// Most common operations
+let orgs = control.organizations().list().await?;
+let vault = control.vaults().create(CreateVault { name: "prod", .. }).await?;
+let schema = control.vault(&vault.id).schemas().get_active().await?;
+```
+
+### API Hierarchy Convention
+
+The Control API follows a consistent singular/plural resource pattern:
+
+```text
+client.control()
+    .{resources}()           // Plural: collection operations (list, create)
+    .{resource}(&id)         // Singular: instance operations (get, update, delete)
+        .{sub_resources}()   // Plural: sub-collection operations
+```
+
+**Standard Pattern**: Plural for collections, singular when scoped to a specific instance:
+
+```rust
+// ✅ Correct: Plural for collections, singular for instances
+control.organizations().list().await?;           // List all orgs
+control.organization(&org_id).members().list().await?;  // Members of specific org
+control.vaults().create(CreateVault { .. }).await?;     // Create in collection
+control.vault(&vault_id).schemas().list().await?;       // Schemas of specific vault
+
+// ❌ Avoid: Plural when working with specific instance
+control.organizations(&org_id).get().await?;  // Should be .organization(&id)
+```
+
+### Complete Hierarchy
+
+```rust
+let control = client.control();
+
+// Account (current user) - no ID needed
+control.account().get().await?;
+control.account().emails().list().await?;
+control.account().sessions().list().await?;
+
+// Organizations
+control.organizations().list().await?;
+control.organizations().create(CreateOrg { .. }).await?;
+control.organization(&org_id).get().await?;
+control.organization(&org_id).update(UpdateOrg { .. }).await?;
+control.organization(&org_id).members().list().await?;
+control.organization(&org_id).invitations().create(invite).await?;
+control.organization(&org_id).teams().list().await?;
+
+// Vaults (scoped to organization)
+control.vaults().list().await?;  // All vaults user can access
+control.vaults().create(CreateVault { org_id, .. }).await?;
+control.vault(&vault_id).get().await?;
+control.vault(&vault_id).schemas().list().await?;
+control.vault(&vault_id).schemas().push(content).await?;
+control.vault(&vault_id).tokens().list().await?;
+control.vault(&vault_id).roles().list().await?;
+
+// API Clients
+control.clients().list().await?;
+control.clients().create(CreateClient { .. }).await?;
+control.client(&client_id).get().await?;
+control.client(&client_id).certificates().list().await?;
+control.client(&client_id).certificates().create(cert).await?;
+
+// Audit Logs (scoped to organization)
+control.organization(&org_id).audit_logs().list().await?;
+control.organization(&org_id).audit_logs().actor(&user_id).list().await?;
+```
+
+---
+
+## Account Management
+
+Manage the authenticated user's account, emails, and sessions.
+
+### Get Account Details
+
+```rust
+// Get current user information
+let account = client.control().account().get().await?;
+
+println!("User ID: {}", account.id);
+println!("Name: {}", account.name);
+println!("Email: {}", account.primary_email);
+println!("Created: {}", account.created_at);
+```
+
+### Update Account
+
+```rust
+// Update account details
+let updated = client
+    .control()
+    .account()
+    .update(UpdateAccount {
+        name: Some("New Name".into()),
+        ..Default::default()
+    })
+    .await?;
+
+println!("Updated: {}", updated.name);
+```
+
+### Email Management
+
+```rust
+// List all emails associated with account
+let emails = client.control().account().emails().list().await?;
+
+for email in &emails {
+    println!("{} (primary: {}, verified: {})",
+        email.address,
+        email.is_primary,
+        email.verified
+    );
+}
+
+// Add a new email
+let email = client
+    .control()
+    .account()
+    .emails()
+    .add("new@example.com")
+    .await?;
+
+println!("Verification sent to: {}", email.address);
+
+// Verify email with token
+client
+    .control()
+    .account()
+    .emails()
+    .verify(&email.id, verification_token)
+    .await?;
+
+// Set as primary
+client
+    .control()
+    .account()
+    .emails()
+    .set_primary(&email.id)
+    .await?;
+
+// Remove email
+client
+    .control()
+    .account()
+    .emails()
+    .remove(&email.id)
+    .await?;
+```
+
+### Session Management
+
+```rust
+// List active sessions
+let sessions = client.control().account().sessions().list().await?;
+
+for session in &sessions {
+    println!("Session: {} ({})",
+        session.id,
+        if session.is_current { "current" } else { &session.user_agent }
+    );
+    println!("  Last active: {}", session.last_active_at);
+    println!("  IP: {}", session.ip_address);
+}
+
+// Revoke a specific session
+client
+    .control()
+    .account()
+    .sessions()
+    .revoke(&session_id)
+    .await?;
+
+// Revoke all other sessions (security measure)
+let revoked = client
+    .control()
+    .account()
+    .sessions()
+    .revoke_others()
+    .await?;
+
+println!("Revoked {} sessions", revoked.count);
+```
+
+### Password Management
+
+```rust
+// Request password reset
+client
+    .control()
+    .account()
+    .password()
+    .request_reset("user@example.com")
+    .await?;
+
+// Complete password reset with token
+client
+    .control()
+    .account()
+    .password()
+    .reset(reset_token, "new_password")
+    .await?;
+
+// Change password (when logged in)
+client
+    .control()
+    .account()
+    .password()
+    .change("current_password", "new_password")
+    .await?;
+```
+
+### Delete Account
+
+```rust
+// Delete account (requires confirmation)
+client
+    .control()
+    .account()
+    .delete()
+    .confirm("DELETE")  // Safety confirmation
+    .await?;
+```
+
+### Account Types
+
+```rust
+#[derive(Debug, Clone)]
+pub struct Account {
+    pub id: String,
+    pub name: String,
+    pub primary_email: String,
+    pub avatar_url: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub email_verified: bool,
+    pub mfa_enabled: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateAccount {
+    pub name: Option<String>,
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Email {
+    pub id: String,
+    pub address: String,
+    pub is_primary: bool,
+    pub verified: bool,
+    pub verified_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Session {
+    pub id: String,
+    pub is_current: bool,
+    pub user_agent: String,
+    pub ip_address: String,
+    pub location: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub last_active_at: DateTime<Utc>,
+}
+```
+
+---
 
 ## Organization Management
 
-Access organization management through `client.control().organizations()`.
+Comprehensive organization lifecycle and membership management.
+
+### Organization CRUD
 
 ```rust
-// List organizations user belongs to
+// List organizations
 let orgs = client.control().organizations().list().await?;
 
-for org in orgs {
-    println!("{}: {} (role: {:?})", org.id, org.name, org.my_role);
+for org in &orgs {
+    println!("{}: {} ({})", org.id, org.name, org.role);
 }
 
-// Get specific organization
-let org = client.control().organizations().get("org_id").await?;
-
 // Create organization
-let new_org = client
+let org = client
     .control()
     .organizations()
-    .create("My Company")
+    .create(CreateOrganization {
+        name: "Acme Corp".into(),
+        slug: Some("acme".into()),
+        ..Default::default()
+    })
+    .await?;
+
+// Get organization details
+let org = client
+    .control()
+    .organization(&org_id)
+    .get()
     .await?;
 
 // Update organization
-client
+let org = client
     .control()
-    .organizations()
-    .update("org_id")
-    .name("New Name")
+    .organization(&org_id)
+    .update(UpdateOrganization {
+        name: Some("Acme Corporation".into()),
+        ..Default::default()
+    })
     .await?;
 
 // Delete organization (requires owner role)
-client.control().organizations().delete("org_id").await?;
+client
+    .control()
+    .organization(&org_id)
+    .delete()
+    .confirm("DELETE ACME")  // Safety confirmation
+    .await?;
+```
+
+### Organization Lifecycle
+
+```rust
+// Suspend organization (admin only)
+client
+    .control()
+    .organization(&org_id)
+    .suspend()
+    .reason("Billing issue")
+    .await?;
+
+// Resume suspended organization
+client
+    .control()
+    .organization(&org_id)
+    .resume()
+    .await?;
+
+// Leave organization (self-removal)
+client
+    .control()
+    .organization(&org_id)
+    .leave()
+    .await?;
 ```
 
 ### Organization Members
 
 ```rust
+// List members
 let members = client
     .control()
-    .organizations()
-    .members("org_id")
+    .organization(&org_id)
+    .members()
     .list()
     .await?;
+
+for member in &members {
+    println!("{}: {} ({})", member.user_id, member.name, member.role);
+}
 
 // Update member role
 client
     .control()
-    .organizations()
-    .members("org_id")
-    .update("user_id")
-    .role(OrgRole::Admin)
+    .organization(&org_id)
+    .member(&user_id)
+    .update_role(OrganizationRole::Admin)
     .await?;
 
 // Remove member
 client
     .control()
-    .organizations()
-    .members("org_id")
-    .remove("user_id")
+    .organization(&org_id)
+    .member(&user_id)
+    .remove()
     .await?;
 ```
 
@@ -2661,220 +4859,232 @@ client
 // List pending invitations
 let invitations = client
     .control()
-    .organizations()
-    .invitations("org_id")
+    .organization(&org_id)
+    .invitations()
     .list()
     .await?;
 
 // Create invitation
 let invitation = client
     .control()
-    .organizations()
-    .invitations("org_id")
-    .create("new_user@example.com")
-    .role(OrgRole::Member)
+    .organization(&org_id)
+    .invitations()
+    .create(CreateInvitation {
+        email: "newuser@example.com".into(),
+        role: OrganizationRole::Member,
+        message: Some("Welcome to our team!".into()),
+        expires_in: Some(Duration::from_secs(7 * 24 * 60 * 60)), // 7 days
+    })
+    .await?;
+
+println!("Invitation sent: {}", invitation.id);
+
+// Resend invitation
+client
+    .control()
+    .organization(&org_id)
+    .invitation(&invitation.id)
+    .resend()
+    .await?;
+
+// Delete (cancel) invitation
+client
+    .control()
+    .organization(&org_id)
+    .invitation(&invitation.id)
+    .delete()
     .await?;
 
 // Accept invitation (from invitee's perspective)
 client
     .control()
-    .organizations()
-    .accept_invitation("invitation_token")
+    .invitation(invitation_token)
+    .accept()
     .await?;
 
-// Delete/cancel invitation
+// Decline invitation
 client
     .control()
-    .organizations()
-    .invitations("org_id")
-    .delete("invitation_id")
+    .invitation(invitation_token)
+    .decline()
     .await?;
 ```
 
----
-
-## Vault Management
+### Organization Roles
 
 ```rust
-// List vaults in organization
-let vaults = client
+/// Built-in organization roles
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrganizationRole {
+    /// Full control over organization
+    Owner,
+
+    /// Manage members, teams, and vaults
+    Admin,
+
+    /// Standard member access
+    Member,
+
+    /// View-only access
+    Viewer,
+}
+
+// List role assignments
+let assignments = client
     .control()
-    .vaults("org_id")
+    .organization(&org_id)
+    .roles()
     .list()
     .await?;
 
-// Get vault details
-let vault = client.control().vaults("org_id").get("vault_id").await?;
-
-// Create vault
-let new_vault = client
-    .control()
-    .vaults("org_id")
-    .create("Production Vault")
-    .await?;
-
-// Update vault
+// Grant role
 client
     .control()
-    .vaults("org_id")
-    .update("vault_id")
-    .name("Renamed Vault")
+    .organization(&org_id)
+    .roles()
+    .grant(&user_id, OrganizationRole::Admin)
     .await?;
 
-// Delete vault
-client.control().vaults("org_id").delete("vault_id").await?;
-```
-
-### Vault Access Grants
-
-```rust
-// List user grants
-let grants = client
-    .control()
-    .vaults("org_id")
-    .user_grants("vault_id")
-    .list()
-    .await?;
-
-// Grant user access
+// Update role
 client
     .control()
-    .vaults("org_id")
-    .user_grants("vault_id")
-    .create("user_id", VaultRole::Writer)
+    .organization(&org_id)
+    .role(&user_id)
+    .update(OrganizationRole::Member)
     .await?;
 
-// Update grant
+// Revoke role (remove from org)
 client
     .control()
-    .vaults("org_id")
-    .user_grants("vault_id")
-    .update("grant_id")
-    .role(VaultRole::Admin)
-    .await?;
-
-// Revoke grant
-client
-    .control()
-    .vaults("org_id")
-    .user_grants("vault_id")
-    .delete("grant_id")
+    .organization(&org_id)
+    .role(&user_id)
+    .revoke()
     .await?;
 ```
 
-### Vault Tokens
+### Organization Types
 
 ```rust
-// Generate vault access token
-let token = client
-    .control()
-    .tokens()
-    .generate_vault_token("org_id", "vault_id")
-    .scopes([Scope::Check, Scope::Write])
-    .ttl(Duration::from_secs(3600))
-    .await?;
+#[derive(Debug, Clone)]
+pub struct Organization {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub role: OrganizationRole,  // Current user's role
+    pub member_count: u32,
+    pub vault_count: u32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub suspended_at: Option<DateTime<Utc>>,
+}
 
-println!("Access token: {}", token.access_token);
-println!("Refresh token: {}", token.refresh_token);
-println!("Expires in: {}s", token.expires_in);
-```
+#[derive(Debug, Clone, Default)]
+pub struct CreateOrganization {
+    pub name: String,
+    pub slug: Option<String>,
+    pub description: Option<String>,
+}
 
----
+#[derive(Debug, Clone, Default)]
+pub struct UpdateOrganization {
+    pub name: Option<String>,
+    pub slug: Option<String>,
+    pub description: Option<String>,
+}
 
-## Client & Certificate Management
+#[derive(Debug, Clone)]
+pub struct OrganizationMember {
+    pub user_id: String,
+    pub name: String,
+    pub email: String,
+    pub role: OrganizationRole,
+    pub joined_at: DateTime<Utc>,
+    pub last_active_at: Option<DateTime<Utc>>,
+}
 
-### Clients
+#[derive(Debug, Clone)]
+pub struct Invitation {
+    pub id: String,
+    pub email: String,
+    pub role: OrganizationRole,
+    pub status: InvitationStatus,
+    pub invited_by: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
 
-```rust
-// List clients
-let clients = client.control().clients("org_id").list().await?;
-
-// Create client (for service-to-service auth)
-let new_client = client
-    .control()
-    .clients("org_id")
-    .create("my-backend-service")
-    .await?;
-
-// Get client
-let service_client = client.control().clients("org_id").get("client_id").await?;
-
-// Update client
-client
-    .control()
-    .clients("org_id")
-    .update("client_id")
-    .name("renamed-service")
-    .await?;
-
-// Delete client
-client.control().clients("org_id").delete("client_id").await?;
-```
-
-### Certificates
-
-```rust
-// List certificates for client
-let certs = client
-    .control()
-    .clients("org_id")
-    .certificates("client_id")
-    .list()
-    .await?;
-
-// Create new certificate (returns private key ONCE)
-let cert = client
-    .control()
-    .clients("org_id")
-    .certificates("client_id")
-    .create()
-    .await?;
-
-// IMPORTANT: Save private key securely - it's only returned once!
-println!("Certificate ID (KID): {}", cert.id);
-println!("Public Key: {}", cert.public_key_pem);
-println!("Private Key: {}", cert.private_key_pem.unwrap());
-
-// Save to file
-std::fs::write("private_key.pem", cert.private_key_pem.unwrap())?;
-
-// Revoke certificate
-client
-    .control()
-    .clients("org_id")
-    .certificates("client_id")
-    .revoke("cert_id")
-    .await?;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvitationStatus {
+    Pending,
+    Accepted,
+    Declined,
+    Expired,
+}
 ```
 
 ---
 
 ## Team Management
 
+Organize members into teams with granular vault access.
+
+### Team CRUD
+
 ```rust
-// List teams
-let teams = client.control().teams("org_id").list().await?;
+// List teams in organization
+let teams = client
+    .control()
+    .organization(&org_id)
+    .teams()
+    .list()
+    .await?;
+
+for team in &teams {
+    println!("{}: {} ({} members)",
+        team.id,
+        team.name,
+        team.member_count
+    );
+}
 
 // Create team
 let team = client
     .control()
-    .teams("org_id")
-    .create("Engineering")
+    .organization(&org_id)
+    .teams()
+    .create(CreateTeam {
+        name: "Engineering".into(),
+        description: Some("Engineering team".into()),
+        ..Default::default()
+    })
     .await?;
 
-// Get team
-let team = client.control().teams("org_id").get("team_id").await?;
+// Get team details
+let team = client
+    .control()
+    .organization(&org_id)
+    .team(&team_id)
+    .get()
+    .await?;
 
 // Update team
-client
+let team = client
     .control()
-    .teams("org_id")
-    .update("team_id")
-    .name("Platform Engineering")
+    .organization(&org_id)
+    .team(&team_id)
+    .update(UpdateTeam {
+        name: Some("Platform Engineering".into()),
+        ..Default::default()
+    })
     .await?;
 
 // Delete team
-client.control().teams("org_id").delete("team_id").await?;
+client
+    .control()
+    .organization(&org_id)
+    .team(&team_id)
+    .delete()
+    .await?;
 ```
 
 ### Team Members
@@ -2883,2423 +5093,2398 @@ client.control().teams("org_id").delete("team_id").await?;
 // List team members
 let members = client
     .control()
-    .teams("org_id")
-    .members("team_id")
+    .organization(&org_id)
+    .team(&team_id)
+    .members()
     .list()
     .await?;
 
-// Add member
+// Add member to team
 client
     .control()
-    .teams("org_id")
-    .members("team_id")
-    .add("user_id")
-    .role(TeamRole::Member)
+    .organization(&org_id)
+    .team(&team_id)
+    .members()
+    .add(&user_id, TeamRole::Member)
     .await?;
 
-// Update member role
+// Update member's team role
 client
     .control()
-    .teams("org_id")
-    .members("team_id")
-    .update("user_id")
-    .role(TeamRole::Lead)
+    .organization(&org_id)
+    .team(&team_id)
+    .member(&user_id)
+    .update_role(TeamRole::Lead)
     .await?;
 
-// Remove member
+// Remove member from team
 client
     .control()
-    .teams("org_id")
-    .members("team_id")
-    .remove("user_id")
+    .organization(&org_id)
+    .team(&team_id)
+    .member(&user_id)
+    .remove()
     .await?;
 ```
 
-### Team Permissions
+### Team Vault Grants
 
 ```rust
-// List team permissions
-let perms = client
+// List vault grants for team
+let grants = client
     .control()
-    .teams("org_id")
-    .permissions("team_id")
+    .organization(&org_id)
+    .team(&team_id)
+    .grants()
     .list()
     .await?;
 
-// Grant permission
-client
+for grant in &grants {
+    println!("Vault {}: {} access", grant.vault_id, grant.role);
+}
+
+// Grant vault access to team
+let grant = client
     .control()
-    .teams("org_id")
-    .permissions("team_id")
-    .grant(TeamPermission::ManageVaults)
+    .organization(&org_id)
+    .team(&team_id)
+    .grants()
+    .create(CreateVaultGrant {
+        vault_id: vault_id.into(),
+        role: VaultRole::ReadWrite,
+    })
     .await?;
 
-// Revoke permission
+// Update grant
 client
     .control()
-    .teams("org_id")
-    .permissions("team_id")
-    .revoke("permission_id")
+    .organization(&org_id)
+    .team(&team_id)
+    .grant(&grant.id)
+    .update(VaultRole::Admin)
     .await?;
+
+// Revoke grant
+client
+    .control()
+    .organization(&org_id)
+    .team(&team_id)
+    .grant(&grant.id)
+    .delete()
+    .await?;
+```
+
+### Team Types
+
+```rust
+#[derive(Debug, Clone)]
+pub struct Team {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub member_count: u32,
+    pub vault_count: u32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CreateTeam {
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateTeam {
+    pub name: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TeamMember {
+    pub user_id: String,
+    pub name: String,
+    pub email: String,
+    pub role: TeamRole,
+    pub joined_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TeamRole {
+    /// Can manage team members and settings
+    Lead,
+
+    /// Standard team member
+    Member,
+}
+
+#[derive(Debug, Clone)]
+pub struct VaultGrant {
+    pub id: String,
+    pub vault_id: String,
+    pub vault_name: String,
+    pub role: VaultRole,
+    pub granted_at: DateTime<Utc>,
+    pub granted_by: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CreateVaultGrant {
+    pub vault_id: String,
+    pub role: VaultRole,
+}
+```
+
+---
+
+## Vault Management
+
+Manage authorization vaults with role-based access control.
+
+### Vault CRUD
+
+```rust
+// List vaults (all vaults user has access to)
+let vaults = client
+    .control()
+    .vaults()
+    .list()
+    .await?;
+
+for vault in &vaults {
+    println!("{}: {} ({})", vault.id, vault.name, vault.role);
+}
+
+// Create vault
+let vault = client
+    .control()
+    .vaults()
+    .create(CreateVault {
+        name: "production".into(),
+        organization_id: org_id.into(),
+        description: Some("Production authorization data".into()),
+        ..Default::default()
+    })
+    .await?;
+
+// Get vault details
+let vault = client
+    .control()
+    .vault(&vault_id)
+    .get()
+    .await?;
+
+// Update vault
+let vault = client
+    .control()
+    .vault(&vault_id)
+    .update(UpdateVault {
+        name: Some("prod-main".into()),
+        ..Default::default()
+    })
+    .await?;
+
+// Delete vault
+client
+    .control()
+    .vault(&vault_id)
+    .delete()
+    .confirm("DELETE PRODUCTION")
+    .await?;
+```
+
+### Vault Roles
+
+```rust
+/// Vault access roles
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VaultRole {
+    /// Full control over vault
+    Admin,
+
+    /// Read and write relationships
+    #[default]
+    ReadWrite,
+
+    /// Read-only access
+    ReadOnly,
+}
+
+// List user role assignments
+let assignments = client
+    .control()
+    .vault(&vault_id)
+    .roles()
+    .list()
+    .await?;
+
+// Grant role to user
+client
+    .control()
+    .vault(&vault_id)
+    .roles()
+    .grant(&user_id, VaultRole::ReadWrite)
+    .await?;
+
+// Update role
+client
+    .control()
+    .vault(&vault_id)
+    .role(&assignment_id)
+    .update(VaultRole::Admin)
+    .await?;
+
+// Revoke role
+client
+    .control()
+    .vault(&vault_id)
+    .role(&assignment_id)
+    .revoke()
+    .await?;
+```
+
+### Team Vault Roles
+
+```rust
+// List team role assignments
+let team_assignments = client
+    .control()
+    .vault(&vault_id)
+    .team_roles()
+    .list()
+    .await?;
+
+// Grant role to team
+client
+    .control()
+    .vault(&vault_id)
+    .team_roles()
+    .grant(&team_id, VaultRole::ReadWrite)
+    .await?;
+
+// Update team role
+client
+    .control()
+    .vault(&vault_id)
+    .team_role(&assignment_id)
+    .update(VaultRole::ReadOnly)
+    .await?;
+
+// Revoke team role
+client
+    .control()
+    .vault(&vault_id)
+    .team_role(&assignment_id)
+    .revoke()
+    .await?;
+```
+
+### Vault Tokens
+
+```rust
+// List vault API tokens
+let tokens = client
+    .control()
+    .vault(&vault_id)
+    .tokens()
+    .list()
+    .await?;
+
+for token in &tokens {
+    println!("{}: {} (expires: {:?})",
+        token.id,
+        token.name,
+        token.expires_at
+    );
+}
+
+// Generate new token
+let token = client
+    .control()
+    .vault(&vault_id)
+    .tokens()
+    .generate(GenerateToken {
+        name: "api-service".into(),
+        role: VaultRole::ReadWrite,
+        expires_in: Some(Duration::from_secs(90 * 24 * 60 * 60)), // 90 days
+        scopes: Some(vec!["read", "write"]),
+    })
+    .await?;
+
+// IMPORTANT: Token secret is only returned once
+println!("Token: {}", token.secret);
+
+// Revoke specific token
+client
+    .control()
+    .vault(&vault_id)
+    .token(&token.id)
+    .revoke()
+    .await?;
+
+// Revoke all tokens (emergency)
+client
+    .control()
+    .vault(&vault_id)
+    .tokens()
+    .revoke_all()
+    .confirm(true)
+    .await?;
+```
+
+### Vault Types
+
+```rust
+#[derive(Debug, Clone)]
+pub struct Vault {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub organization_id: String,
+    pub role: VaultRole,  // Current user's role
+    pub schema_version: Option<String>,
+    pub relationship_count: u64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CreateVault {
+    pub name: String,
+    pub organization_id: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateVault {
+    pub name: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct VaultRoleAssignment {
+    pub id: String,
+    pub user_id: String,
+    pub user_name: String,
+    pub role: VaultRole,
+    pub assigned_at: DateTime<Utc>,
+    pub assigned_by: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct TeamVaultRoleAssignment {
+    pub id: String,
+    pub team_id: String,
+    pub team_name: String,
+    pub role: VaultRole,
+    pub assigned_at: DateTime<Utc>,
+    pub assigned_by: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct VaultToken {
+    pub id: String,
+    pub name: String,
+    pub role: VaultRole,
+    pub scopes: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub last_used_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GeneratedToken {
+    pub id: String,
+    pub name: String,
+    /// The token secret - only returned once at creation
+    pub secret: String,
+    pub role: VaultRole,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct GenerateToken {
+    pub name: String,
+    pub role: VaultRole,
+    pub expires_in: Option<Duration>,
+    pub scopes: Option<Vec<&'static str>>,
+}
+```
+
+---
+
+## Client Management
+
+Manage API clients for machine-to-machine authentication.
+
+### Client CRUD
+
+```rust
+// List clients
+let clients = client.control().clients().list().await?;
+
+for c in &clients {
+    println!("{}: {} (active: {})", c.id, c.name, c.active);
+}
+
+// Create client
+let api_client = client
+    .control()
+    .clients()
+    .create(CreateClient {
+        name: "backend-service".into(),
+        description: Some("Main backend service".into()),
+        ..Default::default()
+    })
+    .await?;
+
+// Get client details
+let api_client = client
+    .control()
+    .client(&client_id)
+    .get()
+    .await?;
+
+// Update client
+let api_client = client
+    .control()
+    .client(&client_id)
+    .update(UpdateClient {
+        name: Some("backend-api".into()),
+        ..Default::default()
+    })
+    .await?;
+
+// Delete client
+client
+    .control()
+    .client(&client_id)
+    .delete()
+    .await?;
+```
+
+### Client Lifecycle
+
+```rust
+// Deactivate client (emergency disable)
+client
+    .control()
+    .client(&client_id)
+    .deactivate()
+    .reason("Security incident")
+    .await?;
+
+// Reactivate client
+client
+    .control()
+    .client(&client_id)
+    .activate()
+    .await?;
+```
+
+### Certificate Management
+
+```rust
+// List certificates for client
+let certs = client
+    .control()
+    .client(&client_id)
+    .certificates()
+    .list()
+    .await?;
+
+for cert in &certs {
+    println!("{}: {} (expires: {})",
+        cert.id,
+        cert.fingerprint,
+        cert.expires_at
+    );
+}
+
+// Add certificate (for key rotation)
+let cert = client
+    .control()
+    .client(&client_id)
+    .certificates()
+    .create(CreateCertificate {
+        name: "primary-key-2024".into(),
+        public_key: public_key_pem.into(),
+    })
+    .await?;
+
+// Get certificate details
+let cert = client
+    .control()
+    .client(&client_id)
+    .certificate(&cert_id)
+    .get()
+    .await?;
+
+// Revoke certificate
+client
+    .control()
+    .client(&client_id)
+    .certificate(&cert_id)
+    .revoke()
+    .reason("Key rotation")
+    .await?;
+
+// Delete certificate (after revocation)
+client
+    .control()
+    .client(&client_id)
+    .certificate(&cert_id)
+    .delete()
+    .await?;
+```
+
+### Client Types
+
+```rust
+#[derive(Debug, Clone)]
+pub struct ApiClient {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub active: bool,
+    pub certificate_count: u32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CreateClient {
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateClient {
+    pub name: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Certificate {
+    pub id: String,
+    pub name: String,
+    pub fingerprint: String,
+    pub algorithm: String,
+    pub revoked: bool,
+    pub revoked_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateCertificate {
+    pub name: String,
+    pub public_key: String,
+}
 ```
 
 ---
 
 ## Schema Management
 
+### Basic Usage
+
+```rust
+// Get active schema for a vault
+let schema = client.control().vault(&vault_id).schemas().get_active().await?;
+
+// Push new schema (validates automatically)
+let version = client.control().vault(&vault_id).schemas()
+    .push(schema_content)
+    .message("Added team support")
+    .await?;
+
+// Activate the new version
+client.control().vault(&vault_id).schemas().activate(&version.id).await?;
+```
+
 ### Schema Introspection
 
-Programmatically inspect loaded schema at runtime:
-
 ```rust
-// Get schema metadata
-let schema = client.schema().await?;
+// Get active schema
+let schema = client.control().vault(&vault_id).schemas().get_active().await?;
 
-println!("Schema version: {}", schema.version());
-println!("Entities: {:?}", schema.entity_names());
-
-// Inspect specific entity
-if let Some(entity) = schema.entity("Document") {
-    println!("Document relations:");
-    for relation in entity.relations() {
-        println!("  - {}: {:?}", relation.name(), relation.target_types());
+println!("Entities:");
+for entity in &schema.entities {
+    println!("  {}", entity.name);
+    for rel in &entity.relations {
+        println!("    {} -> {:?}", rel.name, rel.types);
     }
-
-    println!("Document permissions:");
-    for permission in entity.permissions() {
-        println!("  - {}: {}", permission.name(), permission.expression());
+    for perm in &entity.permissions {
+        println!("    {} = {}", perm.name, perm.expression);
     }
 }
 
-// Check if relation exists (useful for version compatibility)
-if schema.has_relation("Document", "commenter") {
-    // New relation available - use it
-    client.write(Relationship::new("doc:1", "commenter", "user:alice")).await?;
+// Validate relationships against schema
+let validation = client
+    .validate_relationship(Relationship::new("doc:1", "viewer", "user:alice"))
+    .await?;
+
+if !validation.valid {
+    println!("Invalid: {}", validation.error);
+}
+```
+
+### Schema Evolution
+
+During rolling deployments, clients may run different schema versions:
+
+```rust
+// Get schema with version info
+let schema = client.control().vault(&vault_id).schemas().get_active().await?;
+println!("Schema version: {}", schema.version);
+println!("Compatible since: {}", schema.compatible_since);
+
+// Check feature availability
+if schema.supports_permission("document", "archive") {
+    vault.check(user, "archive", doc).await?;
 } else {
-    // Fall back to older relation
-    client.write(Relationship::new("doc:1", "viewer", "user:alice")).await?;
+    // Fallback for older schema
+    vault.check(user, "edit", doc).await?;
 }
-```
 
-#### Schema Diffing
-
-Compare schemas for migration planning:
-
-```rust
-let current = client.schema().await?;
-let proposed = Schema::parse(new_schema_content)?;
-
-let diff = current.diff(&proposed);
-
-for change in diff.changes() {
-    match change {
-        SchemaChange::EntityAdded(name) => {
-            println!("+ entity {}", name);
-        }
-        SchemaChange::EntityRemoved(name) => {
-            println!("- entity {} (BREAKING)", name);
-        }
-        SchemaChange::RelationAdded { entity, relation } => {
-            println!("+ {}.{}", entity, relation);
-        }
-        SchemaChange::RelationRemoved { entity, relation } => {
-            println!("- {}.{} (BREAKING)", entity, relation);
-        }
-        SchemaChange::PermissionChanged { entity, permission, .. } => {
-            println!("~ {}.{}", entity, permission);
-        }
+// SDK can also report capabilities
+let caps = vault.capabilities().await?;
+if caps.supports("batch_check") {
+    vault.check_batch(checks).await?;
+} else {
+    for check in checks {
+        vault.check(check).await?;
     }
 }
-
-if diff.has_breaking_changes() {
-    println!("WARNING: Schema has breaking changes!");
-}
 ```
 
-### Schema Operations
+### Schema Versioning
 
 ```rust
-// List schema versions
-let schemas = client
+// List all schema versions
+let versions = client
     .control()
-    .schemas("org_id", "vault_id")
+    .vault(&vault_id).schemas()
     .list()
     .await?;
 
-// Get current active schema
-let current = client
-    .control()
-    .schemas("org_id", "vault_id")
-    .current()
-    .await?;
+for version in &versions {
+    println!("{}: {} (active: {})",
+        version.id,
+        version.message.as_deref().unwrap_or("no message"),
+        version.active
+    );
+}
 
-println!("Version: {}", current.version);
-println!("Content:\n{}", current.content);
+// Include inactive versions
+let all_versions = client
+    .control()
+    .vault(&vault_id).schemas()
+    .list()
+    .include_inactive(true)
+    .await?;
 
 // Get specific version
 let schema = client
     .control()
-    .schemas("org_id", "vault_id")
-    .get(version)
+    .vault(&vault_id).schemas()
+    .get(&schema_id)
     .await?;
 
-// Deploy new schema
-let result = client
+// Get currently active version
+let active = client
     .control()
-    .schemas("org_id", "vault_id")
-    .deploy(r#"
-        schema inferadb v1.0
-
-        entity User {
-            attributes {
-                id: UUID
-                email: String @unique
-            }
-        }
-
-        entity Document {
-            relations {
-                owner: User
-                viewer: User | owner
-            }
-
-            permissions {
-                view: viewer
-                delete: owner
-            }
-        }
-    "#)
+    .vault(&vault_id).schemas()
+    .get_active()
     .await?;
 
-println!("Deployed version: {}", result.version);
-
-// Activate specific version
-client
-    .control()
-    .schemas("org_id", "vault_id")
-    .activate(version)
-    .await?;
-
-// Diff two versions
+// Compare two versions
 let diff = client
     .control()
-    .schemas("org_id", "vault_id")
-    .diff(version_a, version_b)
+    .vault(&vault_id).schemas()
+    .diff(&from_schema_id, &to_schema_id)
     .await?;
 
-println!("Changes:\n{}", diff.summary);
+println!("Added entities: {:?}", diff.added_entities);
+println!("Removed entities: {:?}", diff.removed_entities);
+println!("Modified entities: {:?}", diff.modified_entities);
+println!("Breaking changes: {}", diff.has_breaking_changes);
+```
+
+### Schema Lifecycle
+
+```rust
+// Push new schema version (without activating)
+let version = client
+    .control()
+    .vault(&vault_id).schemas()
+    .push(schema_content)
+    .message("Added team support")
+    .await?;
+
+println!("Pushed version: {}", version.id);
+
+// Activate a version
+client
+    .control()
+    .vault(&vault_id).schemas()
+    .activate(&version.id)
+    .await?;
+
+// Rollback to specific version
+client
+    .control()
+    .vault(&vault_id).schemas()
+    .rollback_to(&previous_version_id)
+    .await?;
 
 // Rollback to previous version
 client
     .control()
-    .schemas("org_id", "vault_id")
-    .rollback()
-    .to_version(previous_version)
-    .await?;
-```
-
-### Schema Validation
-
-Validate schemas locally before deploying to catch errors early:
-
-```rust
-use inferadb::schema::{Schema, ValidationResult};
-
-// Parse and validate schema locally
-let schema_content = include_str!("../schemas/v2.ipl");
-let schema = Schema::parse(schema_content)?;
-
-// Check for syntax errors
-if let Err(errors) = schema.validate() {
-    for error in errors {
-        eprintln!("Line {}: {}", error.line, error.message);
-    }
-    return Err("Schema validation failed".into());
-}
-
-// Check compatibility with current production schema
-let current = client
-    .control()
-    .schemas("org_id", "vault_id")
-    .current()
+    .vault(&vault_id).schemas()
+    .rollback_to_previous()
     .await?;
 
-let compatibility = schema.check_compatibility(&current)?;
-
-match compatibility {
-    Compatibility::FullyCompatible => {
-        println!("✅ Schema is fully backwards compatible");
-    }
-    Compatibility::BackwardsCompatible { warnings } => {
-        println!("⚠️ Schema is backwards compatible with warnings:");
-        for warning in warnings {
-            println!("  - {}", warning);
-        }
-    }
-    Compatibility::Breaking { changes } => {
-        println!("❌ Schema has breaking changes:");
-        for change in changes {
-            println!("  - {}: {}", change.kind, change.description);
-        }
-        return Err("Breaking changes detected".into());
-    }
-}
-
-// Safe to deploy
+// Copy schema to another vault
 client
     .control()
-    .schemas("org_id", "vault_id")
-    .deploy(schema_content)
+    .vault(&vault_id).schemas()
+    .copy_to(&target_vault_id)
+    .schema(&schema_id)  // or .active() for active schema
+    .activate(true)       // activate in target vault
     .await?;
 ```
 
-#### Breaking Change Detection
+### Canary Deployments
 
 ```rust
-use inferadb::schema::BreakingChangeKind;
-
-let changes = schema.detect_breaking_changes(&current)?;
-
-for change in changes {
-    match change.kind {
-        BreakingChangeKind::RemovedEntity { name } => {
-            println!("Entity '{}' was removed", name);
-        }
-        BreakingChangeKind::RemovedRelation { entity, relation } => {
-            println!("Relation '{}.{}' was removed", entity, relation);
-        }
-        BreakingChangeKind::RemovedPermission { entity, permission } => {
-            println!("Permission '{}.{}' was removed", entity, permission);
-        }
-        BreakingChangeKind::ChangedRelationType { entity, relation, from, to } => {
-            println!(
-                "Relation '{}.{}' type changed from '{}' to '{}'",
-                entity, relation, from, to
-            );
-        }
-        BreakingChangeKind::RemovedAttribute { entity, attribute } => {
-            println!("Attribute '{}.{}' was removed", entity, attribute);
-        }
-    }
-}
-```
-
-#### Dry-Run Deployment
-
-```rust
-// Validate deployment without actually activating
-let result = client
+// Activate with canary deployment
+client
     .control()
-    .schemas("org_id", "vault_id")
-    .deploy(schema_content)
-    .dry_run(true)  // Validate only
-    .await?;
-
-println!("Validation result: {:?}", result.validation);
-println!("Would create version: {}", result.version);
-println!("Compatibility: {:?}", result.compatibility);
-
-// If satisfied, deploy for real
-if result.validation.is_ok() {
-    client
-        .control()
-        .schemas("org_id", "vault_id")
-        .deploy(schema_content)
-        .await?;
-}
-```
-
-### Schema Evolution During Rolling Deployments
-
-Handling schema changes safely during rolling deployments when old and new SDK versions run simultaneously.
-
-#### The Version Mismatch Problem
-
-During a rolling deployment:
-
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│  Rolling Deployment Timeline                                        │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  t0: All instances on SDK v1 + Schema v1                            │
-│      ├── Instance A (v1) ──────────────────────────────────────►    │
-│      ├── Instance B (v1) ──────────────────────────────────────►    │
-│      └── Instance C (v1) ──────────────────────────────────────►    │
-│                                                                     │
-│  t1: Schema v2 deployed, SDK v2 rolling out                         │
-│      ├── Instance A (v2) ──────────────────────────────────────►    │
-│      ├── Instance B (v1) ◄── Still using old types!                 │
-│      └── Instance C (v1) ◄── Still using old types!                 │
-│                                                                     │
-│  t2: All instances upgraded                                         │
-│      ├── Instance A (v2) ──────────────────────────────────────►    │
-│      ├── Instance B (v2) ──────────────────────────────────────►    │
-│      └── Instance C (v2) ──────────────────────────────────────►    │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-#### Safe Schema Evolution Strategies
-
-##### Strategy 1: Additive-Only Changes
-
-```rust
-// Schema v1
-entity Document {
-    relations {
-        owner: User
-        viewer: User
-    }
-}
-
-// Schema v2 - Only additions, no removals
-entity Document {
-    relations {
-        owner: User
-        viewer: User
-        editor: User      // ✅ New relation - old SDK ignores it
-        commenter: User   // ✅ New relation - old SDK ignores it
-    }
-}
-```
-
-##### Strategy 2: Schema Version Pinning
-
-```rust
-// Pin SDK to specific schema version during deployment
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    // Only accept responses compatible with this schema version
-    .schema_version("v1.2.3")
-    .build()
-    .await?;
-
-// Server will reject requests if schema has incompatible changes
-```
-
-##### Strategy 3: Graceful Degradation for Unknown Types
-
-```rust
-use inferadb::UnknownRelationPolicy;
-
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    // How to handle relations not in compile-time types
-    .unknown_relation_policy(UnknownRelationPolicy::Warn)  // Log but continue
-    // .unknown_relation_policy(UnknownRelationPolicy::Error)  // Fail fast
-    // .unknown_relation_policy(UnknownRelationPolicy::Ignore) // Silent skip
-    .build()
-    .await?;
-```
-
-#### Multi-Version Type Support
-
-Define types that work across schema versions:
-
-```rust
-use inferadb::prelude::*;
-
-// Version-aware permission enum
-#[derive(Permission)]
-#[inferadb(entity = "document")]
-enum DocumentPermission {
-    View,
-    Edit,
-    Delete,
-
-    // Added in schema v2 - gracefully ignored on v1
-    #[inferadb(since = "2.0", fallback = "edit")]
-    Comment,
-
-    // Deprecated in v2 - maps to new permission
-    #[inferadb(deprecated = "2.0", maps_to = "edit")]
-    Modify,
-}
-```
-
-#### Deployment Checklist for Schema Changes
-
-```rust
-use inferadb::schema::MigrationChecker;
-
-async fn safe_schema_deploy(
-    client: &Client,
-    new_schema: &str,
-) -> Result<(), Error> {
-    let checker = MigrationChecker::new(client);
-
-    // 1. Validate new schema
-    let validation = checker.validate(new_schema).await?;
-    if !validation.is_valid() {
-        return Err(Error::SchemaInvalid(validation.errors));
-    }
-
-    // 2. Check for breaking changes
-    let breaking = checker.detect_breaking_changes(new_schema).await?;
-    if !breaking.is_empty() {
-        tracing::error!("Breaking changes detected:");
-        for change in &breaking {
-            tracing::error!("  - {}", change);
-        }
-        return Err(Error::BreakingChanges(breaking));
-    }
-
-    // 3. Verify all running SDK versions are compatible
-    let compatibility = checker.check_sdk_compatibility(new_schema).await?;
-    if !compatibility.all_compatible {
-        tracing::warn!(
-            "SDK versions {} may have issues with new schema",
-            compatibility.incompatible_versions.join(", ")
-        );
-    }
-
-    // 4. Deploy with canary
-    let result = client
-        .control()
-        .schemas("org_id", "vault_id")
-        .deploy(new_schema)
-        .canary_percentage(10)  // Only 10% of traffic initially
-        .await?;
-
-    // 5. Monitor for errors
-    tokio::time::sleep(Duration::from_secs(300)).await;  // 5 min observation
-
-    let errors = client
-        .control()
-        .schemas("org_id", "vault_id")
-        .canary_metrics(result.version)
-        .await?;
-
-    if errors.error_rate > 0.01 {  // >1% error rate
-        tracing::error!("Canary failed, rolling back");
-        client
-            .control()
-            .schemas("org_id", "vault_id")
-            .rollback()
-            .await?;
-        return Err(Error::CanaryFailed(errors));
-    }
-
-    // 6. Promote to 100%
-    client
-        .control()
-        .schemas("org_id", "vault_id")
-        .activate(result.version)
-        .await?;
-
-    Ok(())
-}
-```
-
-#### Runtime Schema Refresh
-
-For long-running services, refresh schema types periodically:
-
-```rust
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    // Refresh schema metadata every 5 minutes
-    .schema_refresh_interval(Duration::from_secs(300))
-    // Callback when schema changes detected
-    .on_schema_change(|old_version, new_version| {
-        tracing::info!(
-            "Schema changed from {} to {}",
-            old_version, new_version
-        );
-        // Optionally trigger application reload
+    .vault(&vault_id).schemas()
+    .activate(&version.id)
+    .canary(CanaryConfig {
+        percentage: 10,  // Route 10% of traffic to new schema
+        duration: Some(Duration::from_secs(30 * 60)),  // 30 min observation
     })
-    .build()
     .await?;
+
+// Check canary status
+let status = client
+    .control()
+    .vault(&vault_id).schemas()
+    .canary_status()
+    .await?;
+
+println!("Canary percentage: {}%", status.percentage);
+println!("Canary errors: {}", status.canary_metrics.error_count);
+println!("Baseline errors: {}", status.baseline_metrics.error_count);
+
+if status.has_anomalies {
+    println!("Anomalies detected: {:?}", status.anomalies);
+}
+
+// Gradually increase canary percentage
+client
+    .control()
+    .vault(&vault_id).schemas()
+    .canary_adjust(25)  // Increase to 25%
+    .await?;
+
+// Promote canary to 100%
+client
+    .control()
+    .vault(&vault_id).schemas()
+    .canary_promote()
+    .await?;
+
+// Rollback canary (revert to baseline)
+client
+    .control()
+    .vault(&vault_id).schemas()
+    .canary_rollback()
+    .await?;
+```
+
+### Pre-flight Checks
+
+```rust
+// Run pre-flight checks before activating
+let preflight = client
+    .control()
+    .vault(&vault_id).schemas()
+    .preflight(schema_content)
+    .await?;
+
+// Check validation results
+if !preflight.validation.valid {
+    for error in &preflight.validation.errors {
+        println!("Syntax error: {} at line {}", error.message, error.line);
+    }
+    return Err("Schema has syntax errors".into());
+}
+
+// Check for breaking changes
+if preflight.compatibility.has_breaking_changes {
+    println!("Breaking changes detected:");
+    for change in &preflight.compatibility.breaking_changes {
+        println!("  - {}: {}", change.entity, change.description);
+    }
+}
+
+// Check relationship impact
+println!("Relationships affected: {}", preflight.impact.affected_relationships);
+println!("Relationships invalidated: {}", preflight.impact.invalidated_relationships);
+
+// Check test results (if schema includes tests)
+if let Some(tests) = &preflight.test_results {
+    println!("Tests: {} passed, {} failed", tests.passed, tests.failed);
+    for failure in &tests.failures {
+        println!("  FAIL: {} - {}", failure.name, failure.message);
+    }
+}
+
+// Review recommendations
+for rec in &preflight.recommendations {
+    match rec.severity {
+        Severity::Error => println!("ERROR: {}", rec.message),
+        Severity::Warning => println!("WARNING: {}", rec.message),
+        Severity::Info => println!("INFO: {}", rec.message),
+    }
+}
+```
+
+### Schema Types
+
+```rust
+#[derive(Debug, Clone)]
+pub struct SchemaVersion {
+    pub id: String,
+    pub vault_id: String,
+    pub active: bool,
+    pub message: Option<String>,
+    pub created_by: String,
+    pub created_at: DateTime<Utc>,
+    pub activated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SchemaDiff {
+    pub added_entities: Vec<String>,
+    pub removed_entities: Vec<String>,
+    pub modified_entities: Vec<EntityDiff>,
+    pub has_breaking_changes: bool,
+    pub breaking_changes: Vec<BreakingChange>,
+}
+
+#[derive(Debug, Clone)]
+pub struct EntityDiff {
+    pub name: String,
+    pub added_relations: Vec<String>,
+    pub removed_relations: Vec<String>,
+    pub modified_relations: Vec<RelationDiff>,
+    pub added_permissions: Vec<String>,
+    pub removed_permissions: Vec<String>,
+    pub modified_permissions: Vec<PermissionDiff>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BreakingChange {
+    pub entity: String,
+    pub change_type: BreakingChangeType,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum BreakingChangeType {
+    EntityRemoved,
+    RelationRemoved,
+    PermissionRemoved,
+    TypeNarrowed,
+}
+
+#[derive(Debug, Clone)]
+pub struct CanaryStatus {
+    pub active: bool,
+    pub percentage: u8,
+    pub started_at: DateTime<Utc>,
+    pub baseline_version: String,
+    pub canary_version: String,
+    pub canary_metrics: SchemaMetrics,
+    pub baseline_metrics: SchemaMetrics,
+    pub has_anomalies: bool,
+    pub anomalies: Vec<Anomaly>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SchemaMetrics {
+    pub request_count: u64,
+    pub error_count: u64,
+    pub error_rate: f64,
+    pub p50_latency: Duration,
+    pub p99_latency: Duration,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreflightResult {
+    pub validation: ValidationResult,
+    pub compatibility: CompatibilityResult,
+    pub impact: ImpactSummary,
+    pub test_results: Option<TestResults>,
+    pub recommendations: Vec<Recommendation>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ValidationResult {
+    pub valid: bool,
+    pub errors: Vec<ValidationError>,
+    pub warnings: Vec<ValidationWarning>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompatibilityResult {
+    pub has_breaking_changes: bool,
+    pub breaking_changes: Vec<BreakingChange>,
+    pub compatible_with_current: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ImpactSummary {
+    pub affected_relationships: u64,
+    pub invalidated_relationships: u64,
+    pub affected_entities: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TestResults {
+    pub total: u32,
+    pub passed: u32,
+    pub failed: u32,
+    pub skipped: u32,
+    pub failures: Vec<TestFailure>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Recommendation {
+    pub severity: Severity,
+    pub code: String,
+    pub message: String,
+    pub suggestion: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Severity {
+    Error,
+    Warning,
+    Info,
+}
 ```
 
 ---
 
 ## Audit Logs
 
-```rust
-use inferadb::AuditFilter;
-use chrono::{Utc, Duration};
+Query and analyze audit logs for compliance and debugging.
 
-// List recent audit logs
-let logs = client
+### Query Audit Logs
+
+```rust
+// List recent audit events
+let events = client
     .control()
-    .audit_logs("org_id")
+    .organization(&org_id)
+    .audit_logs()
     .list()
     .await?;
 
-for log in logs {
-    println!(
-        "[{}] {} performed {} on {}",
-        log.timestamp, log.actor, log.action, log.resource
+for event in &events {
+    println!("[{}] {} performed {} on {}",
+        event.timestamp,
+        event.actor,
+        event.action,
+        event.resource
     );
 }
 
-// Filter audit logs
+// Filter by actor
+let user_events = client
+    .control()
+    .organization(&org_id)
+    .audit_logs()
+    .actor(&user_id)
+    .list()
+    .await?;
+
+// Filter by action
+let create_events = client
+    .control()
+    .organization(&org_id)
+    .audit_logs()
+    .action("vault.create")
+    .list()
+    .await?;
+
+// Filter by resource
+let vault_events = client
+    .control()
+    .organization(&org_id)
+    .audit_logs()
+    .resource_type("vault")
+    .resource_id(&vault_id)
+    .list()
+    .await?;
+
+// Time range filter
+let recent_events = client
+    .control()
+    .organization(&org_id)
+    .audit_logs()
+    .from(start_time)
+    .to(end_time)
+    .list()
+    .await?;
+
+// Combine filters
 let filtered = client
     .control()
-    .audit_logs("org_id")
-    .filter(AuditFilter::new()
-        .actor("user:alice")
-        .action("create")
-        .resource_type("vault")
-        .since(Utc::now() - Duration::days(7)))
+    .organization(&org_id)
+    .audit_logs()
+    .actor(&user_id)
+    .action("relationship.write")
+    .from(start_time)
+    .list()
     .await?;
 ```
 
----
-
----
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     PART 5: DEVELOPER EXPERIENCE
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-## Error Handling
-
-> **TL;DR**: All errors are in `Error` enum. Use `.is_retryable()` for retry decisions, `.kind()` for matching.
-
-### Error Types
+### Stream Audit Logs
 
 ```rust
-use inferadb::{Error, Result};
+// Stream for large result sets
+let mut stream = client
+    .control()
+    .organization(&org_id)
+    .audit_logs()
+    .from(start_time)
+    .stream();
 
-fn example() -> Result<()> {
-    let result = client.check("user:alice", "view", "doc:readme").await;
+while let Some(event) = stream.try_next().await? {
+    process_audit_event(event);
+}
 
-    match result {
-        Ok(allowed) => {
-            println!("Decision: {}", allowed);
-        }
-        Err(Error::Unauthorized) => {
-            // Token expired or invalid
-            // SDK should auto-refresh, but handle edge cases
-        }
-        Err(Error::Forbidden { message }) => {
-            // Insufficient permissions for this operation
-            println!("Access denied: {}", message);
-        }
-        Err(Error::NotFound { resource }) => {
-            // Resource doesn't exist
-            println!("Not found: {}", resource);
-        }
-        Err(Error::RevisionMismatch { expected, actual }) => {
-            // Optimistic concurrency conflict
-            println!("Conflict: expected {}, got {}", expected, actual);
-        }
-        Err(Error::RateLimited { retry_after }) => {
-            // Rate limited, wait and retry
-            tokio::time::sleep(retry_after).await;
-        }
-        Err(Error::ValidationError { field, message }) => {
-            // Invalid request
-            println!("Invalid {}: {}", field, message);
-        }
-        Err(Error::Network(e)) => {
-            // Network error
-            println!("Network error: {}", e);
-        }
-        Err(Error::Internal(e)) => {
-            // Server error
-            println!("Server error: {}", e);
-        }
-    }
+// Export to file
+client
+    .control()
+    .organization(&org_id)
+    .audit_logs()
+    .from(start_time)
+    .to(end_time)
+    .export_to("audit-export.json")
+    .await?;
+```
 
-    Ok(())
+### Audit Log Types
+
+```rust
+#[derive(Debug, Clone)]
+pub struct AuditEvent {
+    pub id: String,
+    pub timestamp: DateTime<Utc>,
+    pub actor: AuditActor,
+    pub action: String,
+    pub resource_type: String,
+    pub resource_id: String,
+    pub organization_id: String,
+    pub vault_id: Option<String>,
+    pub metadata: AuditMetadata,
+    pub outcome: AuditOutcome,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuditActor {
+    pub id: String,
+    pub actor_type: ActorType,
+    pub name: String,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActorType {
+    User,
+    ApiClient,
+    System,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuditMetadata {
+    pub request_id: String,
+    pub changes: Option<serde_json::Value>,
+    pub previous_state: Option<serde_json::Value>,
+    pub new_state: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuditOutcome {
+    Success,
+    Failure,
+    Denied,
+}
+
+/// Common audit actions
+pub mod actions {
+    // Organization
+    pub const ORG_CREATE: &str = "organization.create";
+    pub const ORG_UPDATE: &str = "organization.update";
+    pub const ORG_DELETE: &str = "organization.delete";
+    pub const ORG_SUSPEND: &str = "organization.suspend";
+
+    // Vault
+    pub const VAULT_CREATE: &str = "vault.create";
+    pub const VAULT_UPDATE: &str = "vault.update";
+    pub const VAULT_DELETE: &str = "vault.delete";
+
+    // Schema
+    pub const SCHEMA_PUSH: &str = "schema.push";
+    pub const SCHEMA_ACTIVATE: &str = "schema.activate";
+    pub const SCHEMA_ROLLBACK: &str = "schema.rollback";
+
+    // Relationships
+    pub const RELATIONSHIP_WRITE: &str = "relationship.write";
+    pub const RELATIONSHIP_DELETE: &str = "relationship.delete";
+
+    // Members
+    pub const MEMBER_INVITE: &str = "member.invite";
+    pub const MEMBER_REMOVE: &str = "member.remove";
+    pub const MEMBER_ROLE_UPDATE: &str = "member.role_update";
 }
 ```
 
-### Error Context
+---
+
+## JWKS Operations
+
+Retrieve JSON Web Key Sets for token verification.
+
+### Service JWKS
 
 ```rust
-use inferadb::Error;
+// Get service-level JWKS
+let jwks = client.jwks().service().await?;
 
-// Errors include context for debugging
-let err = client.check("bad:subject", "view", "doc:1").await.unwrap_err();
+println!("Keys:");
+for key in &jwks.keys {
+    println!("  {}: {} ({})",
+        key.kid,
+        key.kty,
+        key.alg.as_deref().unwrap_or("unspecified")
+    );
+}
 
-println!("Error: {}", err);
-println!("Request ID: {:?}", err.request_id());
-println!("Retry safe: {}", err.is_retryable());
+// Get JWKS URL for service
+let url = client.jwks().service_url();
+println!("JWKS URL: {}", url);
+```
 
-// Display shows user-friendly message
-// Debug shows full context including request ID
+### Organization JWKS
+
+```rust
+// Get organization-specific JWKS
+let jwks = client.jwks().organization(&org_id).await?;
+
+// Get JWKS URL for organization
+let url = client.jwks().organization_url(&org_id);
+```
+
+### Token Verification
+
+```rust
+// Fetch JWKS and verify token locally
+let jwks = client.jwks().service().await?;
+
+// Use with a JWT library like jsonwebtoken
+use jsonwebtoken::{decode, DecodingKey, Validation};
+
+let key = jwks.find_key(&kid)?;
+let decoding_key = DecodingKey::from_jwk(key)?;
+let token_data = decode::<Claims>(token, &decoding_key, &Validation::default())?;
+```
+
+### JWKS Types
+
+```rust
+#[derive(Debug, Clone)]
+pub struct Jwks {
+    pub keys: Vec<Jwk>,
+}
+
+impl Jwks {
+    /// Find key by key ID
+    pub fn find_key(&self, kid: &str) -> Option<&Jwk> {
+        self.keys.iter().find(|k| k.kid == kid)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Jwk {
+    pub kty: String,
+    pub kid: String,
+    pub alg: Option<String>,
+    pub use_: Option<String>,
+
+    // RSA keys
+    pub n: Option<String>,
+    pub e: Option<String>,
+
+    // EC keys
+    pub crv: Option<String>,
+    pub x: Option<String>,
+    pub y: Option<String>,
+
+    // OKP keys (EdDSA)
+    pub crv_okp: Option<String>,
+    pub x_okp: Option<String>,
+}
+```
+
+---
+
+## Authentication Flows
+
+Interactive and programmatic authentication flows for CLI and application use.
+
+### OAuth PKCE Flow
+
+Browser-based authentication for CLI and desktop applications.
+
+```rust
+use inferadb::auth::{OAuthPkce, OAuthConfig};
+
+// Configure OAuth
+let config = OAuthConfig {
+    client_id: "cli-client".into(),
+    redirect_uri: "http://localhost:8080/callback".into(),
+    scopes: vec!["openid", "profile", "offline_access"],
+};
+
+// Start OAuth PKCE flow
+let oauth = OAuthPkce::new(config);
+let (auth_url, state) = oauth.start_flow()?;
+
+println!("Open this URL in your browser:");
+println!("{}", auth_url);
+
+// Wait for callback (OAuth state includes PKCE verifier)
+// Your app should handle the redirect and extract the code
+let code = wait_for_callback(&state).await?;
+
+// Complete the flow
+let tokens = oauth.complete_flow(code, state).await?;
+
+println!("Access token: {}", tokens.access_token);
+println!("Expires in: {:?}", tokens.expires_in);
+
+// Build client with tokens
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .access_token(&tokens.access_token)
+    .build()
+    .await?;
+```
+
+**Local Server Helper**:
+
+```rust
+// SDK can spin up a local server to receive the callback
+let oauth = OAuthPkce::new(config);
+let tokens = oauth
+    .with_local_server(8080)  // Listen on localhost:8080
+    .open_browser(true)        // Automatically open browser
+    .timeout(Duration::from_secs(300))  // 5 minute timeout
+    .execute()
+    .await?;
+
+// Tokens received automatically
+println!("Logged in successfully!");
+```
+
+### Token Management
+
+```rust
+// Inspect token without verification
+let info = client.tokens().inspect(&token_string)?;
+
+println!("Subject: {}", info.subject);
+println!("Issuer: {}", info.issuer);
+println!("Expires: {:?}", info.expires_at);
+println!("Scopes: {:?}", info.scopes);
+println!("Claims: {:?}", info.claims);
+
+// Verify token signature (fetches JWKS if needed)
+let verified = client.tokens().verify(&token_string).await?;
+
+if verified.valid {
+    println!("Token is valid");
+    println!("Subject: {}", verified.claims.subject);
+} else {
+    println!("Token invalid: {}", verified.error.unwrap());
+}
+
+// Manual token refresh
+let new_tokens = client.tokens().refresh(&refresh_token).await?;
+
+println!("New access token: {}", new_tokens.access_token);
+```
+
+**Auto-Refresh Configuration**:
+
+```rust
+// Client with automatic token refresh
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .access_token(&tokens.access_token)
+    .refresh_token(&tokens.refresh_token)
+    .auto_refresh(true)  // Automatically refresh before expiry
+    .refresh_threshold(Duration::from_secs(60))  // Refresh 60s before expiry
+    .on_token_refresh(|new_tokens| {
+        // Save new tokens to secure storage
+        save_tokens(new_tokens);
+    })
+    .build()
+    .await?;
+```
+
+### Registration
+
+```rust
+// User registration
+let result = client
+    .auth()
+    .register(RegisterRequest {
+        email: "user@example.com".into(),
+        name: "User Name".into(),
+        password: "secure_password".into(),
+    })
+    .await?;
+
+match result {
+    RegisterResult::Success { user_id, verification_required } => {
+        println!("Registered user: {}", user_id);
+        if verification_required {
+            println!("Check email for verification link");
+        }
+    }
+    RegisterResult::EmailExists => {
+        println!("Email already registered");
+    }
+}
+
+// Verify email
+client
+    .auth()
+    .verify_email(verification_token)
+    .await?;
+```
+
+### Logout
+
+```rust
+// Logout (revoke current token)
+client.auth().logout().await?;
+
+// Logout from all devices
+client.auth().logout_all().await?;
+```
+
+### Authentication Types
+
+```rust
+#[derive(Debug, Clone)]
+pub struct OAuthConfig {
+    pub client_id: String,
+    pub redirect_uri: String,
+    pub scopes: Vec<&'static str>,
+    pub authorization_endpoint: Option<String>,
+    pub token_endpoint: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct OAuthTokens {
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub token_type: String,
+    pub expires_in: Option<Duration>,
+    pub scope: Option<String>,
+    pub id_token: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TokenInfo {
+    pub subject: String,
+    pub issuer: String,
+    pub audience: Vec<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub issued_at: Option<DateTime<Utc>>,
+    pub scopes: Vec<String>,
+    pub claims: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TokenVerification {
+    pub valid: bool,
+    pub claims: Option<TokenInfo>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegisterRequest {
+    pub email: String,
+    pub name: String,
+    pub password: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum RegisterResult {
+    Success {
+        user_id: String,
+        verification_required: bool,
+    },
+    EmailExists,
+    WeakPassword(Vec<String>),
+    InvalidEmail,
+}
+```
+
+---
+
+## Error Handling
+
+### Error Type Design
+
+```rust
+#[derive(Debug)]
+pub struct Error {
+    kind: ErrorKind,
+    message: String,
+    source: Option<Box<dyn std::error::Error + Send + Sync>>,
+
+    // Protocol-native details
+    request_id: Option<String>,
+    retry_after: Option<Duration>,
+    grpc_status: Option<GrpcStatus>,
+    http_status: Option<u16>,
+
+    // For schema/authorization errors
+    details: Option<ErrorDetails>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorKind {
+    // Client errors (4xx)
+    InvalidInput,
+    Unauthorized,
+    Forbidden,
+    NotFound,
+    Conflict,
+    RateLimited,
+    PreconditionFailed,
+
+    // Server errors (5xx)
+    ServerError,
+    ServiceUnavailable,
+
+    // Network errors
+    ConnectionFailed,
+    Timeout,
+    TlsError,
+
+    // Protocol errors
+    ProtocolError,
+    InvalidResponse,
+
+    // Authorization-specific errors
+    SchemaViolation,
+    CyclicRelationship,
+    MaxDepthExceeded,
+
+    // SDK errors
+    ConfigurationError,
+    SerializationError,
+    BuildError,
+}
+```
+
+### Protocol-Native Error Details
+
+Expose underlying protocol information for debugging and observability:
+
+```rust
+impl Error {
+    // Core accessors
+    pub fn kind(&self) -> ErrorKind { self.kind }
+    pub fn message(&self) -> &str { &self.message }
+    pub fn request_id(&self) -> Option<&str> { self.request_id.as_deref() }
+
+    // Retry guidance
+    pub fn retry_after(&self) -> Option<Duration> { self.retry_after }
+    pub fn is_retriable(&self) -> bool {
+        matches!(self.kind, ErrorKind::Timeout | ErrorKind::ConnectionFailed |
+                 ErrorKind::ServiceUnavailable | ErrorKind::RateLimited)
+    }
+
+    // Protocol-specific details
+    pub fn http_status(&self) -> Option<u16> { self.http_status }
+    pub fn grpc_status(&self) -> Option<&GrpcStatus> { self.grpc_status.as_ref() }
+
+    // Authorization-specific details
+    pub fn schema_error(&self) -> Option<&SchemaError> {
+        self.details.as_ref().and_then(|d| d.schema_error.as_ref())
+    }
+}
+
+/// gRPC status information (when using gRPC transport)
+#[derive(Debug, Clone)]
+pub struct GrpcStatus {
+    pub code: i32,          // tonic::Code as i32
+    pub message: String,
+    pub details: Vec<u8>,   // Serialized google.rpc.Status details
+}
+
+/// Extended error details for authorization failures
+#[derive(Debug, Clone)]
+pub enum ErrorDetails {
+    /// Schema validation failure
+    Schema(SchemaError),
+
+    /// Authorization check details (why denied)
+    Authorization(AuthorizationError),
+
+    /// Precondition failure details
+    Precondition(PreconditionError),
+}
+
+#[derive(Debug, Clone)]
+pub struct SchemaError {
+    pub entity_type: Option<String>,
+    pub relation: Option<String>,
+    pub violation: SchemaViolation,
+}
+
+#[derive(Debug, Clone)]
+pub enum SchemaViolation {
+    UnknownEntityType,
+    UnknownRelation,
+    InvalidSubjectType { expected: Vec<String>, got: String },
+    CyclicRelationship { path: Vec<String> },
+}
+
+#[derive(Debug, Clone)]
+pub struct AuthorizationError {
+    pub subject: String,
+    pub permission: String,
+    pub resource: String,
+    pub reason: DenialReason,
+}
+
+#[derive(Debug, Clone)]
+pub enum DenialReason {
+    NoPath,                    // No relationship path exists
+    ConditionFailed(String),   // ABAC condition failed
+    Explicit,                  // Explicit deny rule
+}
+```
+
+**Using Protocol Details**:
+
+```rust
+match vault.write(relationship).await {
+    Ok(_) => {},
+    Err(e) => {
+        // Log with full context
+        tracing::error!(
+            error_kind = ?e.kind(),
+            request_id = ?e.request_id(),
+            http_status = ?e.http_status(),
+            grpc_code = ?e.grpc_status().map(|s| s.code),
+            "Write failed: {}",
+            e.message()
+        );
+
+        // Handle schema-specific errors
+        if let Some(schema_err) = e.schema_error() {
+            match &schema_err.violation {
+                SchemaViolation::UnknownRelation => {
+                    eprintln!("Unknown relation '{}' on type '{}'",
+                        schema_err.relation.as_deref().unwrap_or("?"),
+                        schema_err.entity_type.as_deref().unwrap_or("?"));
+                }
+                SchemaViolation::InvalidSubjectType { expected, got } => {
+                    eprintln!("Invalid subject type: expected {:?}, got {}", expected, got);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+```
+
+### Error Handling Patterns
+
+```rust
+use inferadb::{Error, ErrorKind};
+
+match vault.check("user:alice", "view", "doc:1").await {
+    Ok(allowed) => println!("Allowed: {}", allowed),
+    Err(e) => {
+        match e.kind() {
+            ErrorKind::Unauthorized => {
+                // Re-authenticate
+            }
+            ErrorKind::RateLimited => {
+                // Back off
+                if let Some(retry_after) = e.retry_after() {
+                    tokio::time::sleep(retry_after).await;
+                }
+            }
+            ErrorKind::Timeout | ErrorKind::ServiceUnavailable => {
+                // Retry with backoff
+            }
+            _ => {
+                // Log and fail
+                eprintln!("Error: {} (request_id: {:?})", e, e.request_id());
+            }
+        }
+    }
+}
 ```
 
 ---
 
 ## Retry & Resilience
 
-### Automatic Retries
-
-The SDK automatically retries on transient failures:
+### Automatic Retry
 
 ```rust
-// Default retry behavior
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .retry(RetryConfig::default())  // 3 attempts, exponential backoff
+    .retries(Retries::default()
+        .max_retries(3)
+        .initial_backoff(Duration::from_millis(100))
+        .max_backoff(Duration::from_secs(10))
+        .backoff_multiplier(2.0)
+        .jitter(0.1))
     .build()
-    .await?;
-
-// Custom retry configuration
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .retry(RetryConfig {
-        max_attempts: 5,
-        initial_backoff: Duration::from_millis(50),
-        max_backoff: Duration::from_secs(30),
-        backoff_multiplier: 2.0,
-        retryable_status_codes: vec![429, 500, 502, 503, 504],
-        retryable_errors: vec![
-            RetryableError::ConnectionReset,
-            RetryableError::Timeout,
-        ],
-    })
-    .build()
-    .await?;
-
-// Disable retries for specific operation
-let result = client
-    .check("user:alice", "view", "doc:readme")
-    .no_retry()
     .await?;
 ```
 
-### Circuit Breaker
+### Retriable Errors
+
+| Error Kind           | Retriable | Notes                  |
+| -------------------- | --------- | ---------------------- |
+| `Timeout`            | Yes       | Network timeout        |
+| `ConnectionFailed`   | Yes       | Connection dropped     |
+| `ServiceUnavailable` | Yes       | Server overloaded      |
+| `RateLimited`        | Yes       | With `retry_after`     |
+| `ServerError`        | Maybe     | 5xx without body       |
+| `Unauthorized`       | No        | Credentials invalid    |
+| `Forbidden`          | No        | Permission denied      |
+| `NotFound`           | No        | Resource doesn't exist |
+| `InvalidInput`       | No        | Bad request            |
+
+### Retry Budget
 
 ```rust
-use inferadb::CircuitBreakerConfig;
-
+// Prevent retry storms under load
 let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .circuit_breaker(CircuitBreakerConfig {
-        failure_threshold: 5,      // Open after 5 failures
-        success_threshold: 3,      // Close after 3 successes
-        half_open_timeout: Duration::from_secs(30),
-    })
+    .retries(Retries::default()
+        .retry_budget(RetryBudget::new()
+            .ttl(Duration::from_secs(10))
+            .min_retries_per_second(10)
+            .retry_ratio(0.1)))  // Max 10% retries
     .build()
     .await?;
 ```
+
+### Idempotency-Aware Retry Policy
+
+Mutations require different retry behavior than reads:
+
+```rust
+/// Retry policy that considers operation idempotency
+#[derive(Debug, Clone)]
+pub struct RetryPolicy {
+    /// For read operations (check, list, expand) - always safe to retry
+    pub reads: RetryConfig,
+
+    /// For idempotent writes (with request_id) - safe to retry
+    pub idempotent_writes: RetryConfig,
+
+    /// For non-idempotent writes - retry only on connection errors before send
+    pub non_idempotent_writes: RetryConfig,
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self {
+            reads: RetryConfig::default()
+                .max_retries(3)
+                .initial_backoff(Duration::from_millis(50)),
+
+            idempotent_writes: RetryConfig::default()
+                .max_retries(3)
+                .initial_backoff(Duration::from_millis(100)),
+
+            // Only retry if we know the request wasn't sent
+            non_idempotent_writes: RetryConfig::default()
+                .max_retries(1)
+                .retry_on(RetryOn::ConnectionError)  // Not server errors
+        }
+    }
+}
+```
+
+**How the SDK Determines Idempotency**:
+
+```rust
+// Automatically idempotent: reads
+vault.check("user:alice", "view", "doc:1").await?;  // Safe to retry
+
+// Idempotent by request_id: writes with explicit ID
+vault
+    .write(Relationship::new("doc:1", "viewer", "user:alice"))
+    .request_id(Uuid::new_v4())  // Server deduplicates by request_id
+    .await?;  // Safe to retry with same request_id
+
+// Non-idempotent: writes without request_id
+vault
+    .write(Relationship::new("doc:1", "viewer", "user:alice"))
+    // No request_id - could create duplicates if retried incorrectly
+    .await?;  // Only retry on connection errors before send
+```
+
+**Configuring Idempotency Behavior**:
+
+```rust
+let client = Client::builder()
+    .retry_policy(RetryPolicy {
+        reads: RetryConfig::default().max_retries(5),
+        idempotent_writes: RetryConfig::default().max_retries(3),
+        non_idempotent_writes: RetryConfig::disabled(),  // Never retry
+    })
+    .auto_request_id(true)  // All writes get request IDs automatically
+    .build()
+    .await?;
+```
+
+**Retry Decision Matrix**:
+
+| Operation  | Has Request ID        | Error Type            | Retry?      |
+| ---------- | --------------------- | --------------------- | ----------- |
+| `check()`  | N/A                   | Any transient         | Yes         |
+| `write()`  | Yes                   | Any transient         | Yes         |
+| `write()`  | No                    | Connection (pre-send) | Yes         |
+| `write()`  | No                    | Connection (mid-send) | No (unsafe) |
+| `write()`  | No                    | Server error          | No (unsafe) |
+| `delete()` | Inherently idempotent | Any transient         | Yes         |
 
 ---
 
 ## Graceful Degradation
 
-Handle InferaDB unavailability gracefully with configurable fallback strategies.
-
 ### Fail-Open vs Fail-Closed
 
 ```rust
-use inferadb::fallback::{FallbackPolicy, FallbackDecision};
-
-// Fail-closed (default): Deny access when InferaDB is unavailable
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .fallback(FallbackPolicy::Deny)  // Default behavior
-    .build()
-    .await?;
-
-// Fail-open: Allow access when InferaDB is unavailable (use with caution!)
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .fallback(FallbackPolicy::Allow)
-    .build()
-    .await?;
-```
-
-### Custom Fallback Logic
-
-```rust
-use inferadb::fallback::{FallbackPolicy, FallbackContext};
-
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .fallback(FallbackPolicy::Custom(|ctx: FallbackContext| {
-        // Allow read operations, deny writes when degraded
-        match ctx.permission.as_str() {
-            "view" | "read" | "list" => FallbackDecision::Allow,
-            _ => FallbackDecision::Deny,
-        }
-    }))
-    .build()
-    .await?;
-```
-
-### Cached Fallback
-
-Use cached decisions as fallback when server is unavailable:
-
-```rust
-use inferadb::fallback::CachedFallback;
-
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .cache(CacheConfig { ttl: Duration::from_secs(300), .. })
-    .fallback(CachedFallback::new()
-        .max_age(Duration::from_secs(600))  // Use cache up to 10 min old
-        .on_miss(FallbackPolicy::Deny))     // Deny if not in cache
-    .build()
-    .await?;
-```
-
-### Health Checks
-
-Integrate with your service health checks:
-
-```rust
-// Check InferaDB health
-let health = client.health().await?;
-
-println!("Status: {:?}", health.status);  // Healthy, Degraded, Unhealthy
-println!("Latency: {:?}", health.latency);
-println!("Version: {}", health.version);
-
-// Use in health endpoint
-async fn health_check(client: &Client) -> impl IntoResponse {
-    match client.health().await {
-        Ok(h) if h.status == HealthStatus::Healthy => StatusCode::OK,
-        Ok(h) if h.status == HealthStatus::Degraded => StatusCode::OK,  // Still operational
-        _ => StatusCode::SERVICE_UNAVAILABLE,
-    }
-}
-```
-
-### Deadline Propagation
-
-Propagate request deadlines through authorization checks to prevent cascading timeouts.
-
-#### Basic Deadline
-
-```rust
-use std::time::Duration;
-
-// Set deadline for this request
+// Fail-closed (default, more secure)
 let allowed = client
     .check("user:alice", "view", "document:readme")
-    .deadline(Duration::from_millis(100))  // Fail fast if > 100ms
-    .await?;
+    .on_error(OnError::Deny)  // Default
+    .await
+    .unwrap_or(false);
+
+// Fail-open (for non-critical paths)
+let allowed = client
+    .check("user:alice", "view", "document:readme")
+    .on_error(OnError::Allow)
+    .await
+    .unwrap_or(true);
 ```
 
-#### Inheriting Deadlines from Incoming Requests
-
-For service-to-service calls, inherit the caller's deadline:
+### Circuit Breaker
 
 ```rust
-// Axum handler with deadline propagation
-async fn get_document(
-    State(client): State<Client>,
-    headers: HeaderMap,
-    Path(doc_id): Path<String>,
-) -> Result<Json<Document>, StatusCode> {
-    // Extract deadline from gRPC-style header
-    let deadline = headers
-        .get("grpc-timeout")
-        .and_then(|v| parse_grpc_timeout(v))
-        .unwrap_or(Duration::from_secs(30));
+use inferadb::resilience::CircuitBreaker;
 
-    // Reserve time for our own processing
-    let auth_deadline = deadline.saturating_sub(Duration::from_millis(50));
-
-    let allowed = client
-        .check(&current_user(), "view", &format!("document:{}", doc_id))
-        .deadline(auth_deadline)
-        .await
-        .map_err(|_| StatusCode::GATEWAY_TIMEOUT)?;
-
-    if !allowed {
-        return Err(StatusCode::FORBIDDEN);
-    }
-
-    // Remaining time for database query
-    let db_deadline = deadline.saturating_sub(Duration::from_millis(100));
-    let doc = db.fetch_with_timeout(doc_id, db_deadline).await?;
-
-    Ok(Json(doc))
-}
-```
-
-#### Tower/Tonic Deadline Integration
-
-```rust
-use tower::timeout::Timeout;
-use tonic::Request;
-
-// Extract deadline from tonic request
-fn deadline_from_tonic<T>(req: &Request<T>) -> Option<Duration> {
-    req.metadata()
-        .get("grpc-timeout")
-        .and_then(|v| v.to_str().ok())
-        .and_then(parse_grpc_timeout)
-}
-
-// Or use tonic's built-in deadline
-fn deadline_from_request<T>(req: &Request<T>) -> Option<Duration> {
-    req.extensions()
-        .get::<tower::timeout::TimeoutLayer>()
-        .map(|t| t.timeout())
-}
-
-// gRPC service implementation
-#[tonic::async_trait]
-impl MyService for MyServiceImpl {
-    async fn get_resource(
-        &self,
-        request: Request<GetResourceRequest>,
-    ) -> Result<Response<GetResourceResponse>, Status> {
-        // Propagate deadline to authorization
-        let deadline = deadline_from_tonic(&request)
-            .unwrap_or(Duration::from_secs(30));
-
-        let allowed = self.auth_client
-            .check(&request.get_ref().user_id, "view", &request.get_ref().resource_id)
-            .deadline(deadline.saturating_sub(Duration::from_millis(10)))
-            .await
-            .map_err(|e| Status::deadline_exceeded(e.to_string()))?;
-
-        // ...
-    }
-}
-```
-
-#### Deadline Budget Tracking
-
-Track deadline budget across multiple operations:
-
-```rust
-use inferadb::deadline::DeadlineBudget;
-
-async fn complex_operation(client: &Client, user: &str) -> Result<(), Error> {
-    // Start with 500ms budget
-    let mut budget = DeadlineBudget::new(Duration::from_millis(500));
-
-    // First check consumes some budget
-    let allowed1 = client
-        .check(user, "view", "resource:1")
-        .deadline(budget.remaining())
-        .await?;
-    budget.record_elapsed();  // Updates remaining time
-
-    // Second check uses remaining budget
-    let allowed2 = client
-        .check(user, "edit", "resource:1")
-        .deadline(budget.remaining())
-        .await?;
-    budget.record_elapsed();
-
-    // Check if we have time left for more work
-    if budget.remaining() < Duration::from_millis(50) {
-        return Err(Error::DeadlineExceeded {
-            budget: Duration::from_millis(500),
-            elapsed: budget.elapsed(),
-        });
-    }
-
-    // Continue with remaining budget...
-    Ok(())
-}
-```
-
-#### Deadline Behavior
-
-| Scenario | Behavior |
-|----------|----------|
-| Deadline expires during request | Returns `Error::DeadlineExceeded` |
-| Deadline expires during retry | No more retries attempted |
-| Zero deadline | Request executed without timeout |
-| Negative remaining deadline | Immediate `Error::DeadlineExceeded` |
-
-```rust
-// Deadline affects retry behavior
-let result = client
-    .check("user:alice", "view", "doc:1")
-    .deadline(Duration::from_millis(100))
-    .retry(RetryConfig { max_attempts: 3, .. })  // Won't retry if deadline exceeded
-    .await;
-
-match result {
-    Err(Error::DeadlineExceeded { elapsed, deadline }) => {
-        tracing::warn!(
-            "Authorization timed out after {:?} (deadline: {:?})",
-            elapsed, deadline
-        );
-    }
-    // ...
-}
-```
-
-### Degradation Events
-
-Subscribe to degradation events for monitoring:
-
-```rust
-client
-    .on_degradation(|event| {
-        match event {
-            DegradationEvent::CircuitOpen { since, failures } => {
-                tracing::warn!("Circuit breaker opened after {} failures", failures);
-                metrics::counter!("inferadb.circuit_open").increment(1);
-            }
-            DegradationEvent::FallbackUsed { reason, decision } => {
-                tracing::info!("Using fallback: {:?} -> {:?}", reason, decision);
-            }
-            DegradationEvent::Recovered { downtime } => {
-                tracing::info!("InferaDB recovered after {:?}", downtime);
-            }
-        }
-    })
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .circuit_breaker(CircuitBreaker::default()
+        .failure_threshold(5)
+        .success_threshold(2)
+        .timeout(Duration::from_secs(30)))
     .build()
     .await?;
+
+// Check circuit state
+if client.circuit_state() == CircuitState::Open {
+    // Use fallback
+    return Ok(cached_decision);
+}
 ```
 
 ---
 
 ## Observability
 
+### Health Checks
+
+Monitor service health and component status.
+
+```rust
+// Basic health check
+let health = client.health().await?;
+
+println!("Status: {:?}", health.status);
+println!("Healthy: {}", health.is_healthy());
+
+// Detailed health check
+let health = client
+    .health()
+    .verbose(true)
+    .await?;
+
+println!("Overall: {:?}", health.status);
+for (component, status) in &health.components {
+    println!("  {}: {:?}", component, status.status);
+    if let Some(message) = &status.message {
+        println!("    {}", message);
+    }
+}
+
+// Check specific components
+let health = client
+    .health()
+    .components(&["api", "storage", "cache"])
+    .await?;
+```
+
+**Health Types**:
+
+```rust
+#[derive(Debug, Clone)]
+pub struct HealthResponse {
+    pub status: HealthStatus,
+    pub version: String,
+    pub components: HashMap<String, ComponentHealth>,
+    pub timestamp: DateTime<Utc>,
+}
+
+impl HealthResponse {
+    pub fn is_healthy(&self) -> bool {
+        self.status == HealthStatus::Healthy
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HealthStatus {
+    Healthy,
+    Degraded,
+    Unhealthy,
+}
+
+#[derive(Debug, Clone)]
+pub struct ComponentHealth {
+    pub status: HealthStatus,
+    pub message: Option<String>,
+    pub latency: Option<Duration>,
+    pub last_check: DateTime<Utc>,
+}
+```
+
+### Ping & Latency
+
+Measure network latency and connectivity.
+
+```rust
+// Simple ping
+let latency = client.ping().await?;
+println!("Latency: {:?}", latency);
+
+// Ping with statistics
+let stats = client
+    .ping()
+    .count(10)
+    .await?;
+
+println!("Ping statistics:");
+println!("  Min: {:?}", stats.min);
+println!("  Max: {:?}", stats.max);
+println!("  Avg: {:?}", stats.avg);
+println!("  Stddev: {:?}", stats.stddev);
+println!("  Packet loss: {:.1}%", stats.packet_loss_percent());
+
+// Ping specific target
+let stats = client
+    .ping()
+    .target(PingTarget::Engine)  // or Control, or specific endpoint
+    .count(5)
+    .await?;
+```
+
+**Ping Types**:
+
+```rust
+#[derive(Debug, Clone)]
+pub struct PingStats {
+    pub count: u32,
+    pub successful: u32,
+    pub failed: u32,
+    pub min: Duration,
+    pub max: Duration,
+    pub avg: Duration,
+    pub stddev: Duration,
+    pub samples: Vec<Duration>,
+}
+
+impl PingStats {
+    pub fn packet_loss_percent(&self) -> f64 {
+        if self.count == 0 { 0.0 }
+        else { (self.failed as f64 / self.count as f64) * 100.0 }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PingTarget {
+    /// Default - pings the configured endpoint
+    Default,
+    /// Ping the engine API
+    Engine,
+    /// Ping the control API
+    Control,
+}
+```
+
+### Diagnostics
+
+Comprehensive connectivity and configuration diagnostics.
+
+```rust
+// Run full diagnostics
+let diagnostics = client
+    .diagnostics()
+    .run()
+    .await?;
+
+println!("Diagnostics Report");
+println!("==================");
+
+for check in &diagnostics.checks {
+    let icon = if check.passed { "✓" } else { "✗" };
+    println!("{} {}: {}", icon, check.name, check.message);
+
+    if let Some(suggestion) = &check.suggestion {
+        println!("  → {}", suggestion);
+    }
+}
+
+println!("\nOverall: {}", if diagnostics.all_passed() { "PASS" } else { "FAIL" });
+```
+
+**Selective Diagnostics**:
+
+```rust
+// Run specific checks
+let diagnostics = client
+    .diagnostics()
+    .check_dns()
+    .check_tls()
+    .check_auth()
+    .check_permissions()
+    .run()
+    .await?;
+
+// Skip certain checks
+let diagnostics = client
+    .diagnostics()
+    .skip(&["permissions"])  // Skip permission check
+    .run()
+    .await?;
+```
+
+**Diagnostics Types**:
+
+```rust
+#[derive(Debug, Clone)]
+pub struct DiagnosticsReport {
+    pub checks: Vec<DiagnosticCheck>,
+    pub timestamp: DateTime<Utc>,
+    pub duration: Duration,
+}
+
+impl DiagnosticsReport {
+    pub fn all_passed(&self) -> bool {
+        self.checks.iter().all(|c| c.passed)
+    }
+
+    pub fn failed_checks(&self) -> Vec<&DiagnosticCheck> {
+        self.checks.iter().filter(|c| !c.passed).collect()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DiagnosticCheck {
+    pub name: String,
+    pub passed: bool,
+    pub message: String,
+    pub suggestion: Option<String>,
+    pub duration: Duration,
+    pub details: Option<serde_json::Value>,
+}
+
+/// Available diagnostic checks
+pub mod checks {
+    pub const DNS: &str = "dns";
+    pub const TLS: &str = "tls";
+    pub const CONNECTIVITY: &str = "connectivity";
+    pub const AUTH: &str = "auth";
+    pub const PERMISSIONS: &str = "permissions";
+    pub const VAULT_ACCESS: &str = "vault_access";
+    pub const LATENCY: &str = "latency";
+}
+```
+
 ### Tracing Integration
 
 ```rust
-use tracing_subscriber;
-
-// Enable tracing
-tracing_subscriber::fmt::init();
-
+// With tracing feature enabled
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .tracing(true)
+    .with_tracing()
     .build()
     .await?;
 
-// Operations emit spans:
-// inferadb.check{subject="user:alice" resource="doc:readme" permission="view"}
-// inferadb.http.request{method="POST" path="/access/v1/evaluation"}
+// Spans are automatically created for each operation:
+// inferadb.check{subject="user:alice", permission="view", resource="doc:1"}
+//   └── inferadb.transport.request{method="POST", path="/access/v1/evaluation"}
 ```
 
 ### Metrics
 
 ```rust
-use inferadb::metrics::Metrics;
-
+// With metrics feature enabled
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .metrics(true)
+    .with_metrics()
     .build()
     .await?;
 
-// Access metrics
-let metrics = client.metrics();
-
-println!("Total requests: {}", metrics.requests_total());
-println!("Request latency p99: {:?}", metrics.latency_p99());
-println!("Active connections: {}", metrics.active_connections());
-println!("Token refreshes: {}", metrics.token_refreshes());
-
-// Export to Prometheus
-let prometheus_output = metrics.to_prometheus();
-```
-
-### Structured Logging
-
-```rust
-// SDK logs at appropriate levels:
-// ERROR: Unrecoverable errors
-// WARN:  Retries, token refresh failures
-// INFO:  Connection established, major operations
-// DEBUG: Request/response details
-// TRACE: Wire-level details
-
-// Configure log level
-std::env::set_var("RUST_LOG", "inferadb=debug");
-```
-
-### OpenTelemetry Integration
-
-For production observability pipelines, integrate with OpenTelemetry:
-
-#### Setup
-
-```toml
-[dependencies]
-inferadb = { version = "0.1", features = ["opentelemetry"] }
-opentelemetry = "0.21"
-opentelemetry-otlp = "0.14"
-opentelemetry_sdk = "0.21"
-tracing-opentelemetry = "0.22"
-```
-
-#### Configure OTLP Exporter
-
-```rust
-use opentelemetry::global;
-use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{runtime, trace::Config, Resource};
-use opentelemetry::KeyValue;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-
-// Initialize OpenTelemetry
-fn init_telemetry() -> Result<(), Box<dyn std::error::Error>> {
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint("http://localhost:4317"),
-        )
-        .with_trace_config(Config::default().with_resource(Resource::new(vec![
-            KeyValue::new("service.name", "my-service"),
-            KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
-        ])))
-        .install_batch(runtime::Tokio)?;
-
-    let telemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer);
-
-    tracing_subscriber::registry()
-        .with(telemetry_layer)
-        .with(tracing_subscriber::fmt::layer())
-        .init();
-
-    Ok(())
-}
-
-// Create client with OpenTelemetry enabled
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .tracing(true)  // Emits spans to configured subscriber
-    .build()
-    .await?;
-```
-
-#### Span Attributes
-
-The SDK emits rich span attributes for debugging:
-
-```text
-Span: inferadb.check
-├── inferadb.subject = "user:alice"
-├── inferadb.permission = "view"
-├── inferadb.resource = "document:readme"
-├── inferadb.vault_id = "vault_123"
-├── inferadb.decision = true
-├── inferadb.cached = false
-├── inferadb.latency_ms = 2.5
-└── inferadb.request_id = "req_abc123"
-
-Span: inferadb.http.request
-├── http.method = "POST"
-├── http.url = "https://api.inferadb.com/access/v1/evaluation"
-├── http.status_code = 200
-├── http.request_content_length = 156
-├── http.response_content_length = 42
-└── net.peer.name = "api.inferadb.com"
-```
-
-#### Metrics with OpenTelemetry
-
-```rust
-use opentelemetry::metrics::MeterProvider;
-use opentelemetry_otlp::MetricsExporterBuilder;
-
-// Initialize metrics
-let meter_provider = opentelemetry_otlp::new_pipeline()
-    .metrics(runtime::Tokio)
-    .with_exporter(
-        opentelemetry_otlp::new_exporter()
-            .tonic()
-            .with_endpoint("http://localhost:4317"),
-    )
-    .build()?;
-
-global::set_meter_provider(meter_provider);
-
-// Client automatically emits metrics
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .metrics(true)
-    .build()
-    .await?;
-
-// Metrics emitted:
-// - inferadb_requests_total{operation="check", status="success"}
-// - inferadb_request_duration_seconds{operation="check", quantile="0.99"}
-// - inferadb_connections_active{transport="grpc"}
+// Emitted metrics:
+// - inferadb_requests_total{operation, status}
+// - inferadb_request_duration_seconds{operation}
+// - inferadb_connection_pool_size
 // - inferadb_cache_hits_total
 // - inferadb_cache_misses_total
-// - inferadb_token_refreshes_total{status="success"}
 ```
 
-#### Instrumentation Customization
-
-Fine-tune which operations are instrumented and how.
-
-##### Custom Span Names
+### OpenTelemetry
 
 ```rust
+// Full OTLP integration
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .tracing(TracingConfig {
-        // Customize span names
-        span_name_prefix: "authz",  // "authz.check" instead of "inferadb.check"
-        // Include resource type in span name
-        include_resource_type: true,  // "authz.check.document"
+    .with_opentelemetry(OtelConfig {
+        service_name: "my-service",
+        endpoint: "http://otel-collector:4317",
     })
     .build()
     .await?;
 ```
 
-##### Filtering Instrumented Operations
+### W3C Trace Context Propagation
+
+Full W3C Trace Context standard support for distributed tracing across service boundaries:
 
 ```rust
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .tracing(TracingConfig {
-        // Only trace slow operations
-        min_duration_to_trace: Some(Duration::from_millis(10)),
-        // Skip health checks
-        operations_to_skip: vec!["health", "quota"],
-        // Trace all cache misses
-        trace_cache_misses: true,
-        trace_cache_hits: false,  // Skip cache hits (too noisy)
-    })
-    .build()
-    .await?;
+use inferadb::tracing::{TraceContext, Propagator};
+
+// Extract trace context from incoming request
+let trace_context = TraceContext::extract_from_headers(&request.headers())?;
+
+// Create vault-scoped trace context
+let vault = client.access().vault("vlt_01JFQGK...").with_tracing(trace_context);
+
+// All subsequent operations inherit the trace context
+let allowed = vault.check("user:alice", "view", "doc:1").await?;
+// Traces will show: service-a -> inferadb-sdk -> inferadb-api
+
+// Manual trace context creation
+let trace_context = TraceContext::new()
+    .with_trace_id(TraceId::random())
+    .with_span_id(SpanId::random())
+    .with_sampled(true);
 ```
 
-##### Custom Span Attributes
+#### Async Boundary Propagation
+
+Trace context automatically propagates across async boundaries:
 
 ```rust
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .tracing(TracingConfig {
-        // Add custom attributes to all spans
-        static_attributes: vec![
-            ("deployment.environment", "production"),
-            ("deployment.region", "us-east-1"),
-        ],
-        // Dynamic attributes computed per-request
-        dynamic_attributes: Some(Arc::new(|op| {
-            vec![
-                ("request.timestamp", Utc::now().to_rfc3339()),
-            ]
-        })),
-    })
-    .build()
-    .await?;
-```
+use inferadb::tracing::TraceContextExt;
 
-##### Per-Request Instrumentation Override
+// Context propagates through spawned tasks
+let vault = vault.clone();
+tokio::spawn(async move {
+    // Trace context is automatically captured and restored
+    vault.check("user:alice", "view", "doc:1").await
+});
 
-```rust
-// Disable tracing for this specific request (e.g., in tests)
-let allowed = client
-    .check("user:alice", "view", "doc:1")
-    .without_tracing()
-    .await?;
-
-// Add extra attributes to this request's span
-let allowed = client
-    .check("user:alice", "view", "doc:1")
-    .with_span_attributes([
-        ("audit.reason", "user_request"),
-        ("audit.ticket_id", "TICKET-123"),
-    ])
-    .await?;
-```
-
-##### Sampling Control
-
-```rust
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .tracing(TracingConfig {
-        // Sample 10% of successful requests, 100% of errors
-        sampling: SamplingConfig {
-            success_rate: 0.1,
-            error_rate: 1.0,
-            // Always trace slow requests
-            slow_threshold: Duration::from_millis(100),
-            slow_rate: 1.0,
-        },
-    })
-    .build()
-    .await?;
-```
-
-#### Context Propagation
-
-Propagate trace context from incoming requests:
-
-```rust
-use opentelemetry::propagation::TextMapPropagator;
-use opentelemetry_sdk::propagation::TraceContextPropagator;
-use tracing_opentelemetry::OpenTelemetrySpanExt;
-
-// Extract context from incoming HTTP headers
-fn extract_context(headers: &HeaderMap) -> opentelemetry::Context {
-    let propagator = TraceContextPropagator::new();
-    let extractor = HeaderExtractor(headers);
-    propagator.extract(&extractor)
-}
-
-// Use in your handler
-async fn handle_request(
-    headers: HeaderMap,
-    client: &Client,
-) -> Result<Response, Error> {
-    // Extract parent context
-    let parent_ctx = extract_context(&headers);
-
-    // Create span with parent context
-    let span = tracing::info_span!("handle_request");
-    span.set_parent(parent_ctx);
-    let _guard = span.enter();
-
-    // SDK operations will be children of this span
-    let allowed = client
-        .check("user:alice", "view", "document:readme")
-        .await?;
-
-    Ok(Response::new(allowed))
+// Context flows through streams
+let mut stream = vault.list_resources("user:alice", "viewer").stream();
+while let Some(resource) = stream.next().await {
+    // Each item inherits parent trace context
+    process(resource?);
 }
 ```
 
-#### Request ID Propagation
+#### Framework Integration
+
+Automatic trace context extraction for popular frameworks:
 
 ```rust
-// Get request ID from SDK responses for correlation
-let decision = client
-    .check("user:alice", "view", "doc:1")
-    .detailed()
-    .await?;
+// Axum middleware
+use inferadb::integrations::axum::InferaDbTraceLayer;
 
-if let Some(request_id) = decision.request_id() {
-    tracing::info!(
-        request_id = %request_id,
-        "Authorization check completed"
-    );
-}
+let app = Router::new()
+    .route("/api/documents", get(list_documents))
+    .layer(InferaDbTraceLayer::new(client.clone()));
 
-// Include in error responses for support
-match result {
-    Err(e) => {
-        let request_id = e.request_id().unwrap_or("unknown");
-        tracing::error!(
-            request_id = %request_id,
-            error = %e,
-            "Authorization failed"
-        );
-        // Return request_id to client for support tickets
-        Err(ApiError::new(e).with_request_id(request_id))
-    }
-}
+// Actix middleware
+use inferadb::integrations::actix::TracingMiddleware;
+
+App::new()
+    .wrap(TracingMiddleware::new(client.clone()))
+    .service(web::resource("/documents").to(list_documents))
 ```
 
-#### Baggage Propagation
-
-Pass contextual information through the authorization chain:
+#### Inject Context to Outgoing Requests
 
 ```rust
-use opentelemetry::baggage::BaggageExt;
+use inferadb::tracing::Propagator;
 
-// Set baggage in your service
-let cx = opentelemetry::Context::current()
-    .with_baggage(vec![
-        KeyValue::new("tenant.id", "acme-corp"),
-        KeyValue::new("user.tier", "enterprise"),
-    ]);
+// Get current trace context from SDK
+let trace_context = client.current_trace_context();
 
-// SDK propagates baggage in outgoing requests
-let _guard = cx.attach();
-let allowed = client.check("user:alice", "view", "doc:1").await?;
-```
+// Inject into outgoing HTTP request
+let mut headers = HeaderMap::new();
+trace_context.inject_into_headers(&mut headers);
 
-### Rate Limit Visibility
-
-Monitor your API usage and quotas:
-
-```rust
-// Get current rate limit status
-let quota = client.quota().await?;
-
-println!("Requests remaining: {}/{}", quota.remaining, quota.limit);
-println!("Resets at: {:?}", quota.reset_at);
-println!("Current usage: {}%", (1.0 - quota.remaining as f64 / quota.limit as f64) * 100.0);
-
-// Rate limit info also available in responses
-let decision = client
-    .check("user:alice", "view", "doc:1")
-    .detailed()
-    .await?;
-
-if let Some(rate_limit) = decision.rate_limit() {
-    if rate_limit.remaining < 100 {
-        tracing::warn!(
-            remaining = rate_limit.remaining,
-            "Approaching rate limit"
-        );
-    }
-}
-
-// Subscribe to rate limit warnings
-client
-    .on_rate_limit_warning(|warning| {
-        metrics::gauge!("inferadb.rate_limit.remaining")
-            .set(warning.remaining as f64);
-
-        if warning.remaining < 50 {
-            alert_ops_team("InferaDB rate limit critical");
-        }
-    })
-    .build()
-    .await?;
+// Standard W3C headers are set:
+// - traceparent: 00-{trace_id}-{span_id}-{flags}
+// - tracestate: inferadb=...
 ```
 
 ---
 
 ## Testing Support
 
-> **TL;DR**: Use `MockClient` for unit tests, `TestVault` for integration tests, `AuthorizationClient` trait for testable code.
+### Testing Trait Abstraction
 
-### Mock Client
+All client types implement a common trait for testability:
 
 ```rust
-use inferadb_test::{MockClient, MockBuilder};
+/// Trait for authorization operations, implemented by all client types
+#[async_trait]
+pub trait AuthorizationClient: Send + Sync {
+    async fn check(&self, subject: &str, permission: &str, resource: &str) -> Result<bool, Error>;
+    async fn check_batch(&self, checks: Vec<(&str, &str, &str)>) -> Result<Vec<bool>, Error>;
+    async fn write(&self, relationship: Relationship) -> Result<(), Error>;
+    async fn delete(&self, relationship: Relationship) -> Result<(), Error>;
+    // ... other methods
+}
+
+// Implemented by:
+impl AuthorizationClient for Client { /* real client */ }
+impl AuthorizationClient for MockClient { /* mock client */ }
+impl AuthorizationClient for InMemoryClient { /* in-memory client */ }
+```
+
+### Mock Client for Unit Tests
+
+```rust
+use inferadb::testing::MockClient;
 
 #[tokio::test]
-async fn test_authorization() {
+async fn test_document_access() {
     let mock = MockClient::builder()
-        // Mock check responses
-        .check("user:alice", "view", "doc:readme", true)
-        .check("user:alice", "edit", "doc:readme", false)
-        // Mock with patterns
-        .check_pattern("user:alice", "view", "doc:*", true)
-        // Mock errors
-        .check_error("user:banned", "*", "*", Error::Forbidden {
-            message: "User banned".into()
-        })
+        .check("user:alice", "view", "doc:1", true)
+        .check("user:alice", "edit", "doc:1", false)
+        .check("user:bob", "view", "doc:1", false)
         .build();
 
-    assert!(mock.check("user:alice", "view", "doc:readme").await?);
-    assert!(!mock.check("user:alice", "edit", "doc:readme").await?);
+    // Test your code
+    assert!(mock.check("user:alice", "view", "doc:1").await.unwrap());
+    assert!(!mock.check("user:alice", "edit", "doc:1").await.unwrap());
 }
 ```
 
-### Test Fixtures
+### In-Memory Client for Integration Tests
 
 ```rust
-use inferadb_test::{fixtures, TestVault};
+use inferadb::testing::InMemoryClient;
 
 #[tokio::test]
-async fn test_with_fixture() {
-    // Create isolated test vault
-    let vault = TestVault::create(&client).await?;
+async fn test_permission_inheritance() {
+    let vault = InMemoryClient::with_schema(include_str!("schema.ipl"));
 
-    // Seed with relationships
-    vault.seed(fixtures::document_hierarchy()).await?;
+    // Seed data
+    vault.write_batch([
+        Relationship::new("folder:docs", "owner", "user:alice"),
+        Relationship::new("doc:readme", "parent", "folder:docs"),
+    ]).await.unwrap();
 
-    // Run tests
-    let allowed = vault.check("user:alice", "view", "doc:readme").await?;
-
-    // Cleanup happens automatically on drop
+    // Test inheritance
+    assert!(vault.check("user:alice", "view", "doc:readme").await.unwrap());
+    assert!(vault.check("user:alice", "delete", "doc:readme").await.unwrap());
 }
 ```
 
-### Property-Based Testing
+### Test Vault for Isolated Integration Tests
 
 ```rust
-use inferadb_test::proptest_strategies::*;
-use proptest::prelude::*;
+use inferadb::testing::TestVault;
 
-proptest! {
-    #[test]
-    fn check_is_deterministic(
-        subject in subject_strategy(),
-        permission in permission_strategy(),
-        resource in resource_strategy(),
-    ) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            let result1 = client.check(&subject, &permission, &resource).await;
-            let result2 = client.check(&subject, &permission, &resource).await;
-            assert_eq!(result1, result2);
-        });
-    }
+#[tokio::test]
+#[ignore]  // Requires running InferaDB
+async fn integration_test() {
+    let client = test_client().await;
+    let vault = TestVault::create(&client).await.unwrap();
+
+    // Tests run in isolated vault
+    vault.write(Relationship::new("doc:1", "viewer", "user:alice")).await.unwrap();
+    assert!(vault.check("user:alice", "view", "doc:1").await.unwrap());
+
+    // Vault cleaned up on drop
 }
 ```
 
-### Testable Code with Trait Abstraction
-
-Write application code that works with both production and mock clients using the `AuthorizationClient` trait:
-
-```rust
-use inferadb::traits::AuthorizationClient;
-use async_trait::async_trait;
-
-// Your application code depends on the trait, not concrete Client
-pub struct DocumentService<C: AuthorizationClient> {
-    auth: C,
-    db: Database,
-}
-
-impl<C: AuthorizationClient> DocumentService<C> {
-    pub fn new(auth: C, db: Database) -> Self {
-        Self { auth, db }
-    }
-
-    pub async fn get_document(&self, user: &str, doc_id: &str) -> Result<Document, Error> {
-        // Works with both real Client and MockClient
-        let allowed = self.auth.check(user, "view", &format!("document:{}", doc_id)).await?;
-        if !allowed {
-            return Err(Error::Forbidden);
-        }
-        self.db.fetch(doc_id).await
-    }
-}
-```
-
-#### The `AuthorizationClient` Trait
-
-```rust
-/// Core trait implemented by both Client and MockClient
-#[async_trait]
-pub trait AuthorizationClient: Send + Sync + Clone {
-    /// Check if subject has permission on resource
-    async fn check(
-        &self,
-        subject: &str,
-        permission: &str,
-        resource: &str,
-    ) -> Result<bool, Error>;
-
-    /// Check with ABAC context
-    async fn check_with_context(
-        &self,
-        subject: &str,
-        permission: &str,
-        resource: &str,
-        context: &Context,
-    ) -> Result<bool, Error>;
-
-    /// Batch check multiple permissions
-    async fn check_batch<'a>(
-        &self,
-        checks: impl IntoIterator<Item = (&'a str, &'a str, &'a str)> + Send,
-    ) -> Result<Vec<bool>, Error>;
-
-    /// Write a relationship
-    async fn write(&self, relationship: Relationship) -> Result<WriteResult, Error>;
-
-    /// Delete a relationship
-    async fn delete(&self, relationship: Relationship) -> Result<DeleteResult, Error>;
-}
-
-// Both Client and MockClient implement this trait
-impl AuthorizationClient for Client { /* ... */ }
-impl AuthorizationClient for MockClient { /* ... */ }
-```
-
-#### Testing with the Trait
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use inferadb_test::MockClient;
-
-    #[tokio::test]
-    async fn test_get_document_authorized() {
-        let mock = MockClient::builder()
-            .check("user:alice", "view", "document:readme", true)
-            .build();
-
-        let db = MockDatabase::with_document("readme", Document::default());
-        let service = DocumentService::new(mock, db);
-
-        let doc = service.get_document("user:alice", "readme").await;
-        assert!(doc.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_get_document_forbidden() {
-        let mock = MockClient::builder()
-            .check("user:bob", "view", "document:secret", false)
-            .build();
-
-        let db = MockDatabase::with_document("secret", Document::default());
-        let service = DocumentService::new(mock, db);
-
-        let result = service.get_document("user:bob", "secret").await;
-        assert!(matches!(result, Err(Error::Forbidden)));
-    }
-}
-```
-
-#### Generic Bounds for Flexibility
-
-```rust
-// Accept any authorization client
-pub async fn protected_operation<C>(
-    client: &C,
-    user: &str,
-) -> Result<(), Error>
-where
-    C: AuthorizationClient,
-{
-    client.check(user, "admin", "system:config").await?
-        .then_some(())
-        .ok_or(Error::Forbidden)
-}
-
-// Or use dynamic dispatch for runtime flexibility
-pub async fn dynamic_operation(
-    client: &dyn AuthorizationClient,
-    user: &str,
-) -> Result<(), Error> {
-    // Same code works with any implementation
-    client.check(user, "view", "resource:1").await?;
-    Ok(())
-}
-```
+For comprehensive testing patterns including the AuthzTest DSL, scenario testing, and snapshot testing, see [Testing Guide](docs/guides/testing.md).
 
 ---
 
-## Sync API
+## Integration Patterns
 
-For CLI tools, scripts, or blocking contexts that can't use async/await.
+For comprehensive framework integration patterns, see [Integration Patterns Guide](docs/guides/integration-patterns.md), which covers:
 
-### Enable Blocking Feature
+- **Framework Extractors** - Axum/Actix permission extractors and attribute macros
+- **Result Ergonomics** - `require()`, `then()`, `filter_authorized()` patterns
+- **Permission Aggregation** - `check_all()`, `check_any()`, `PermissionMatrix`
+- **Structured Audit Context** - Request-scoped audit logging
 
-```toml
-[dependencies]
-inferadb = { version = "0.1", features = ["blocking"] }
-```
+---
 
-### Blocking Client
+## Caching
 
-```rust
-use inferadb::blocking::Client;
+For caching strategies and invalidation patterns, see [Caching Guide](docs/guides/caching.md), which covers:
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // No async runtime needed
-    let client = Client::builder()
-        .url("https://api.inferadb.com")
-        .client_credentials("client_id", "path/to/key.pem")
-        .default_vault("vault_id")
-        .build()?;  // No .await!
+- Time-based, event-driven, and hierarchical invalidation
+- Cache warming and metrics
+- Configuration options
 
-    // Synchronous check
-    let allowed = client.check("user:alice", "view", "document:readme")?;
-
-    println!("Access allowed: {}", allowed);
-    Ok(())
-}
-```
-
-### All Operations Available
+Basic cache configuration via client builder:
 
 ```rust
-use inferadb::blocking::Client;
+use inferadb::{Client, CacheConfig};
+use std::time::Duration;
 
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .client_credentials(creds)
+    .cache(CacheConfig::new()
+        .permission_ttl(Duration::from_secs(30))
+        .relationship_ttl(Duration::from_mins(5))
+        .schema_ttl(Duration::from_hours(1)))
     .build()?;
-
-// Authorization
-let allowed = client.check("user:alice", "view", "doc:1")?;
-let decision = client.check("user:alice", "edit", "doc:1").detailed()?;
-
-// Relationships
-client.write(Relationship::new("doc:1", "viewer", "user:alice"))?;
-client.delete(Relationship::new("doc:1", "viewer", "user:alice"))?;
-
-// Lookups (returns iterators instead of streams)
-for resource in client.list_resources("user:alice", "view", "document")? {
-    println!("Can view: {}", resource?);
-}
-
-// Control API
-let orgs = client.control().organizations().list()?;
-let vaults = client.control().vaults("org_id").list()?;
-```
-
-### Mixed Async/Sync Usage
-
-```rust
-// Get async client from sync client (shares connection pool)
-let sync_client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .build()?;
-
-// Use in async context
-let async_client = sync_client.async_client();
-let allowed = async_client.check("user:alice", "view", "doc:1").await?;
-
-// Use sync client in spawn_blocking
-let sync_clone = sync_client.clone();
-let result = tokio::task::spawn_blocking(move || {
-    sync_clone.check("user:bob", "view", "doc:2")
-}).await??;
-```
-
-### Streaming in Sync Mode
-
-Blocking streams return iterators:
-
-```rust
-// Returns impl Iterator<Item = Result<String, Error>>
-let resources = client.list_resources("user:alice", "view", "document")?;
-
-// Iterate synchronously
-for resource in resources.take(100) {
-    let resource = resource?;
-    println!("Resource: {}", resource);
-}
-
-// Collect all (careful with large result sets)
-let all: Vec<String> = client
-    .list_resources("user:alice", "view", "document")?
-    .collect::<Result<Vec<_>, _>>()?;
-```
-
-### When to Use Blocking
-
-| Use Case                | Recommendation     |
-| ----------------------- | ------------------ |
-| CLI tools               | Blocking (simpler) |
-| Short scripts           | Blocking           |
-| Tests (simple)          | Blocking           |
-| Web servers             | Async              |
-| High concurrency        | Async              |
-| Long-running services   | Async              |
-| Within `spawn_blocking` | Blocking           |
-
----
-
----
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     PART 7: COMMON PATTERNS & RECIPES
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-## Multi-Tenant SaaS
-
-Pattern for applications serving multiple tenants with separate vaults.
-
-### Per-Request Vault Selection
-
-```rust
-use axum::{extract::State, http::Request, middleware::Next, response::Response};
-
-// Extract tenant from request
-async fn tenant_middleware<B>(
-    State(client): State<Client>,
-    request: Request<B>,
-    next: Next<B>,
-) -> Response {
-    let tenant_id = request
-        .headers()
-        .get("X-Tenant-ID")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("default");
-
-    // Create tenant-scoped client
-    let tenant_client = client.scoped_to_vault(tenant_vault_id(tenant_id));
-
-    // Inject into request extensions
-    request.extensions_mut().insert(tenant_client);
-
-    next.run(request).await
-}
-
-// Use in handlers
-async fn get_document(
-    tenant_client: Extension<ScopedClient>,
-    Path(doc_id): Path<String>,
-) -> Result<Json<Document>, ApiError> {
-    let allowed = tenant_client
-        .check(&current_user(), "view", &format!("document:{}", doc_id))
-        .await?;
-
-    if !allowed {
-        return Err(ApiError::Forbidden);
-    }
-
-    // Fetch and return document...
-}
-```
-
-### Tenant Vault Mapping
-
-```rust
-// Cache tenant -> vault mapping
-struct TenantVaultResolver {
-    client: Client,
-    cache: Cache<String, String>,
-}
-
-impl TenantVaultResolver {
-    async fn resolve(&self, tenant_id: &str) -> Result<String, Error> {
-        if let Some(vault_id) = self.cache.get(tenant_id) {
-            return Ok(vault_id);
-        }
-
-        // Look up vault for tenant via Control API
-        let org = self.client.control()
-            .organizations()
-            .get_by_slug(tenant_id)
-            .await?;
-
-        let vault = self.client.control()
-            .vaults(&org.id)
-            .get_default()
-            .await?;
-
-        self.cache.insert(tenant_id.to_string(), vault.id.clone());
-        Ok(vault.id)
-    }
-}
 ```
 
 ---
 
-## API Gateway Integration
+## Multi-Organization Support
 
-Pattern for checking authorization on every API request.
+For multi-organization SaaS applications, see [Multi-Organization Guide](docs/guides/multi-tenant.md), which covers:
 
-### Axum Middleware
-
-```rust
-use axum::{
-    extract::State,
-    http::{Request, StatusCode},
-    middleware::Next,
-    response::Response,
-};
-
-async fn authorization_middleware<B>(
-    State(client): State<Client>,
-    request: Request<B>,
-    next: Next<B>,
-) -> Result<Response, StatusCode> {
-    let user = extract_user(&request)?;
-    let resource = path_to_resource(request.uri().path());
-    let permission = method_to_permission(request.method());
-
-    let allowed = client
-        .check(&user, &permission, &resource)
-        .with_context(Context::new()
-            .insert("ip_address", extract_ip(&request))
-            .insert("user_agent", extract_user_agent(&request)))
-        .deadline(Duration::from_millis(50))  // Fail fast
-        .await
-        .unwrap_or(false);  // Deny on error
-
-    if !allowed {
-        return Err(StatusCode::FORBIDDEN);
-    }
-
-    Ok(next.run(request).await)
-}
-
-// Helper functions
-fn path_to_resource(path: &str) -> String {
-    // /api/v1/documents/123 -> document:123
-    let parts: Vec<&str> = path.split('/').collect();
-    match parts.as_slice() {
-        ["", "api", "v1", resource_type, id, ..] => {
-            format!("{}:{}", resource_type.trim_end_matches('s'), id)
-        }
-        _ => format!("path:{}", path),
-    }
-}
-
-fn method_to_permission(method: &Method) -> &'static str {
-    match *method {
-        Method::GET | Method::HEAD => "view",
-        Method::POST => "create",
-        Method::PUT | Method::PATCH => "edit",
-        Method::DELETE => "delete",
-        _ => "access",
-    }
-}
-```
-
-### Actix-Web Guard
-
-```rust
-use actix_web::{guard::Guard, http::Method, HttpRequest};
-
-struct AuthorizationGuard {
-    client: Client,
-}
-
-impl Guard for AuthorizationGuard {
-    fn check(&self, req: &GuardContext<'_>) -> bool {
-        let client = self.client.clone();
-        let user = extract_user_sync(req);
-        let resource = path_to_resource(req.head().uri.path());
-        let permission = method_to_permission(req.head().method);
-
-        // Run blocking check (guard is sync)
-        client.blocking()
-            .check(&user, &permission, &resource)
-            .unwrap_or(false)
-    }
-}
-```
+- Organization-scoped clients
+- Framework middleware for organization extraction
+- Cross-organization operations
+- Organization isolation testing
 
 ---
 
-## GraphQL & DataLoader
+## Time-Based Permissions
 
-Efficient batch authorization for GraphQL resolvers.
+For temporal permission constraints, see [Temporal Permissions Guide](docs/guides/temporal-permissions.md), which covers:
 
-### DataLoader Pattern
-
-```rust
-use async_graphql::dataloader::{DataLoader, Loader};
-use std::collections::HashMap;
-
-struct AuthorizationLoader {
-    client: Client,
-    user: String,
-}
-
-#[async_trait]
-impl Loader<AuthCheck> for AuthorizationLoader {
-    type Value = bool;
-    type Error = Error;
-
-    async fn load(&self, checks: &[AuthCheck]) -> Result<HashMap<AuthCheck, bool>, Self::Error> {
-        // Batch all checks in single request
-        let results = self.client
-            .check_batch(checks.iter().map(|c| (&self.user, &c.permission, &c.resource)))
-            .collect()
-            .await?;
-
-        Ok(checks.iter()
-            .zip(results.iter())
-            .map(|(check, (_, decision))| (check.clone(), decision.allowed))
-            .collect())
-    }
-}
-
-#[derive(Clone, Hash, Eq, PartialEq)]
-struct AuthCheck {
-    permission: String,
-    resource: String,
-}
-
-// Usage in resolver
-#[Object]
-impl Document {
-    async fn can_edit(&self, ctx: &Context<'_>) -> Result<bool> {
-        let loader = ctx.data::<DataLoader<AuthorizationLoader>>()?;
-        loader.load_one(AuthCheck {
-            permission: "edit".into(),
-            resource: format!("document:{}", self.id),
-        }).await.map(|r| r.unwrap_or(false))
-    }
-}
-```
-
-### Prefetching Related Permissions
-
-```rust
-#[Object]
-impl Query {
-    async fn documents(&self, ctx: &Context<'_>) -> Result<Vec<DocumentWithPermissions>> {
-        let docs = fetch_documents().await?;
-        let loader = ctx.data::<DataLoader<AuthorizationLoader>>()?;
-
-        // Prefetch all permissions in parallel
-        let checks: Vec<_> = docs.iter()
-            .flat_map(|doc| ["view", "edit", "delete"].iter().map(move |p| AuthCheck {
-                permission: p.to_string(),
-                resource: format!("document:{}", doc.id),
-            }))
-            .collect();
-
-        let permissions = loader.load_many(checks).await?;
-
-        // Attach permissions to documents
-        Ok(docs.into_iter().map(|doc| {
-            DocumentWithPermissions {
-                doc,
-                can_view: permissions.get(&AuthCheck { permission: "view".into(), resource: format!("document:{}", doc.id) }).copied().unwrap_or(false),
-                can_edit: permissions.get(&AuthCheck { permission: "edit".into(), resource: format!("document:{}", doc.id) }).copied().unwrap_or(false),
-                can_delete: permissions.get(&AuthCheck { permission: "delete".into(), resource: format!("document:{}", doc.id) }).copied().unwrap_or(false),
-            }
-        }).collect())
-    }
-}
-```
+- Expiring permissions
+- Scheduled permissions
+- Time-windowed access
+- Time-aware queries
 
 ---
-
-## Background Jobs
-
-Pattern for long-running jobs that need authorization.
-
-### Job with Embedded Credentials
-
-```rust
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize)]
-struct ExportJob {
-    user_id: String,
-    resource_ids: Vec<String>,
-    // Store vault token for job execution
-    vault_token: String,
-}
-
-async fn process_export_job(job: ExportJob) -> Result<(), JobError> {
-    // Create client with job's token
-    let client = Client::builder()
-        .url("https://api.inferadb.com")
-        .bearer_token(&job.vault_token)
-        .build()
-        .await?;
-
-    for resource_id in &job.resource_ids {
-        // Re-check authorization (token may have been revoked)
-        let allowed = client
-            .check(&job.user_id, "export", resource_id)
-            .await?;
-
-        if !allowed {
-            tracing::warn!("User {} no longer has export permission for {}", job.user_id, resource_id);
-            continue;
-        }
-
-        export_resource(resource_id).await?;
-    }
-
-    Ok(())
-}
-```
-
-### Service Account for Background Jobs
-
-```rust
-// Use service account with limited scopes
-async fn setup_background_worker() -> Result<Client, Error> {
-    Client::builder()
-        .url("https://api.inferadb.com")
-        .client_credentials(ClientCredentials {
-            client_id: "background-worker".into(),
-            private_key: Ed25519PrivateKey::from_env("WORKER_PRIVATE_KEY")?,
-            certificate_id: None,
-        })
-        .default_vault("internal-vault")
-        // Request only needed scopes
-        .scopes([Scope::Check])  // Read-only
-        .build()
-        .await
-}
-```
-
----
-
-## Audit Trail Enrichment
-
-Pattern for enriching audit logs with authorization context.
-
-### Middleware-Based Audit
-
-```rust
-use inferadb::middleware::{Middleware, Next, Request, Response};
-
-struct AuditEnrichmentMiddleware {
-    audit_service: Arc<AuditService>,
-}
-
-#[async_trait]
-impl Middleware for AuditEnrichmentMiddleware {
-    async fn handle(&self, request: Request, next: Next<'_>) -> Result<Response, Error> {
-        let start = Instant::now();
-
-        // Capture request details
-        let subject = request.subject().map(|s| s.to_string());
-        let resource = request.resource().map(|r| r.to_string());
-        let permission = request.permission().map(|p| p.to_string());
-
-        // Execute the request
-        let response = next.run(request).await;
-
-        // Log the decision
-        if let (Some(subject), Some(resource), Some(permission)) = (subject, resource, permission) {
-            let decision = response.as_ref()
-                .ok()
-                .and_then(|r| r.decision())
-                .unwrap_or(false);
-
-            self.audit_service.record(AuditEntry {
-                timestamp: Utc::now(),
-                subject,
-                resource,
-                permission,
-                decision,
-                latency: start.elapsed(),
-                request_id: response.as_ref().ok().and_then(|r| r.request_id().map(|s| s.to_string())),
-                error: response.as_ref().err().map(|e| e.to_string()),
-            }).await;
-        }
-
-        response
-    }
-}
-```
-
-### Decision Reason Logging
-
-```rust
-async fn check_with_audit(
-    client: &Client,
-    subject: &str,
-    permission: &str,
-    resource: &str,
-    audit: &AuditService,
-) -> Result<bool, Error> {
-    let decision = client
-        .check(subject, permission, resource)
-        .trace(true)  // Get detailed trace
-        .detailed()
-        .await?;
-
-    // Log with full context
-    audit.record(AuditEntry {
-        subject: subject.to_string(),
-        resource: resource.to_string(),
-        permission: permission.to_string(),
-        allowed: decision.allowed,
-        reason: decision.reason.clone(),
-        trace: decision.trace.as_ref().map(|t| {
-            t.steps.iter()
-                .map(|s| format!("{} -> {} ({})", s.relation, s.subject, s.result))
-                .collect::<Vec<_>>()
-                .join(" -> ")
-        }),
-    }).await;
-
-    Ok(decision.allowed)
-}
-```
-
----
-
----
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     PART 8: IMPLEMENTATION
-     ═══════════════════════════════════════════════════════════════════════════ -->
 
 ## Type System
 
-### Compile-Time Safety
-
-The SDK uses Rust's type system to prevent common authorization mistakes at compile time.
-
-#### `#[must_use]` on Authorization Results
-
-All authorization checks return types marked with `#[must_use]`, preventing accidentally ignored results:
+### Type-Safe Relationships with Derive Macros
 
 ```rust
-// ❌ COMPILE WARNING: unused result that must be used
-client.check("user:alice", "view", "doc:1").await?;
-proceed_with_access();  // BUG: didn't check the result!
+use inferadb::derive::{Resource, Subject};
 
-// Warning: unused `bool` that must be used
-// Note: authorization decisions should always be checked
+#[derive(Resource)]
+#[resource(type = "document")]
+struct Document {
+    #[resource(id)]
+    id: String,
+}
+
+#[derive(Subject)]
+#[subject(type = "user")]
+struct User {
+    #[subject(id)]
+    id: String,
+}
+
+// Type-safe API
+let doc = Document { id: "readme".into() };
+let user = User { id: "alice".into() };
+
+vault.check(&user, "view", &doc).await?;
+vault.write(Relationship::typed(&doc, "viewer", &user)).await?;
 ```
 
-```rust
-// ✅ CORRECT: Result is checked
-let allowed = client.check("user:alice", "view", "doc:1").await?;
-if allowed {
-    proceed_with_access();
-}
-```
-
-#### The `Authorized<T>` Wrapper Pattern
-
-For stronger guarantees, wrap protected data in an `Authorized<T>` type:
+### Generic Type Constraints
 
 ```rust
-use inferadb::Authorized;
-
-/// Data that can only be accessed after authorization
-pub struct Authorized<T> {
-    inner: T,
-    decision: Decision,
-}
-
-impl<T> Authorized<T> {
-    /// Only constructible via authorization check
-    pub(crate) fn new(inner: T, decision: Decision) -> Self {
-        debug_assert!(decision.allowed);
-        Self { inner, decision }
-    }
-
-    /// Access the protected data
-    pub fn into_inner(self) -> T {
-        self.inner
-    }
-
-    /// Get the authorization decision
-    pub fn decision(&self) -> &Decision {
-        &self.decision
+impl VaultAccess {
+    pub async fn check<S, R>(&self, subject: S, permission: &str, resource: R) -> Result<bool, Error>
+    where
+        S: Into<SubjectRef>,
+        R: Into<ResourceRef>,
+    {
+        let subject = subject.into();
+        let resource = resource.into();
+        // ...
     }
 }
 
-// Usage in your code:
-async fn get_document(
-    client: &Client,
-    user: &str,
-    doc_id: &str,
-) -> Result<Authorized<Document>, Error> {
-    let doc = fetch_document(doc_id).await?;
+// Accepts strings
+vault.check("user:alice", "view", "doc:1").await?;
 
-    // Returns Authorized<Document> only if allowed
-    client
-        .authorize(user, "view", &format!("document:{}", doc_id))
-        .protect(doc)
-        .await
-}
+// Accepts typed values
+vault.check(&user, "view", &doc).await?;
 
-// Caller MUST have Authorized<T> to proceed
-async fn render_document(doc: Authorized<Document>) -> Html {
-    let document = doc.into_inner();  // Guaranteed authorized
-    render(document)
-}
-```
-
-#### Deny-By-Default Helpers
-
-```rust
-use inferadb::AuthorizedResult;
-
-// Extension trait for cleaner error handling
-impl Client {
-    /// Check and return Forbidden error if denied
-    pub async fn require(
-        &self,
-        subject: &str,
-        permission: &str,
-        resource: &str,
-    ) -> Result<(), Error> {
-        if !self.check(subject, permission, resource).await? {
-            return Err(Error::Forbidden {
-                message: format!(
-                    "{} does not have {} on {}",
-                    subject, permission, resource
-                ),
-            });
-        }
-        Ok(())
-    }
-}
-
-// Usage - fails fast if not authorized
-async fn delete_document(client: &Client, user: &str, doc_id: &str) -> Result<(), Error> {
-    client.require(user, "delete", &format!("document:{}", doc_id)).await?;
-
-    // Only reached if authorized
-    actually_delete_document(doc_id).await
-}
-```
-
-#### Type-State Pattern for Operations
-
-Prevent invalid operation sequences at compile time:
-
-```rust
-use inferadb::builder::{Unchecked, Checked};
-
-pub struct Operation<State> {
-    subject: String,
-    permission: String,
-    resource: String,
-    _state: PhantomData<State>,
-}
-
-impl Operation<Unchecked> {
-    pub async fn check(self, client: &Client) -> Result<Operation<Checked>, Error> {
-        let allowed = client.check(&self.subject, &self.permission, &self.resource).await?;
-        if !allowed {
-            return Err(Error::Forbidden { ... });
-        }
-        Ok(Operation {
-            subject: self.subject,
-            permission: self.permission,
-            resource: self.resource,
-            _state: PhantomData,
-        })
-    }
-}
-
-impl Operation<Checked> {
-    /// Only available after authorization check
-    pub async fn execute(self) -> Result<(), Error> {
-        // Safe to proceed
-        perform_operation().await
-    }
-}
-
-// Usage:
-let op = Operation::new("user:alice", "delete", "doc:1");
-// op.execute().await;  // ❌ COMPILE ERROR: no method `execute` on Unchecked
-
-let checked = op.check(&client).await?;
-checked.execute().await?;  // ✅ Only compiles after check
-```
-
-### Core Types
-
-```rust
-/// A subject in the authorization model
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Subject {
-    pub type_name: String,
-    pub id: String,
-    pub relation: Option<String>,  // For usersets like group:eng#member
-}
-
-impl Subject {
-    pub fn user(id: impl Into<String>) -> Self {
-        Self {
-            type_name: "user".into(),
-            id: id.into(),
-            relation: None,
-        }
-    }
-
-    pub fn group_member(group_id: impl Into<String>) -> Self {
-        Self {
-            type_name: "group".into(),
-            id: group_id.into(),
-            relation: Some("member".into()),
-        }
-    }
-}
-
-// Parse from string
-let subject: Subject = "user:alice".parse()?;
-let userset: Subject = "group:eng#member".parse()?;
-
-// Display as string
-assert_eq!(subject.to_string(), "user:alice");
-assert_eq!(userset.to_string(), "group:eng#member");
-```
-
-### Resource Type
-
-```rust
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Resource {
-    pub type_name: String,
-    pub id: String,
-}
-
-impl Resource {
-    pub fn new(type_name: impl Into<String>, id: impl Into<String>) -> Self {
-        Self {
-            type_name: type_name.into(),
-            id: id.into(),
-        }
-    }
-}
-
-// Parse from string
-let resource: Resource = "document:readme".parse()?;
-
-// Display as string
-assert_eq!(resource.to_string(), "document:readme");
-```
-
-### Relationship Type
-
-```rust
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Relationship {
-    pub resource: Resource,
-    pub relation: String,
-    pub subject: Subject,
-}
-
-impl Relationship {
-    pub fn new(
-        resource: impl Into<Resource>,
-        relation: impl Into<String>,
-        subject: impl Into<Subject>,
-    ) -> Self {
-        Self {
-            resource: resource.into(),
-            relation: relation.into(),
-            subject: subject.into(),
-        }
-    }
-}
-
-// Convenient construction
-let rel = Relationship::new("document:readme", "viewer", "user:alice");
-
-// Or from tuple syntax
-let rel: Relationship = ("document:readme", "viewer", "user:alice").into();
-```
-
-### Decision Type
-
-```rust
-#[derive(Debug, Clone)]
-pub struct Decision {
-    pub allowed: bool,
-    pub reason: Option<String>,
-    pub trace: Option<DecisionTrace>,
-    pub evaluated_at: DateTime<Utc>,
-    pub latency: Duration,
-}
-
-#[derive(Debug, Clone)]
-pub struct DecisionTrace {
-    pub steps: Vec<TraceStep>,
-    pub relationships_evaluated: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct TraceStep {
-    pub resource: String,
-    pub relation: String,
-    pub subject: String,
-    pub result: bool,
-    pub via: Option<String>,  // If through another relation
-}
+// Accepts references
+vault.check(user.as_subject(), "view", doc.as_resource()).await?;
 ```
 
 ---
 
 ## Protocol Support
-
-> **TL;DR**: Use defaults (gRPC + REST) unless you have specific constraints. gRPC is faster, REST works everywhere.
 
 ### Protocol Decision Tree
 
@@ -5325,56 +7510,87 @@ Which protocol should I use?
 └─► Otherwise: Use defaults (gRPC + REST fallback)
 ```
 
-### Feature Flags
-
-```toml
-# Cargo.toml
-[dependencies]
-inferadb = { version = "0.1", features = ["grpc", "rest"] }
-
-# Or specific protocol only
-inferadb = { version = "0.1", default-features = false, features = ["grpc"] }
-inferadb = { version = "0.1", default-features = false, features = ["rest"] }
-```
-
-### Protocol Selection
-
-```rust
-// Prefer gRPC, fall back to REST
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .prefer_grpc()  // Default
-    .build()
-    .await?;
-
-// gRPC only (fails if unavailable)
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .grpc_only()
-    .build()
-    .await?;
-
-// REST only (useful for restricted networks)
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .rest_only()
-    .build()
-    .await?;
-```
-
 ### Streaming Behavior
 
-| Operation              | gRPC                       | REST                    |
-| ---------------------- | -------------------------- | ----------------------- |
-| `check()`              | Unary                      | POST                    |
-| `check_batch()`        | Bidirectional stream       | SSE stream              |
-| `list_resources()`     | Server stream              | SSE stream              |
-| `list_subjects()`      | Server stream              | SSE stream              |
-| `list_relationships()` | Server stream              | SSE stream              |
-| `expand()`             | Server stream              | SSE stream              |
-| `watch()`              | Server stream (continuous) | SSE stream (continuous) |
-| `write_batch()`        | Client stream              | POST                    |
-| `delete_batch()`       | Client stream              | POST                    |
+| Operation          | gRPC                       | REST                    |
+| ------------------ | -------------------------- | ----------------------- |
+| `check()`          | Unary                      | POST                    |
+| `check_batch()`    | Bidirectional stream       | SSE stream              |
+| `list_resources()` | Server stream              | SSE stream              |
+| `list_subjects()`  | Server stream              | SSE stream              |
+| `watch()`          | Server stream (continuous) | SSE stream (continuous) |
+| `write_batch()`    | Client stream              | POST                    |
+
+### Transport Escape Hatches
+
+For advanced scenarios requiring custom transport configuration, the SDK exposes escape hatches to the underlying HTTP clients:
+
+**Custom reqwest Client (REST)**:
+
+```rust
+use reqwest::Client as ReqwestClient;
+
+// Build your own reqwest client with custom configuration
+let http_client = ReqwestClient::builder()
+    .timeout(Duration::from_secs(60))
+    .connect_timeout(Duration::from_secs(10))
+    .proxy(reqwest::Proxy::https("http://proxy.corp.internal:3128")?)
+    .danger_accept_invalid_certs(true)  // For testing only!
+    .build()?;
+
+// Use it with the SDK
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(creds)
+    .with_http_client(http_client)  // Escape hatch
+    .build()
+    .await?;
+```
+
+**Custom tonic Channel (gRPC)**:
+
+```rust
+use tonic::transport::{Channel, Endpoint, ClientTlsConfig};
+
+// Build your own tonic channel with custom configuration
+let tls = ClientTlsConfig::new()
+    .ca_certificate(Certificate::from_pem(include_bytes!("ca.pem")))
+    .domain_name("api.inferadb.com");
+
+let channel = Endpoint::from_static("https://api.inferadb.com")
+    .tls_config(tls)?
+    .timeout(Duration::from_secs(60))
+    .connect_timeout(Duration::from_secs(10))
+    .tcp_keepalive(Some(Duration::from_secs(30)))
+    .http2_keep_alive_interval(Duration::from_secs(30))
+    .http2_keep_alive_timeout(Duration::from_secs(10))
+    .connect()
+    .await?;
+
+// Use it with the SDK
+let client = Client::builder()
+    .credentials(creds)
+    .with_grpc_channel(channel)  // Escape hatch
+    .build()
+    .await?;
+```
+
+**When to Use Escape Hatches**:
+
+| Scenario                         | Solution                              |
+| -------------------------------- | ------------------------------------- |
+| Corporate proxy                  | Custom reqwest with `.proxy()`        |
+| mTLS/client certificates         | Custom tonic with `ClientTlsConfig`   |
+| Custom DNS resolution            | Custom reqwest with `.resolve()`      |
+| H2C (plaintext HTTP/2)           | Custom tonic endpoint                 |
+| Connection through load balancer | Custom channel with specific settings |
+| Testing with invalid certs       | Custom client (never in production!)  |
+
+**Caveats**:
+
+- When using escape hatches, the SDK cannot apply automatic retries at transport level
+- You are responsible for TLS configuration
+- Some SDK features (like protocol auto-detection) may not work
 
 ---
 
@@ -5398,154 +7614,23 @@ metrics = ["metrics", "metrics-exporter-prometheus"]
 test-utils = ["inferadb-test"]
 opentelemetry = ["opentelemetry", "tracing-opentelemetry"]
 blocking = ["tokio/rt"]
-
-# Derive macros
 derive = ["inferadb-macros"]
-
-# Serialization
 serde = ["dep:serde", "chrono/serde", "uuid/serde"]
 ```
 
-### Minimal Build
-
-```toml
-# REST only, minimal dependencies
-inferadb = {
-    version = "0.1",
-    default-features = false,
-    features = ["rest", "rustls"]
-}
-```
-
-### Serde Serialization
-
-Enable `serde` support for caching decisions externally or logging:
-
-```toml
-[dependencies]
-inferadb = { version = "0.1", features = ["serde"] }
-```
-
-```rust
-use serde::{Serialize, Deserialize};
-
-// All public types become serializable
-let decision = client
-    .check("user:alice", "view", "doc:1")
-    .detailed()
-    .await?;
-
-// Serialize for external caching
-let json = serde_json::to_string(&decision)?;
-redis.set(&cache_key, &json).await?;
-
-// Deserialize from cache
-let cached: Decision = serde_json::from_str(&cached_json)?;
-
-// Log decisions as structured JSON
-tracing::info!(
-    decision = %serde_json::to_string(&decision)?,
-    "Authorization decision"
-);
-```
-
-#### Serializable Types
-
-With the `serde` feature enabled:
-
-| Type           | Serialize | Deserialize | Notes                    |
-| -------------- | --------- | ----------- | ------------------------ |
-| `Decision`     | ✅        | ✅          | Full decision with trace |
-| `Relationship` | ✅        | ✅          | For import/export        |
-| `Subject`      | ✅        | ✅          |                          |
-| `Resource`     | ✅        | ✅          |                          |
-| `Error`        | ✅        | ❌          | For structured logging   |
-| `Client`       | ❌        | ❌          | Contains connections     |
-| `WatchChange`  | ✅        | ✅          | For event sourcing       |
-
 ### Feature Interaction Matrix
 
-Not all feature combinations are valid. Use this matrix to understand feature interactions:
-
-#### Protocol Features
-
-| Combination | Valid | Notes |
-|-------------|-------|-------|
-| `grpc` + `rest` | ✅ | Default - SDK prefers gRPC, falls back to REST |
-| `grpc` only | ✅ | gRPC exclusive - fails if gRPC unavailable |
-| `rest` only | ✅ | REST exclusive - smaller binary, broader compatibility |
-| Neither | ❌ | **Compile error** - at least one protocol required |
-
-#### TLS Features
-
-| Combination | Valid | Notes |
-|-------------|-------|-------|
-| `rustls` | ✅ | Recommended - pure Rust, no system dependencies |
-| `native-tls` | ✅ | Uses system TLS (OpenSSL/Schannel/SecureTransport) |
-| `rustls` + `native-tls` | ⚠️ | Compiles but wasteful - `rustls` takes precedence |
-| Neither | ⚠️ | Only works with `http://` URLs (insecure) |
-
-#### Observability Features
-
-| Combination | Valid | Notes |
-|-------------|-------|-------|
-| `tracing` | ✅ | Emits tracing spans to any subscriber |
-| `metrics` | ✅ | Emits metrics to any metrics backend |
-| `opentelemetry` | ✅ | Adds OTLP integration (implies `tracing`) |
-| `tracing` + `opentelemetry` | ✅ | Full distributed tracing with OTLP export |
-| `metrics` + `opentelemetry` | ✅ | Metrics via OpenTelemetry |
-
-#### Special Combinations
-
-| Combination | Valid | Notes |
-|-------------|-------|-------|
-| `blocking` + `grpc` | ✅ | Blocking client with gRPC transport |
-| `blocking` alone | ✅ | Uses REST (simpler for blocking) |
-| `wasm` + `grpc` | ❌ | **gRPC not supported in browsers** |
-| `wasm` + `native-tls` | ❌ | **No system TLS in WASM** |
-| `wasm` + `blocking` | ❌ | **No blocking in browsers** |
-| `derive` + anything | ✅ | Macros work with all configurations |
-| `test-utils` + anything | ✅ | Testing utilities always compatible |
-
-#### Recommended Feature Sets
-
-```toml
-# Production web service (maximum performance)
-inferadb = { version = "0.1", features = ["grpc", "rest", "rustls", "tracing", "metrics"] }
-
-# Production with OpenTelemetry
-inferadb = { version = "0.1", features = ["grpc", "rest", "rustls", "opentelemetry"] }
-
-# CLI tool
-inferadb = { version = "0.1", features = ["rest", "rustls", "blocking"] }
-
-# Minimal REST-only (smallest binary)
-inferadb = { version = "0.1", default-features = false, features = ["rest", "rustls"] }
-
-# Browser/WASM
-inferadb = { version = "0.1", default-features = false, features = ["wasm"] }
-
-# Type-safe with macros
-inferadb = { version = "0.1", features = ["derive", "serde"] }
-
-# Integration testing
-inferadb = { version = "0.1", features = ["test-utils"] }
-```
-
-#### Feature Detection at Runtime
-
-```rust
-// Check which features are enabled
-#[cfg(feature = "grpc")]
-println!("gRPC support enabled");
-
-#[cfg(feature = "rest")]
-println!("REST support enabled");
-
-// SDK also exposes this programmatically
-let features = inferadb::enabled_features();
-println!("Enabled: {:?}", features);  // ["grpc", "rest", "rustls", "tracing"]
-```
+| Combination           | Valid | Notes                                      |
+| --------------------- | ----- | ------------------------------------------ |
+| `grpc` + `rest`       | ✅    | Default - prefers gRPC, falls back to REST |
+| `grpc` only           | ✅    | gRPC exclusive                             |
+| `rest` only           | ✅    | REST exclusive - smaller binary            |
+| Neither               | ❌    | Compile error                              |
+| `rustls`              | ✅    | Recommended - pure Rust                    |
+| `native-tls`          | ✅    | System TLS                                 |
+| `wasm` + `grpc`       | ❌    | gRPC not supported in browsers             |
+| `wasm` + `native-tls` | ❌    | No system TLS in WASM                      |
+| `blocking` + `grpc`   | ✅    | Blocking with gRPC                         |
 
 ---
 
@@ -5553,2279 +7638,266 @@ println!("Enabled: {:?}", features);  // ["grpc", "rest", "rustls", "tracing"]
 
 ### Panic Safety
 
-The SDK is designed to never panic under normal operation.
+| Operation             | Panics? | Notes                         |
+| --------------------- | ------- | ----------------------------- |
+| All public methods    | No      | Return `Result<T, Error>`     |
+| Internal parsing      | No      | Invalid input → Error variant |
+| Arithmetic            | No      | Uses checked/saturating ops   |
+| Index access          | No      | Uses `.get()` not `[]`        |
+| `unwrap()`/`expect()` | No      | Never used on fallible ops    |
 
-#### Panic-Free Guarantees
+### Unsafe Code Audit
 
-| Operation | Panics? | Notes |
-|-----------|---------|-------|
-| All public methods | ❌ No | Return `Result<T, Error>` |
-| Internal parsing | ❌ No | Invalid input → Error variant |
-| OOM conditions | ⚠️ Maybe | Depends on global allocator |
-| Arithmetic | ❌ No | Uses checked/saturating ops |
-| Index access | ❌ No | Uses `.get()` not `[]` |
-| `unwrap()`/`expect()` | ❌ No | Never used on fallible ops |
-
-```rust
-// All operations return Results - no hidden panics
-let result = client.check("user:alice", "view", "doc:1").await;
-// ^^ Returns Result<bool, Error>, never panics
-
-// Even with invalid input
-let result = client.check("", "", "").await;
-// ^^ Returns Err(Error::InvalidInput), doesn't panic
-```
-
-#### Panic Hooks for Debugging
-
-If you suspect a panic (shouldn't happen), enable panic hooks:
-
-```rust
-// In tests or debugging
-std::panic::set_hook(Box::new(|info| {
-    eprintln!("Unexpected panic in InferaDB SDK: {}", info);
-    // Report to error tracking
-}));
-```
-
-### Unsafe Code Usage
-
-The SDK minimizes `unsafe` code and documents all usages.
-
-#### Unsafe Audit
-
-| Location | Reason | Safety Justification |
-|----------|--------|----------------------|
-| `tonic` (dep) | FFI for gRPC | Well-audited, widely used |
-| `hyper` (dep) | Performance-critical HTTP | Well-audited, widely used |
-| `ring` (dep) | Cryptographic operations | Audited crypto library |
-| SDK itself | **None** | Pure safe Rust |
-
-```rust
-// You can verify no unsafe in SDK source
-// cargo geiger (or similar tools)
-```
-
-#### Safety Features
-
-```rust
-// The SDK provides additional safety features
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    // Sanitize inputs before sending (defense in depth)
-    .sanitize_inputs(true)
-    // Validate responses match expected schema
-    .validate_responses(true)
-    .build()
-    .await?;
-```
+| Location      | Reason           | Justification          |
+| ------------- | ---------------- | ---------------------- |
+| `tonic` (dep) | FFI for gRPC     | Well-audited           |
+| `hyper` (dep) | HTTP performance | Well-audited           |
+| `ring` (dep)  | Cryptography     | Audited crypto library |
+| SDK itself    | **None**         | Pure safe Rust         |
 
 ### Concurrency Safety
 
-All SDK types are designed for concurrent use.
-
-| Type | `Send` | `Sync` | Notes |
-|------|--------|--------|-------|
-| `Client` | ✅ | ✅ | Safe to share across threads |
-| `Error` | ✅ | ✅ | Can be sent between threads |
-| `Decision` | ✅ | ✅ | Immutable after creation |
-| `WatchStream` | ✅ | ❌ | Single consumer only |
-| `MockClient` | ✅ | ✅ | Safe for parallel tests |
-
----
-
-## Performance
-
-### Request Coalescing
-
-Automatically deduplicate identical in-flight requests:
-
-```rust
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    // Enable request coalescing
-    .coalesce_requests(true)
-    .build()
-    .await?;
-
-// These concurrent identical checks result in ONE network call
-let (r1, r2, r3) = tokio::join!(
-    client.check("user:alice", "view", "doc:1"),
-    client.check("user:alice", "view", "doc:1"),  // Coalesced!
-    client.check("user:alice", "view", "doc:1"),  // Coalesced!
-);
-
-// All three return the same result from single request
-assert_eq!(r1?, r2?);
-assert_eq!(r2?, r3?);
-```
-
-#### Coalescing Configuration
-
-```rust
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .coalesce_requests(CoalesceConfig {
-        // How long to wait for identical requests
-        window: Duration::from_millis(5),
-        // Maximum requests to coalesce into one
-        max_batch_size: 100,
-        // Only coalesce read operations (check, list)
-        write_operations: false,
-    })
-    .build()
-    .await?;
-```
-
-#### When Coalescing Helps
-
-| Scenario | Benefit |
-|----------|---------|
-| GraphQL DataLoader | Multiple resolvers checking same permission |
-| Middleware chains | Multiple middleware checking same auth |
-| Parallel handlers | Same user hitting multiple endpoints |
-| Cache stampede | Many requests on cache miss |
-
-### Expected Latency
-
-| Operation             | P50  | P99   | Notes                      |
-| --------------------- | ---- | ----- | -------------------------- |
-| `check()`             | 2ms  | 10ms  | Single authorization check |
-| `check_batch(100)`    | 15ms | 50ms  | 100 checks in parallel     |
-| `list_resources(100)` | 20ms | 80ms  | First 100 results          |
-| `write()`             | 5ms  | 20ms  | Single relationship        |
-| `write_batch(1000)`   | 50ms | 200ms | 1000 relationships         |
-| Token refresh         | 50ms | 150ms | Background, non-blocking   |
-
-_Measured against InferaDB cloud with sub-10ms network latency._
-
-### Optimizing Check Latency
-
-```rust
-// 1. Use caching for repeated checks
-let client = Client::builder()
-    .cache(CacheConfig { ttl: Duration::from_secs(60), .. })
-    .build()
-    .await?;
-
-// 2. Batch multiple checks
-let results = client.check_batch([
-    ("user:alice", "view", "doc:1"),
-    ("user:alice", "edit", "doc:1"),
-    ("user:alice", "delete", "doc:1"),
-]).collect().await?;
-
-// 3. Use gRPC for lowest latency
-let client = Client::builder()
-    .grpc_only()  // Skip REST fallback
-    .build()
-    .await?;
-
-// 4. Set aggressive deadlines for fast-fail
-let allowed = client
-    .check("user:alice", "view", "doc:1")
-    .deadline(Duration::from_millis(50))
-    .await?;
-```
-
-### Connection Pool Tuning
-
-```rust
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-
-    // HTTP pool for REST
-    .max_connections(100)           // Total connections
-    .max_idle_per_host(10)          // Idle connections per host
-    .idle_timeout(Duration::from_secs(90))
-
-    // gRPC settings
-    .grpc_concurrency_limit(100)    // Max concurrent streams
-    .grpc_keep_alive(Duration::from_secs(60))
-
-    .build()
-    .await?;
-```
-
-### Memory Footprint
-
-| Component           | Memory | Notes                       |
-| ------------------- | ------ | --------------------------- |
-| Base client         | ~2 MB  | Connection pools, TLS state |
-| Per connection      | ~50 KB | HTTP/2 or gRPC stream       |
-| Cache (10k entries) | ~5 MB  | Depends on key/value size   |
-| Token cache         | ~1 KB  | Per vault token             |
-
-### Benchmarking
-
-```rust
-use criterion::{criterion_group, criterion_main, Criterion};
-
-fn check_benchmark(c: &mut Criterion) {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let client = rt.block_on(async {
-        Client::builder()
-            .url("http://localhost:8080")
-            .build()
-            .await
-            .unwrap()
-    });
-
-    c.bench_function("check_single", |b| {
-        b.to_async(&rt).iter(|| async {
-            client.check("user:alice", "view", "doc:readme").await
-        })
-    });
-
-    c.bench_function("check_batch_100", |b| {
-        let checks: Vec<_> = (0..100)
-            .map(|i| ("user:alice", "view", format!("doc:{}", i)))
-            .collect();
-
-        b.to_async(&rt).iter(|| async {
-            client.check_batch(&checks).collect::<Vec<_>>().await
-        })
-    });
-}
-
-criterion_group!(benches, check_benchmark);
-criterion_main!(benches);
-```
-
-### Compile Time Optimization
-
-```toml
-# Cargo.toml - Minimize compile time
-[dependencies]
-inferadb = { version = "0.1", default-features = false, features = ["rest"] }
-
-# Profile for faster dev builds
-[profile.dev]
-opt-level = 0
-debug = true
-
-# Profile for benchmarks
-[profile.bench]
-opt-level = 3
-lto = "thin"
-```
+| Type          | `Send` | `Sync` | Notes                        |
+| ------------- | ------ | ------ | ---------------------------- |
+| `Client`      | ✅     | ✅     | Safe to share across threads |
+| `Error`       | ✅     | ✅     | Can be sent between threads  |
+| `Decision`    | ✅     | ✅     | Immutable after creation     |
+| `WatchStream` | ✅     | ❌     | Single consumer only         |
+| `MockClient`  | ✅     | ✅     | Safe for parallel tests      |
 
 ---
 
 ## Release Strategy
 
-### Version Compatibility
+### Version Policy
 
-- SDK version tracks API version (e.g., SDK 1.x supports API v1)
-- Patch versions for bug fixes
-- Minor versions for new features (backward compatible)
-- Major versions for breaking changes
+- **Major** (1.0 → 2.0): Breaking API changes
+- **Minor** (1.0 → 1.1): New features, backward compatible
+- **Patch** (1.0.0 → 1.0.1): Bug fixes only
 
-### MSRV (Minimum Supported Rust Version)
+### Pre-1.0 Policy
 
-- Target: Rust 1.70+ (for async traits stabilization path)
-- Test on stable, beta, and nightly
+During 0.x development:
 
-### Platform Support
+- Minor version bumps may include breaking changes
+- Document all breaking changes in CHANGELOG.md
+- Provide migration guides in MIGRATION.md
 
-| Platform         | Support Level      |
-| ---------------- | ------------------ |
-| Linux (x86_64)   | Tier 1             |
-| Linux (aarch64)  | Tier 1             |
-| macOS (x86_64)   | Tier 1             |
-| macOS (aarch64)  | Tier 1             |
-| Windows (x86_64) | Tier 2             |
-| WASM             | Tier 3 (REST only) |
-| `no_std`         | Not supported      |
+### Supported Rust Versions
 
-### `no_std` and Embedded Support
+- **MSRV**: Rust 1.70+
+- Tested on: stable, beta, nightly
+- No nightly-only features in default build
 
-The SDK currently requires `std` and is not designed for `no_std` environments.
+### Binary Size Targets
 
-#### Why `no_std` Is Not Supported
-
-| Dependency | Requires `std` | Reason |
-|------------|----------------|--------|
-| `tokio` | Yes | Async runtime with OS threads |
-| `reqwest` | Yes | HTTP client with TLS |
-| `tonic` | Yes | gRPC with HTTP/2 |
-| `rustls` | Partial | Can be `no_std` but we use std features |
-| `serde_json` | Yes (default) | Heap allocation for JSON parsing |
-
-#### Embedded Use Cases
-
-For embedded or constrained environments, consider these alternatives:
-
-##### Option 1: Edge Proxy Pattern
-
-Run authorization at the edge, not on the constrained device:
-
-```text
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Embedded       │     │  Edge Gateway   │     │   InferaDB      │
-│  Device         │────►│  (Full SDK)     │────►│   Cloud         │
-│  (no_std)       │     │                 │     │                 │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-     Sends simple           Performs              Returns
-     request with           authorization         decision
-     device ID              check
-```
-
-##### Option 2: Pre-computed Decisions
-
-Cache authorization decisions on the device:
-
-```rust
-// On your backend with full SDK
-let decisions = client
-    .check_batch(all_device_permissions)
-    .collect()
-    .await?;
-
-let device_policy = DevicePolicy {
-    device_id: "device:123",
-    decisions: decisions.into_iter().collect(),
-    valid_until: Utc::now() + Duration::hours(24),
-};
-
-// Send to device (small payload, no SDK needed)
-send_to_device(&device_policy).await?;
-```
-
-##### Option 3: Minimal Types Crate
-
-For sharing types without the full SDK:
-
-```toml
-# Cargo.toml for embedded project
-[dependencies]
-inferadb-types = { version = "0.1", default-features = false }  # Core types only
-```
-
-```rust
-// inferadb-types can be no_std compatible
-#![no_std]
-use inferadb_types::{Subject, Resource, Decision};
-
-// Parse pre-computed decisions
-let decision: Decision = postcard::from_bytes(&bytes)?;
-if decision.allowed {
-    allow_operation();
-}
-```
-
-#### Future `no_std` Considerations
-
-We may explore `no_std` support in the future for:
-
-- **`inferadb-types`**: Core types without networking (feasible)
-- **`inferadb-offline`**: Offline policy evaluation (planned)
-- **Full client**: Unlikely due to networking requirements
-
-If you need `no_std` support, please [open an issue](https://github.com/inferadb/rust-sdk/issues) describing your use case.
-
-### WASM / Browser Support
-
-The SDK supports WebAssembly for browser-based authorization checks with some limitations.
-
-#### Installation for WASM
-
-```toml
-[dependencies]
-inferadb = { version = "0.1", default-features = false, features = ["wasm"] }
-```
-
-#### Browser Usage
-
-```rust
-use inferadb::wasm::Client;
-use wasm_bindgen_futures::spawn_local;
-
-// Create client for browser
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .bearer_token(&get_token_from_auth_provider())
-    .build()?;
-
-// Check authorization (async in browser)
-spawn_local(async move {
-    let allowed = client.check("user:alice", "view", "document:readme").await?;
-    if allowed {
-        show_document();
-    } else {
-        show_access_denied();
-    }
-});
-```
-
-#### JavaScript/TypeScript Interop
-
-```rust
-use wasm_bindgen::prelude::*;
-
-#[wasm_bindgen]
-pub async fn check_permission(
-    subject: &str,
-    permission: &str,
-    resource: &str,
-) -> Result<bool, JsValue> {
-    let client = get_cached_client()?;
-    client.check(subject, permission, resource)
-        .await
-        .map_err(|e| JsValue::from_str(&e.to_string()))
-}
-```
-
-```typescript
-// Usage from TypeScript
-import init, { check_permission } from "inferadb-wasm";
-
-await init();
-const allowed = await check_permission("user:alice", "view", "document:readme");
-```
-
-#### WASM Limitations
-
-| Feature            | WASM Support   | Notes                          |
-| ------------------ | -------------- | ------------------------------ |
-| REST API           | ✅ Full        | Via `fetch` API                |
-| gRPC               | ❌ None        | No HTTP/2 in browsers          |
-| Streaming (SSE)    | ✅ Full        | Via `EventSource`              |
-| Watch              | ✅ Full        | SSE-based                      |
-| Client credentials | ❌ None        | Private keys unsafe in browser |
-| Bearer token       | ✅ Full        | Recommended for browser        |
-| Caching            | ✅ Memory only | No Redis/external cache        |
-| File system        | ❌ None        | No PEM file loading            |
-
-#### Security Considerations for Browser
-
-```rust
-// NEVER embed private keys in browser code
-// ❌ BAD: This exposes your private key
-let client = Client::builder()
-    .client_credentials("id", include_str!("key.pem"))  // NEVER!
-    .build()?;
-
-// ✅ GOOD: Use short-lived tokens from your backend
-let client = Client::builder()
-    .bearer_token(&token_from_backend_api)
-    .build()?;
-```
-
-#### Bundle Size Optimization
-
-```toml
-# Minimize WASM bundle size
-[profile.release]
-opt-level = "z"      # Optimize for size
-lto = true           # Link-time optimization
-codegen-units = 1    # Single codegen unit
-panic = "abort"      # No unwinding
-
-[dependencies]
-inferadb = {
-    version = "0.1",
-    default-features = false,
-    features = ["wasm", "rustls-webpki"]  # Minimal TLS
-}
-```
-
-Expected bundle sizes:
-
-- Minimal (check only): ~150 KB gzipped
-- Full SDK: ~300 KB gzipped
-
-### Binary Size by Feature Set
-
-Understanding binary size impact helps choose the right feature combination.
-
-#### Native Binary Sizes (x86_64-unknown-linux-gnu, release)
-
-| Feature Set | Binary Size | Stripped | Notes |
-|-------------|-------------|----------|-------|
-| Default (`grpc` + `rest` + `rustls`) | ~8.5 MB | ~5.2 MB | Full functionality |
-| `grpc` + `rustls` only | ~6.8 MB | ~4.1 MB | No REST fallback |
-| `rest` + `rustls` only | ~4.2 MB | ~2.5 MB | Smallest networked |
-| + `tracing` | +200 KB | +120 KB | Minimal overhead |
-| + `metrics` | +180 KB | +100 KB | Minimal overhead |
-| + `opentelemetry` | +1.2 MB | +800 KB | OTLP adds weight |
-| + `derive` (macros) | +0 KB | +0 KB | Compile-time only |
-| + `serde` | +300 KB | +180 KB | Serialization |
-| + `blocking` | +50 KB | +30 KB | Tokio runtime |
-
-#### Optimization Strategies
-
-```toml
-# Cargo.toml - Optimize for size
-[profile.release]
-opt-level = "z"      # Optimize for size (vs "3" for speed)
-lto = true           # Link-time optimization
-codegen-units = 1    # Single codegen unit for better optimization
-panic = "abort"      # No unwinding (smaller binary)
-strip = true         # Strip symbols
-
-[profile.release.package.inferadb]
-opt-level = "z"      # Ensure SDK is also size-optimized
-```
-
-#### Size Reduction Tips
-
-```rust
-// 1. Disable unused protocols
-inferadb = { version = "0.1", default-features = false, features = ["rest", "rustls"] }
-
-// 2. Skip OpenTelemetry if using simpler tracing
-inferadb = { version = "0.1", features = ["tracing"] }  // Not "opentelemetry"
-
-// 3. For size-critical deployments, consider REST-only
-inferadb = { version = "0.1", default-features = false, features = ["rest", "rustls"] }
-```
-
-#### Compile Time Impact
-
-| Feature Set | Clean Build | Incremental |
-|-------------|-------------|-------------|
-| Default | ~45s | ~3s |
-| `rest` only | ~25s | ~2s |
-| + `derive` | +5s | +0.5s |
-| + `opentelemetry` | +15s | +1s |
-
-### Backwards Compatibility
-
-#### API Stability Guarantees
-
-| API Surface                            | Stability   | Policy                                |
-| -------------------------------------- | ----------- | ------------------------------------- |
-| Public types (`Client`, `Error`, etc.) | Stable      | No breaking changes in minor versions |
-| Builder methods                        | Stable      | New methods additive only             |
-| Trait implementations                  | Stable      | Won't remove `Send`, `Sync`, `Clone`  |
-| Feature flags                          | Semi-stable | New flags may be added                |
-| Internal modules (`__internal`)        | Unstable    | May change without notice             |
-| Error messages                         | Unstable    | Text may change                       |
-
-#### Deprecation Policy
-
-1. **Deprecation notice**: Feature marked with `#[deprecated]` for at least one minor version
-2. **Migration guide**: Documentation provided for transitioning
-3. **Removal**: Only in major version bumps
-4. **Timeline**: Minimum 6 months between deprecation and removal
-
-```rust
-// Deprecated APIs emit compile-time warnings
-#[deprecated(since = "0.3.0", note = "Use Client::builder() instead")]
-pub fn new(url: &str) -> Result<Client, Error> { ... }
-
-// Usage triggers warning:
-let client = Client::new("https://api.inferadb.com")?;
-// warning: use of deprecated function `Client::new`: Use Client::builder() instead
-```
-
-#### Version Support Matrix
-
-| SDK Version | API Version | Rust Version | Support Status      |
-| ----------- | ----------- | ------------ | ------------------- |
-| 1.x         | v1          | 1.70+        | Active              |
-| 0.x         | v1          | 1.65+        | Security fixes only |
-
-### Release Checklist
-
-1. Update `CHANGELOG.md`
-2. Bump version in all `Cargo.toml` files
-3. Run full test suite (`cargo nextest run --workspace`)
-4. Run clippy (`cargo clippy --workspace --all-targets -- -D warnings`)
-5. Run rustfmt (`cargo +nightly fmt --all`)
-6. Build docs (`cargo doc --workspace --no-deps`)
-7. Tag release
-8. Publish to crates.io
-
-### Changelog Format
-
-We follow [Keep a Changelog](https://keepachangelog.com/) format:
-
-```markdown
-# Changelog
-
-## [Unreleased]
-
-## [0.3.0] - 2024-03-15
-
-### Added
-- `check_batch_v2()` with improved streaming performance
-- Support for custom JWT claims (#123)
-- `Client::from_env()` convenience constructor
-
-### Changed
-- **BREAKING**: `Error` now implements `std::error::Error` differently
-- Default timeout increased from 10s to 30s
-- Minimum Rust version bumped to 1.70
-
-### Deprecated
-- `Client::new()` - use `Client::builder()` instead
-
-### Removed
-- **BREAKING**: Removed `legacy_auth` feature flag
-
-### Fixed
-- Token refresh race condition under high concurrency (#456)
-- Memory leak in long-running watch streams (#789)
-
-### Security
-- Updated `ring` dependency to fix CVE-2024-XXXX
-```
-
-#### Change Type Indicators
-
-| Prefix | Meaning | Action Required |
-|--------|---------|-----------------|
-| None | Safe to upgrade | Review new features |
-| **BREAKING** | API changed incompatibly | Code changes needed |
-| (deprecated) | Will be removed | Plan migration |
-| (experimental) | May change | Don't depend on in production |
-
-#### Subscribing to Changes
-
-```bash
-# Watch releases on GitHub
-gh repo watch inferadb/rust-sdk --events releases
-
-# Or subscribe via RSS
-# https://github.com/inferadb/rust-sdk/releases.atom
-```
-
----
-
----
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     PART 9: REFERENCE
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-## Error Recovery Patterns
-
-Structured patterns for handling SDK errors gracefully.
-
-### Error Classification
-
-```rust
-use inferadb::{Error, ErrorKind};
-
-fn classify_error(err: &Error) -> ErrorAction {
-    match err.kind() {
-        // Retryable errors - automatic retry with backoff
-        ErrorKind::Network | ErrorKind::Timeout | ErrorKind::ServiceUnavailable => {
-            ErrorAction::Retry
-        }
-
-        // Rate limited - wait and retry
-        ErrorKind::RateLimited => {
-            let retry_after = err.retry_after().unwrap_or(Duration::from_secs(1));
-            ErrorAction::RetryAfter(retry_after)
-        }
-
-        // Auth errors - may need re-authentication
-        ErrorKind::Unauthorized => ErrorAction::Reauthenticate,
-
-        // Client errors - don't retry, fix the request
-        ErrorKind::InvalidInput | ErrorKind::NotFound | ErrorKind::Forbidden => {
-            ErrorAction::Fail
-        }
-
-        // Server errors - log and maybe retry
-        ErrorKind::Internal => ErrorAction::LogAndRetry,
-    }
-}
-
-enum ErrorAction {
-    Retry,
-    RetryAfter(Duration),
-    Reauthenticate,
-    Fail,
-    LogAndRetry,
-}
-```
-
-### Custom Recovery Logic
-
-```rust
-use inferadb::Error;
-
-async fn check_with_recovery(
-    client: &Client,
-    subject: &str,
-    permission: &str,
-    resource: &str,
-) -> Result<bool, Error> {
-    let mut attempts = 0;
-    let max_attempts = 3;
-
-    loop {
-        match client.check(subject, permission, resource).await {
-            Ok(allowed) => return Ok(allowed),
-
-            Err(e) if e.is_retryable() && attempts < max_attempts => {
-                attempts += 1;
-                let backoff = Duration::from_millis(100 * 2_u64.pow(attempts));
-
-                tracing::warn!(
-                    error = %e,
-                    attempt = attempts,
-                    backoff_ms = backoff.as_millis(),
-                    "Retrying after error"
-                );
-
-                tokio::time::sleep(backoff).await;
-            }
-
-            Err(e) if e.kind() == ErrorKind::RateLimited => {
-                let retry_after = e.retry_after().unwrap_or(Duration::from_secs(1));
-                tracing::warn!(
-                    retry_after_ms = retry_after.as_millis(),
-                    "Rate limited, waiting"
-                );
-                tokio::time::sleep(retry_after).await;
-                // Don't count against max_attempts for rate limits
-            }
-
-            Err(e) => return Err(e),
-        }
-    }
-}
-```
-
-### Circuit Breaker Recovery
-
-```rust
-async fn handle_circuit_open(client: &Client, subject: &str, permission: &str, resource: &str) -> bool {
-    match client.check(subject, permission, resource).await {
-        Ok(allowed) => allowed,
-
-        Err(e) if e.kind() == ErrorKind::CircuitOpen => {
-            tracing::warn!("Circuit breaker open, using fallback");
-
-            // Option 1: Fail closed (deny)
-            // return false;
-
-            // Option 2: Use cached decision if available
-            if let Some(cached) = get_cached_decision(subject, permission, resource) {
-                return cached;
-            }
-
-            // Option 3: Apply emergency policy
-            emergency_policy(subject, permission, resource)
-        }
-
-        Err(e) => {
-            tracing::error!(error = %e, "Authorization check failed");
-            false  // Fail closed
-        }
-    }
-}
-```
-
-### Graceful Degradation Patterns
-
-```rust
-/// Authorization with multiple fallback levels
-async fn check_with_fallbacks(
-    client: &Client,
-    cache: &Cache,
-    subject: &str,
-    permission: &str,
-    resource: &str,
-) -> AuthDecision {
-    // Level 1: Try real-time check
-    match client.check(subject, permission, resource).await {
-        Ok(allowed) => {
-            cache.set(subject, permission, resource, allowed);
-            return AuthDecision::Live(allowed);
-        }
-        Err(e) if !e.is_transient() => {
-            // Permanent error - don't fallback
-            return AuthDecision::Error(e);
-        }
-        Err(_) => { /* continue to fallbacks */ }
-    }
-
-    // Level 2: Use local cache
-    if let Some(cached) = cache.get(subject, permission, resource) {
-        tracing::info!("Using cached decision");
-        return AuthDecision::Cached(cached);
-    }
-
-    // Level 3: Apply static policy
-    let static_decision = static_policy(subject, permission, resource);
-    tracing::warn!("Using static fallback policy");
-    AuthDecision::Fallback(static_decision)
-}
-
-#[derive(Debug)]
-enum AuthDecision {
-    Live(bool),
-    Cached(bool),
-    Fallback(bool),
-    Error(Error),
-}
-```
-
----
-
-## Structured Concurrency
-
-Best practices for using the SDK with Tokio's structured concurrency primitives.
-
-### Using with JoinSet
-
-```rust
-use tokio::task::JoinSet;
-
-async fn check_many_resources(
-    client: &Client,
-    user: &str,
-    resources: Vec<String>,
-) -> Result<HashMap<String, bool>, Error> {
-    let mut set = JoinSet::new();
-
-    for resource in resources {
-        let client = client.clone();
-        let user = user.to_string();
-        let resource = resource.clone();
-
-        set.spawn(async move {
-            let allowed = client.check(&user, "view", &resource).await?;
-            Ok::<_, Error>((resource, allowed))
-        });
-    }
-
-    let mut results = HashMap::new();
-    while let Some(result) = set.join_next().await {
-        let (resource, allowed) = result??;
-        results.insert(resource, allowed);
-    }
-
-    Ok(results)
-}
-```
-
-### Cancellation Safety
-
-The SDK is cancellation-safe - dropping a future mid-execution won't corrupt state:
-
-```rust
-use tokio::time::timeout;
-
-// Safe to timeout/cancel
-let result = timeout(
-    Duration::from_millis(100),
-    client.check("user:alice", "view", "doc:1")
-).await;
-
-match result {
-    Ok(Ok(allowed)) => println!("Allowed: {}", allowed),
-    Ok(Err(e)) => println!("Check error: {}", e),
-    Err(_) => println!("Timed out - no corruption, safe to retry"),
-}
-```
-
-### Select! Patterns
-
-```rust
-use tokio::select;
-
-async fn check_with_cancellation(
-    client: &Client,
-    cancel: &mut tokio::sync::oneshot::Receiver<()>,
-) -> Option<bool> {
-    select! {
-        result = client.check("user:alice", "view", "doc:1") => {
-            Some(result.unwrap_or(false))
-        }
-        _ = cancel => {
-            tracing::info!("Check cancelled");
-            None
-        }
-    }
-}
-```
-
-### Semaphore for Concurrency Limits
-
-```rust
-use std::sync::Arc;
-use tokio::sync::Semaphore;
-
-struct RateLimitedClient {
-    client: Client,
-    semaphore: Arc<Semaphore>,
-}
-
-impl RateLimitedClient {
-    pub fn new(client: Client, max_concurrent: usize) -> Self {
-        Self {
-            client,
-            semaphore: Arc::new(Semaphore::new(max_concurrent)),
-        }
-    }
-
-    pub async fn check(
-        &self,
-        subject: &str,
-        permission: &str,
-        resource: &str,
-    ) -> Result<bool, Error> {
-        let _permit = self.semaphore.acquire().await?;
-        self.client.check(subject, permission, resource).await
-    }
-}
-
-// Limit to 10 concurrent authorization checks
-let limited_client = RateLimitedClient::new(client, 10);
-```
-
-### Batch Processing with Buffering
-
-```rust
-use futures::StreamExt;
-use tokio::sync::mpsc;
-
-async fn process_batch_stream(
-    client: Client,
-    mut rx: mpsc::Receiver<(String, String, String)>,
-) {
-    // Buffer up to 100 checks before sending batch
-    let mut buffer = Vec::with_capacity(100);
-
-    loop {
-        // Collect checks for up to 10ms or until buffer is full
-        let deadline = tokio::time::sleep(Duration::from_millis(10));
-        tokio::pin!(deadline);
-
-        loop {
-            select! {
-                Some((subject, permission, resource)) = rx.recv() => {
-                    buffer.push((subject, permission, resource));
-                    if buffer.len() >= 100 {
-                        break;
-                    }
-                }
-                _ = &mut deadline => break,
-                else => return,  // Channel closed
-            }
-        }
-
-        if !buffer.is_empty() {
-            // Send batch
-            let checks: Vec<_> = buffer.iter()
-                .map(|(s, p, r)| (s.as_str(), p.as_str(), r.as_str()))
-                .collect();
-
-            match client.check_batch(checks).collect().await {
-                Ok(results) => {
-                    for ((subject, permission, resource), allowed) in
-                        buffer.drain(..).zip(results.iter())
-                    {
-                        tracing::debug!(
-                            subject, permission, resource,
-                            allowed = allowed.1.allowed,
-                            "Batch check result"
-                        );
-                    }
-                }
-                Err(e) => tracing::error!(error = %e, "Batch check failed"),
-            }
-            buffer.clear();
-        }
-    }
-}
-```
-
----
-
-## Troubleshooting
-
-### Common Errors
-
-#### `Error::Unauthorized`
-
-**Symptom**: All requests fail with 401 Unauthorized.
-
-**Causes & Solutions**:
-
-```rust
-// 1. Token expired and refresh failed
-//    Check: Is refresh token still valid (30 day TTL)?
-//    Solution: Re-authenticate or check credentials
-
-// 2. Wrong certificate for client
-//    Check: Does certificate_id match an active certificate?
-let creds = ClientCredentials {
-    client_id: "my-client",
-    private_key: key,
-    certificate_id: Some("correct-kid"),  // Verify this matches
-};
-
-// 3. Clock skew (JWT issued in the future)
-//    Check: Is system clock synchronized?
-//    Solution: Run `ntpdate` or check NTP settings
-```
-
-#### `Error::Forbidden`
-
-**Symptom**: Authenticated but operations fail with 403.
-
-**Causes & Solutions**:
-
-```rust
-// 1. Insufficient scopes
-//    Check: Does token have required scopes?
-let token_info = client.token_info().await?;
-println!("Scopes: {:?}", token_info.scopes);
-// Required scopes: check -> inferadb.check, write -> inferadb.write
-
-// 2. Wrong vault
-//    Check: Is the vault correct for this operation?
-let result = client
-    .with_vault("correct-vault-id")  // Override vault
-    .check("user:alice", "view", "doc:1")
-    .await?;
-
-// 3. User not member of organization
-//    Check: Is user in organization that owns the vault?
-```
-
-#### `Error::Network`
-
-**Symptom**: Intermittent connection failures.
-
-**Causes & Solutions**:
-
-```rust
-// 1. DNS resolution failing
-//    Solution: Check DNS settings, try IP directly for testing
-
-// 2. TLS handshake issues
-//    Solution: Verify TLS configuration
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .danger_accept_invalid_certs(true)  // DEV ONLY - diagnose TLS issues
-    .build()
-    .await?;
-
-// 3. Connection pool exhausted
-//    Solution: Increase pool size or check for leaks
-let client = Client::builder()
-    .max_connections(200)  // Increase from default 100
-    .build()
-    .await?;
-```
-
-#### `Error::RateLimited`
-
-**Symptom**: Requests fail with 429 Too Many Requests.
-
-**Solutions**:
-
-```rust
-// 1. Enable automatic retry with backoff
-let client = Client::builder()
-    .retry(RetryConfig {
-        max_attempts: 5,
-        retryable_status_codes: vec![429],
-        ..Default::default()
-    })
-    .build()
-    .await?;
-
-// 2. Batch requests to reduce call count
-let results = client.check_batch(checks).await?;  // 1 request vs N
-
-// 3. Enable caching
-let client = Client::builder()
-    .cache(CacheConfig { ttl: Duration::from_secs(60), .. })
-    .build()
-    .await?;
-```
-
-### Debug Mode
-
-```rust
-// Enable verbose logging
-std::env::set_var("RUST_LOG", "inferadb=trace");
-tracing_subscriber::fmt::init();
-
-// Or per-request debugging
-let decision = client
-    .check("user:alice", "view", "doc:1")
-    .trace(true)
-    .debug(true)  // Log request/response
-    .detailed()
-    .await?;
-
-println!("Request ID: {:?}", decision.request_id);
-println!("Trace: {:?}", decision.trace);
-```
-
-### Trace ID Correlation
-
-Correlate client-side errors with server-side logs for debugging:
-
-```rust
-// All errors include request ID for server correlation
-match client.check("user:alice", "view", "doc:1").await {
-    Ok(allowed) => { /* ... */ }
-    Err(e) => {
-        // Get the request ID for correlation
-        let request_id = e.request_id().unwrap_or("unknown");
-        let trace_id = e.trace_id();  // OpenTelemetry trace ID if available
-
-        tracing::error!(
-            request_id = %request_id,
-            trace_id = ?trace_id,
-            error = %e,
-            "Authorization check failed"
-        );
-
-        // Include in error response for support
-        return Err(ApiError::new(e.to_string())
-            .with_header("X-Request-ID", request_id)
-            .with_header("X-Trace-ID", trace_id.unwrap_or_default()));
-    }
-}
-```
-
-#### Finding Server Logs
-
-Use the request ID to find matching server logs:
-
-```bash
-# Search InferaDB server logs
-kubectl logs -l app=inferadb-engine | grep "req_abc123"
-
-# Or in your log aggregator
-# Datadog: @request_id:req_abc123
-# Elasticsearch: request_id:"req_abc123"
-```
-
-#### Error Context Chain
-
-Errors preserve full context for debugging:
-
-```rust
-let err = client.check("user:alice", "view", "doc:1").await.unwrap_err();
-
-// Display shows user-friendly message
-println!("Error: {}", err);
-// Output: "Authorization check failed: connection refused"
-
-// Debug shows full context
-println!("Debug: {:?}", err);
-// Output: Error {
-//     kind: Network(ConnectionRefused),
-//     request_id: Some("req_abc123"),
-//     trace_id: Some("4bf92f3577b34da6a3ce929d0e0e4736"),
-//     operation: "check",
-//     subject: "user:alice",
-//     resource: "doc:1",
-//     permission: "view",
-//     latency: 50ms,
-//     retry_count: 3,
-//     cause: Some(hyper::Error(Connect, ...))
-// }
-
-// Structured logging with all context
-tracing::error!(
-    error.kind = %err.kind(),
-    error.request_id = ?err.request_id(),
-    error.trace_id = ?err.trace_id(),
-    error.operation = %err.operation(),
-    error.retryable = %err.is_retryable(),
-    "Operation failed"
-);
-```
-
-### Health Check
-
-```rust
-// Quick connectivity test
-match client.health().await {
-    Ok(health) => {
-        println!("Status: {:?}", health.status);
-        println!("Latency: {:?}", health.latency);
-    }
-    Err(e) => {
-        println!("Health check failed: {}", e);
-        println!("Request ID: {:?}", e.request_id());
-    }
-}
-```
-
----
-
-## Migration Guide
-
-### From 0.1 to 0.2 (Example)
-
-```rust
-// Before (0.1)
-let client = Client::new("https://api.inferadb.com", creds).await?;
-
-// After (0.2)
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .build()
-    .await?;
-```
-
-### From SpiceDB
-
-```rust
-// SpiceDB
-let request = CheckPermissionRequest {
-    resource: Some(ObjectReference {
-        object_type: "document".to_string(),
-        object_id: "readme".to_string(),
-    }),
-    permission: "view".to_string(),
-    subject: Some(SubjectReference {
-        object: Some(ObjectReference {
-            object_type: "user".to_string(),
-            object_id: "alice".to_string(),
-        }),
-        optional_relation: String::new(),
-    }),
-    ..Default::default()
-};
-let response = client.check_permission(request).await?;
-let allowed = response.permissionship == Permissionship::HasPermission;
-
-// InferaDB - Much simpler!
-let allowed = client.check("user:alice", "view", "document:readme").await?;
-```
-
-### From OpenFGA
-
-```rust
-// OpenFGA - Manual pagination
-let mut all_objects = vec![];
-let mut continuation_token = None;
-loop {
-    let response = client.list_objects(ListObjectsRequest {
-        user: "user:alice".into(),
-        relation: "viewer".into(),
-        object_type: "document".into(),
-        continuation_token: continuation_token.clone(),
-        ..Default::default()
-    }).await?;
-    all_objects.extend(response.objects);
-    continuation_token = response.continuation_token;
-    if continuation_token.is_none() { break; }
-}
-
-// InferaDB - Streaming handles pagination
-let objects: Vec<String> = client
-    .list_resources("user:alice", "viewer", "document")
-    .collect()
-    .await?;
-```
+| Configuration         | Target Size |
+| --------------------- | ----------- |
+| Default (gRPC + REST) | < 8MB       |
+| REST only             | < 4MB       |
+| Minimal               | < 2MB       |
 
 ---
 
 ## Security Considerations
 
-### Private Key Storage
+### Key Management
+
+- Never log private keys or tokens
+- Support key rotation without client restart
+- Clear sensitive data from memory when done
+
+### Sensitive Memory Handling (zeroize)
+
+Private keys and tokens are cleared from memory when dropped using the `zeroize` crate:
 
 ```rust
-// DO: Load from secure secret manager
-let key = Ed25519PrivateKey::from_env("INFERADB_PRIVATE_KEY")?;
+use zeroize::{Zeroize, ZeroizeOnDrop};
+use secrecy::{Secret, ExposeSecret};
 
-// DO: Use file with restricted permissions (chmod 600)
-let key = Ed25519PrivateKey::from_pem_file("/secrets/inferadb.pem")?;
+/// Private key wrapper that zeroizes on drop
+#[derive(ZeroizeOnDrop)]
+pub struct Ed25519PrivateKey {
+    // Inner bytes are zeroized when struct is dropped
+    inner: [u8; 32],
+}
 
-// DON'T: Hardcode keys
-let key = Ed25519PrivateKey::from_pem("-----BEGIN PRIVATE KEY-----...")?;  // BAD!
+impl Ed25519PrivateKey {
+    pub fn from_pem(pem: &[u8]) -> Result<Self, Error> {
+        // Parse PEM, copy into zeroizing container
+        let bytes = parse_ed25519_private_key(pem)?;
+        Ok(Self { inner: bytes })
+    }
 
-// DON'T: Log keys
-tracing::debug!("Key: {:?}", key);  // NEVER DO THIS!
-```
+    // Explicitly expose for signing only
+    fn as_bytes(&self) -> &[u8] {
+        &self.inner
+    }
+}
 
-### TLS Verification
+// When key is dropped, memory is overwritten with zeros
+impl Drop for Ed25519PrivateKey {
+    fn drop(&mut self) {
+        self.inner.zeroize();
+    }
+}
 
-```rust
-// Production: Always verify TLS (default)
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .build()
-    .await?;
+/// Token wrapper using secrecy for logging safety
+pub struct AccessToken(Secret<String>);
 
-// Development only: Disable TLS verification
-let client = Client::builder()
-    .url("https://localhost:8080")
-    .danger_accept_invalid_certs(true)  // NEVER in production!
-    .build()
-    .await?;
-```
+impl AccessToken {
+    pub fn expose(&self) -> &str {
+        self.0.expose_secret()
+    }
+}
 
-### Credential Rotation
-
-```rust
-// Certificates have finite lifetime - rotate before expiry
-let certs = client.control()
-    .clients("org_id")
-    .certificates("client_id")
-    .list()
-    .await?;
-
-for cert in certs {
-    if cert.expires_at < Utc::now() + Duration::days(30) {
-        tracing::warn!("Certificate {} expires in < 30 days", cert.id);
-        // Create new certificate
-        let new_cert = client.control()
-            .clients("org_id")
-            .certificates("client_id")
-            .create()
-            .await?;
-        // Deploy new private key to secrets manager
-        // Update client configuration
-        // Revoke old certificate after transition
+// Debug impl redacts the value
+impl std::fmt::Debug for AccessToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("AccessToken").field(&"[REDACTED]").finish()
     }
 }
 ```
 
-### Audit Logging
+**Security Guarantees**:
+
+| Data Type           | Zeroize on Drop    | Redacted in Logs            | Memory Protection          |
+| ------------------- | ------------------ | --------------------------- | -------------------------- |
+| `Ed25519PrivateKey` | Yes                | Yes                         | Stack-only, no heap copies |
+| `AccessToken`       | Yes                | Yes (via `Secret`)          | Heap, single location      |
+| `ClientCredentials` | Yes (contains key) | Partial (client_id visible) | Key protected              |
+| `RefreshToken`      | Yes                | Yes                         | Heap, single location      |
+
+### Key ID (kid) Derivation
+
+How the SDK determines the `kid` claim for JWT signing:
 
 ```rust
-// Enable audit logging for security-sensitive operations
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .with_middleware(AuditMiddleware::new()
-        .log_checks(true)
-        .log_writes(true)
-        .log_deletes(true))
-    .build()
-    .await?;
-```
+/// Key ID derivation strategy
+pub enum KeyIdStrategy {
+    /// Use explicit certificate_id from ClientCredentials
+    Explicit(String),
 
-### Network Security
+    /// Derive from public key (default)
+    /// kid = base64url(sha256(public_key_bytes)[0..8])
+    DeriveFromPublicKey,
 
-```rust
-// Use mTLS for additional security (if supported)
-let client = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .client_certificate(ClientCertificate {
-        cert: include_bytes!("../certs/client.crt"),
-        key: include_bytes!("../certs/client.key"),
-    })
-    .build()
-    .await?;
-```
-
----
-
-## Runnable Examples
-
-The SDK ships with runnable examples in the `examples/` directory.
-
-### Available Examples
-
-```bash
-# List all examples
-cargo run --example
-
-# Run specific examples:
-cargo run --example basic_check          # Simple authorization check
-cargo run --example batch_check          # Batch multiple checks
-cargo run --example watch_changes        # Real-time relationship updates
-cargo run --example middleware_axum      # Axum middleware integration
-cargo run --example middleware_actix     # Actix-web guard integration
-cargo run --example graphql_dataloader   # async-graphql DataLoader
-cargo run --example multi_tenant         # Multi-vault SaaS pattern
-cargo run --example blocking_cli         # Sync client for CLI
-cargo run --example custom_types         # Type-safe macros
-cargo run --example opentelemetry        # Full OTLP setup
-```
-
-### Example: Basic Check
-
-```rust
-// examples/basic_check.rs
-use inferadb::Client;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Configure from environment
-    let client = Client::from_env().await?;
-
-    // Simple check
-    let allowed = client
-        .check("user:alice", "view", "document:readme")
-        .await?;
-
-    println!("Access allowed: {}", allowed);
-    Ok(())
-}
-```
-
-Run with:
-
-```bash
-export INFERADB_URL=https://api.inferadb.com
-export INFERADB_CLIENT_ID=my_client
-export INFERADB_PRIVATE_KEY_PATH=./private_key.pem
-export INFERADB_VAULT_ID=my_vault
-
-cargo run --example basic_check
-```
-
-### Example: Watch Changes
-
-```rust
-// examples/watch_changes.rs
-use inferadb::{Client, WatchFilter};
-use futures::StreamExt;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = Client::from_env().await?;
-
-    // Watch for changes to document permissions
-    let mut stream = client
-        .watch()
-        .filter(WatchFilter::resource_type("document"))
-        .run()
-        .await?;
-
-    println!("Watching for changes...");
-
-    while let Some(change) = stream.next().await {
-        let change = change?;
-        println!(
-            "[{}] {} {} {} -> {}",
-            change.timestamp,
-            change.operation,
-            change.relationship.resource,
-            change.relationship.relation,
-            change.relationship.subject
-        );
-    }
-
-    Ok(())
-}
-```
-
-### Running Examples Against Local InferaDB
-
-```bash
-# Start local InferaDB (using docker-compose)
-docker-compose up -d
-
-# Run example against local instance
-INFERADB_URL=http://localhost:8080 \
-INFERADB_VAULT_ID=test-vault \
-cargo run --example basic_check
-```
-
----
-
-## Contributing
-
-### Development Setup
-
-```bash
-# Clone the SDK repository
-git clone https://github.com/inferadb/rust-sdk
-cd rust-sdk
-
-# Install dependencies
-cargo build --workspace
-
-# Run tests
-cargo nextest run --workspace
-
-# Run specific test
-cargo test test_check_authorization
-
-# Run with local InferaDB
-INFERADB_URL=http://localhost:8080 cargo test --features integration
-```
-
-### Code Style
-
-```bash
-# Format code
-cargo +nightly fmt --all
-
-# Lint
-cargo clippy --workspace --all-targets -- -D warnings
-
-# Check documentation
-cargo doc --workspace --no-deps
-```
-
-### Testing Guidelines
-
-```rust
-// Unit tests: Use mocks
-#[tokio::test]
-async fn test_check_returns_true_for_allowed() {
-    let mock = MockClient::builder()
-        .check("user:alice", "view", "doc:1", true)
-        .build();
-
-    assert!(mock.check("user:alice", "view", "doc:1").await.unwrap());
+    /// Fetch from JWKS endpoint (/.well-known/jwks.json)
+    FetchFromJwks,
 }
 
-// Integration tests: Use real client with test fixtures
-#[tokio::test]
-#[ignore]  // Run with --ignored flag
-async fn integration_test_check() {
-    let client = test_client().await;
-    let vault = TestVault::create(&client).await.unwrap();
-
-    vault.write(Relationship::new("doc:1", "viewer", "user:alice")).await.unwrap();
-    assert!(vault.check("user:alice", "view", "doc:1").await.unwrap());
-}
-```
-
-### Pull Request Checklist
-
-- [ ] Tests pass (`cargo nextest run --workspace`)
-- [ ] No clippy warnings (`cargo clippy -- -D warnings`)
-- [ ] Code formatted (`cargo +nightly fmt --all`)
-- [ ] Documentation updated (`cargo doc --no-deps`)
-- [ ] CHANGELOG.md updated
-- [ ] Version bumped if needed
-
-### Reporting Issues
-
-File issues at: <https://github.com/inferadb/rust-sdk/issues>
-
-Include:
-
-- SDK version (`cargo pkgid inferadb`)
-- Rust version (`rustc --version`)
-- Minimal reproduction code
-- Error message with request ID if available
-
----
-
-## Production Readiness Checklist
-
-Before deploying to production, verify your InferaDB integration:
-
-### Security
-
-- [ ] **TLS Verification Enabled**: Not using `danger_accept_invalid_certs(true)`
-- [ ] **Private Keys Secured**: Keys stored in secrets manager, not in code/env files
-- [ ] **Key Rotation Plan**: Certificate expiry monitoring and rotation process
-- [ ] **Minimal Scopes**: Client credentials request only needed scopes
-- [ ] **No Browser Private Keys**: Using bearer tokens, not client credentials in browser
-
-### Resilience
-
-- [ ] **Retry Configured**: Custom `RetryConfig` appropriate for your SLAs
-- [ ] **Circuit Breaker**: `CircuitBreakerConfig` prevents cascade failures
-- [ ] **Fallback Policy**: Explicit fail-open or fail-closed decision
-- [ ] **Timeouts Set**: Request and connection timeouts appropriate for your needs
-- [ ] **Graceful Shutdown**: Client shutdown integrated with service lifecycle
-
-### Performance
-
-- [ ] **Connection Pool Sized**: Pool size matches expected concurrency
-- [ ] **Caching Strategy**: Cache TTL and invalidation approach defined
-- [ ] **Batch Operations**: Using `check_batch()` instead of loops where possible
-- [ ] **Protocol Selected**: gRPC for performance, REST if network restricted
-
-### Observability
-
-- [ ] **Logging Configured**: Log level set appropriately (not trace in prod)
-- [ ] **Metrics Enabled**: `metrics(true)` with Prometheus/OTel export
-- [ ] **Tracing Enabled**: `tracing(true)` with trace context propagation
-- [ ] **Alerts Configured**: Rate limit warnings, circuit breaker events monitored
-- [ ] **Request IDs Logged**: Correlation IDs captured for debugging
-
-### Testing
-
-- [ ] **Unit Tests**: Using `MockClient` for isolated testing
-- [ ] **Integration Tests**: Using `TestContainer` or staging environment
-- [ ] **Load Tests**: Verified performance under expected load
-- [ ] **Failure Tests**: Tested behavior when InferaDB unavailable
-
-### Operations
-
-- [ ] **Health Checks**: `/health` endpoint includes InferaDB status
-- [ ] **Runbook**: Documented troubleshooting steps for common errors
-- [ ] **On-Call**: Team knows how to investigate authorization issues
-- [ ] **Rollback Plan**: Can disable authorization checks if critical bug
-
----
-
-## Performance Tuning Guide
-
-### Connection Pool Sizing
-
-Formula for HTTP connection pool:
-
-```rust
-// Rule of thumb: 2x concurrent requests expected
-let expected_concurrent = 50;  // Peak concurrent authorization checks
-let pool_size = expected_concurrent * 2;  // Buffer for spikes
-
-let client = Client::builder()
-    .max_connections(pool_size)
-    .build()
-    .await?;
-```
-
-For gRPC, streams are multiplexed:
-
-```rust
-// Fewer connections needed for gRPC
-let client = Client::builder()
-    .grpc_concurrency_limit(100)  // Streams per connection
-    .build()
-    .await?;
-```
-
-### Cache TTL Selection
-
-| Consistency Need     | Recommended TTL | Invalidation |
-| -------------------- | --------------- | ------------ |
-| Strong (financial)   | 0 (no cache)    | N/A          |
-| Near-real-time       | 5-10 seconds    | Watch-based  |
-| Eventual (most apps) | 30-60 seconds   | TTL expiry   |
-| Relaxed              | 5+ minutes      | TTL expiry   |
-
-```rust
-// For most applications
-let client = Client::builder()
-    .cache(CacheConfig {
-        ttl: Duration::from_secs(60),
-        negative_ttl: Duration::from_secs(30),  // Cache denials shorter
-        max_entries: 10_000,
-    })
-    .build()
-    .await?;
-```
-
-### Batching Strategy
-
-When to batch vs individual checks:
-
-```rust
-// Individual checks: When you need immediate result
-let allowed = client.check("user:alice", "view", "doc:1").await?;
-
-// Batch checks: When checking multiple in one operation
-let results = client.check_batch([
-    ("user:alice", "view", "doc:1"),
-    ("user:alice", "edit", "doc:1"),
-    ("user:alice", "delete", "doc:1"),
-]).collect().await?;
-
-// Use all/any for guard clauses
-let can_modify = client.check_batch([
-    ("user:alice", "edit", "doc:1"),
-    ("user:alice", "admin", "org:acme"),
-]).any().await?;
-```
-
-### Memory Optimization
-
-```rust
-// Minimize memory footprint
-let client = Client::builder()
-    // Smaller cache if memory constrained
-    .cache(CacheConfig {
-        max_entries: 1_000,  // Reduce from 10_000
-        ..Default::default()
-    })
-    // Limit concurrent streams
-    .grpc_concurrency_limit(50)  // Reduce from 100
-    // Aggressive idle timeout
-    .idle_timeout(Duration::from_secs(30))  // Reduce from 90s
-    .build()
-    .await?;
-```
-
-### Latency Optimization
-
-```rust
-// Minimize p99 latency
-let client = Client::builder()
-    // Prefer gRPC (lower latency)
-    .grpc_only()
-    // Enable caching
-    .cache(CacheConfig::default())
-    // Aggressive timeouts
-    .timeout(Duration::from_millis(100))
-    // Fast retries
-    .retry(RetryConfig {
-        max_attempts: 2,  // Fail faster
-        initial_backoff: Duration::from_millis(10),
-        ..Default::default()
-    })
-    .build()
-    .await?;
-```
-
----
-
-## Authorization Anti-Patterns
-
-Common mistakes to avoid when implementing authorization.
-
-### Anti-Pattern: Check in a Loop
-
-```rust
-// ❌ BAD: N network calls
-for doc in documents {
-    let allowed = client.check(&user, "view", &doc.id).await?;
-    if allowed {
-        results.push(doc);
-    }
-}
-
-// ✅ GOOD: 1 network call
-let checks: Vec<_> = documents.iter()
-    .map(|doc| (&user, "view", &doc.id))
-    .collect();
-
-let allowed_set: HashSet<_> = client
-    .check_batch(checks)
-    .collect()
-    .await?
-    .into_iter()
-    .filter(|(_, decision)| decision.allowed)
-    .map(|(idx, _)| idx)
-    .collect();
-
-let results: Vec<_> = documents
-    .into_iter()
-    .enumerate()
-    .filter(|(idx, _)| allowed_set.contains(idx))
-    .map(|(_, doc)| doc)
-    .collect();
-```
-
-### Anti-Pattern: Cache Without Invalidation Strategy
-
-```rust
-// ❌ BAD: Long TTL without invalidation
-let client = Client::builder()
-    .cache(CacheConfig {
-        ttl: Duration::from_secs(3600),  // 1 hour - too long!
-    })
-    .build()
-    .await?;
-
-// ✅ GOOD: Reasonable TTL with invalidation
-let client = Client::builder()
-    .cache(CacheConfig {
-        ttl: Duration::from_secs(60),
-        invalidation: WatchInvalidation::new(),  // Real-time invalidation
-    })
-    .build()
-    .await?;
-```
-
-### Anti-Pattern: Ignoring #[must_use]
-
-```rust
-// ❌ BAD: Ignoring the authorization result
-client.check("user:alice", "view", "doc:1").await?;  // SECURITY BUG!
-serve_document(doc_id);
-
-// ✅ GOOD: Always check the result
-let allowed = client.check("user:alice", "view", "doc:1").await?;
-if !allowed {
-    return Err(Error::Forbidden);
-}
-serve_document(doc_id);
-
-// ✅ BETTER: Use require() for clarity
-client.require("user:alice", "view", "doc:1").await?;
-serve_document(doc_id);
-```
-
-### Anti-Pattern: Fail-Open Without Understanding
-
-```rust
-// ❌ BAD: Fail-open without consideration
-let client = Client::builder()
-    .fallback(FallbackPolicy::Allow)  // DANGER: Everyone gets access if InferaDB is down!
-    .build()
-    .await?;
-
-// ✅ GOOD: Explicit, limited fail-open
-let client = Client::builder()
-    .fallback(FallbackPolicy::Custom(|ctx| {
-        // Only allow reads, deny writes
-        match ctx.permission.as_str() {
-            "view" | "list" => FallbackDecision::Allow,
-            _ => FallbackDecision::Deny,
-        }
-    }))
-    .build()
-    .await?;
-```
-
-### Anti-Pattern: Checking After Fetching
-
-```rust
-// ❌ BAD: Fetch first, then check (leaks existence)
-let doc = db.fetch_document(doc_id).await?;  // Attacker learns doc exists
-let allowed = client.check(&user, "view", doc_id).await?;
-if !allowed {
-    return Err(Error::NotFound);  // Too late - timing attack possible
-}
-
-// ✅ GOOD: Check before fetch
-let allowed = client.check(&user, "view", doc_id).await?;
-if !allowed {
-    return Err(Error::NotFound);  // Same error for "not allowed" and "doesn't exist"
-}
-let doc = db.fetch_document(doc_id).await?;
-```
-
-### Anti-Pattern: Hardcoded Fallback Permissions
-
-```rust
-// ❌ BAD: Hardcoded admin bypass
-if user.is_admin {
-    return true;  // Bypass all authorization!
-}
-let allowed = client.check(&user, permission, resource).await?;
-
-// ✅ GOOD: Admin is just another relation
-// In your schema:
-// permissions { admin_bypass: is_superadmin }
-let allowed = client.check(&user, permission, resource).await?;
-```
-
-### Anti-Pattern: Not Batching Related Checks
-
-```rust
-// ❌ BAD: Separate calls for related permissions
-let can_view = client.check(&user, "view", &doc_id).await?;
-let can_edit = client.check(&user, "edit", &doc_id).await?;
-let can_delete = client.check(&user, "delete", &doc_id).await?;
-
-// ✅ GOOD: Single batch call
-let [can_view, can_edit, can_delete] = client
-    .check_batch([
-        (&user, "view", &doc_id),
-        (&user, "edit", &doc_id),
-        (&user, "delete", &doc_id),
-    ])
-    .collect::<Vec<_>>()
-    .await?
-    .try_into()
-    .unwrap();
-```
-
----
-
-## API Ergonomics
-
-Advanced patterns for cleaner authorization code.
-
-### Capability-Based Client
-
-Get compile-time guarantees about available operations based on token scopes:
-
-```rust
-use inferadb::capabilities::{ReadOnly, ReadWrite, Admin};
-
-// Type-safe client based on credentials
-let reader: Client<ReadOnly> = Client::builder()
-    .url("https://api.inferadb.com")
-    .bearer_token(read_only_token)
-    .build()
-    .await?;
-
-// Only read operations available at compile time
-reader.check("user:alice", "view", "doc:1").await?;  // ✅ Compiles
-// reader.write(relationship).await?;                  // ❌ Compile error!
-
-// Full access client
-let admin: Client<Admin> = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(admin_creds)
-    .build()
-    .await?;
-
-admin.check("user:alice", "view", "doc:1").await?;  // ✅
-admin.write(relationship).await?;                    // ✅
-admin.control().schemas("org", "vault").deploy(schema).await?;  // ✅
-```
-
-#### Capability Traits
-
-```rust
-/// Marker trait for read operations
-pub trait CanRead {}
-
-/// Marker trait for write operations
-pub trait CanWrite: CanRead {}
-
-/// Marker trait for admin operations
-pub trait CanAdmin: CanWrite {}
-
-// Capability markers
-pub struct ReadOnly;
-impl CanRead for ReadOnly {}
-
-pub struct ReadWrite;
-impl CanRead for ReadWrite {}
-impl CanWrite for ReadWrite {}
-
-pub struct Admin;
-impl CanRead for Admin {}
-impl CanWrite for Admin {}
-impl CanAdmin for Admin {}
-```
-
-#### Capability Narrowing
-
-```rust
-// Start with full access
-let admin: Client<Admin> = Client::builder()
-    .url("https://api.inferadb.com")
-    .client_credentials(admin_creds)
-    .build()
-    .await?;
-
-// Narrow to read-only for passing to untrusted code
-let reader: Client<ReadOnly> = admin.as_reader();
-untrusted_module.process(&reader);  // Can only read
-
-// Narrow to read-write
-let writer: Client<ReadWrite> = admin.as_writer();
-```
-
-### Relationship Builder DSL
-
-Fluent DSL for building relationships:
-
-```rust
-use inferadb::dsl::*;
-
-// Simple relationship
-let rel = relationship!("document:readme" <- viewer <- "user:alice");
-
-// Equivalent to:
-let rel = Relationship::new("document:readme", "viewer", "user:alice");
-```
-
-#### Fluent Builder
-
-```rust
-use inferadb::RelationshipBuilder;
-
-// Single relationship
-let rel = RelationshipBuilder::new()
-    .resource("document", "readme")
-    .relation("viewer")
-    .subject("user", "alice")
-    .build();
-
-// With subject relation (for groups)
-let rel = RelationshipBuilder::new()
-    .resource("document", "readme")
-    .relation("viewer")
-    .subject_set("group", "engineering", "member")
-    .build();
-
-// Batch relationships
-let rels = RelationshipBuilder::batch()
-    .resource("folder", "projects")
-    .relation("viewer")
-    .subjects([
-        subject!("user:alice"),
-        subject!("user:bob"),
-        subject!("group:engineering#member"),
-    ])
-    .build();  // Returns Vec<Relationship>
-```
-
-#### Tuple String Parsing
-
-```rust
-// Parse from string format
-let rel: Relationship = "document:readme#viewer@user:alice".parse()?;
-let rel: Relationship = "document:readme#viewer@group:eng#member".parse()?;
-
-// Display as tuple string
-let rel = Relationship::new("document:readme", "viewer", "user:alice");
-assert_eq!(rel.to_string(), "document:readme#viewer@user:alice");
-```
-
-#### Relationship Predicates
-
-```rust
-// Build check predicates fluently
-let allowed = client
-    .check(Check::new()
-        .subject("user:alice")
-        .permission("view")
-        .resource("document:readme"))
-    .await?;
-
-// Or use tuple syntax
-let allowed = client
-    .check(("user:alice", "view", "document:readme"))
-    .await?;
-```
-
-### Fluent Error Handling
-
-```rust
-use inferadb::ext::ResultExt;
-
-// Chain context onto errors
-let allowed = client
-    .check("user:alice", "view", "doc:1")
-    .await
-    .with_context("checking document access")?;
-
-// Convert to HTTP response
-let allowed = client
-    .check("user:alice", "view", "doc:1")
-    .await
-    .or_forbidden()?;  // Returns 403 on error or denial
-```
-
-### Decision Result Helpers
-
-```rust
-use inferadb::Decision;
-
-impl Decision {
-    /// Return Ok(()) if allowed, Err(Forbidden) otherwise
-    pub fn require(self) -> Result<(), Error> {
-        if self.allowed {
-            Ok(())
-        } else {
-            Err(Error::Forbidden {
-                message: self.reason.unwrap_or_default(),
-            })
+impl ClientCredentials {
+    fn derive_kid(&self) -> String {
+        match &self.certificate_id {
+            Some(kid) => kid.clone(),
+            None => {
+                // Derive kid from public key
+                let public_key = self.private_key.public_key();
+                let hash = sha256(public_key.as_bytes());
+                base64url_encode(&hash[0..8])
+            }
         }
     }
-
-    /// Return Ok(()) if allowed, custom error otherwise
-    pub fn require_or<E>(self, err: E) -> Result<(), E> {
-        if self.allowed { Ok(()) } else { Err(err) }
-    }
-
-    /// Return Ok(()) if allowed, computed error otherwise
-    pub fn require_or_else<E, F: FnOnce() -> E>(self, f: F) -> Result<(), E> {
-        if self.allowed { Ok(()) } else { Err(f()) }
-    }
 }
-
-// Usage
-client.check(&user, "delete", &doc_id)
-    .await?
-    .require()?;  // Throws Forbidden if not allowed
 ```
 
-### Type-Safe Permission Checking
+**Usage**:
 
 ```rust
-use inferadb::Permission;
+// Explicit kid (recommended for production)
+let creds = ClientCredentials {
+    client_id: "my_service".into(),
+    private_key: Ed25519PrivateKey::from_pem_file("key.pem")?,
+    certificate_id: Some("key-2024-01".into()),  // Explicit kid
+};
 
-// Define permissions as types
-trait DocumentPermission: Permission {
-    const NAME: &'static str;
-}
-
-struct View;
-impl Permission for View { const NAME: &'static str = "view"; }
-
-struct Edit;
-impl Permission for Edit { const NAME: &'static str = "edit"; }
-
-// Extension trait for typed checks
-impl Client {
-    async fn check_permission<P: Permission>(
-        &self,
-        subject: impl AsRef<str>,
-        resource: impl AsRef<str>,
-    ) -> Result<bool, Error> {
-        self.check(subject.as_ref(), P::NAME, resource.as_ref()).await
-    }
-}
-
-// Usage - permission is type-checked
-let allowed = client.check_permission::<View>(&user, &doc).await?;
-```
-
-### Builder Extensions
-
-```rust
-// Extend the check builder with domain-specific helpers
-trait CheckBuilderExt {
-    fn for_current_user(self) -> Self;
-    fn with_request_context(self, req: &HttpRequest) -> Self;
-}
-
-impl CheckBuilderExt for CheckBuilder<'_> {
-    fn for_current_user(self) -> Self {
-        let user = current_user();  // From thread-local or context
-        self.subject(&user)
-    }
-
-    fn with_request_context(self, req: &HttpRequest) -> Self {
-        self.with_context(Context::new()
-            .insert("ip_address", req.peer_addr())
-            .insert("user_agent", req.headers().get("User-Agent")))
-    }
-}
-
-// Usage
-let allowed = client
-    .check("view", "doc:1")
-    .for_current_user()
-    .with_request_context(&request)
-    .await?;
-```
-
-### Macro for Common Patterns
-
-```rust
-// Define a macro for common authorization patterns
-macro_rules! require_permission {
-    ($client:expr, $user:expr, $perm:expr, $resource:expr) => {
-        if !$client.check($user, $perm, $resource).await? {
-            return Err(Error::Forbidden {
-                message: format!("{} cannot {} on {}", $user, $perm, $resource),
-            });
-        }
-    };
-}
-
-// Usage
-async fn delete_document(client: &Client, user: &str, doc_id: &str) -> Result<()> {
-    require_permission!(client, user, "delete", format!("document:{}", doc_id));
-    actually_delete(doc_id).await
-}
-```
-
----
-
----
-
-## Sources
-
-### Competitor SDKs Analyzed
-
-- [SpiceDB Clients](https://authzed.com/products/spicedb-clients) - Official SpiceDB client ecosystem
-- [spicedb-rust (community)](https://crates.io/crates/spicedb-rust) - Community Rust client by Lur1an
-- [openfga-client](https://github.com/vakamo-labs/openfga-client) - Type-safe OpenFGA Rust client
-- [openfga-rs](https://github.com/liamwh/openfga-rs) - OpenFGA SDK from protobufs
-- [Oso Rust SDK](https://docs.rs/oso) - Oso authorization library
-- [Cedar](https://www.cedarpolicy.com/) - AWS Cedar policy language and SDK
-- [Open Policy Agent](https://www.openpolicyagent.org/) - OPA/Rego policy engine
-
-### Comparison with Cedar and OPA/Rego
-
-For users evaluating policy engines, here's how InferaDB compares:
-
-| Feature | InferaDB | Cedar | OPA/Rego |
-|---------|----------|-------|----------|
-| **Primary Focus** | ReBAC + ABAC | ABAC | General policy |
-| **Policy Language** | IPL | Cedar | Rego |
-| **Relationship Graphs** | ✅ Native | ❌ | ❌ (manual) |
-| **Rust SDK Quality** | ✅ First-class | ✅ First-class | ⚠️ WASM bindings |
-| **Server Mode** | ✅ Distributed | ❌ Library only | ✅ Centralized |
-| **Streaming Updates** | ✅ Watch API | ❌ | ❌ |
-| **Multi-Tenant** | ✅ Vault isolation | ❌ | ❌ |
-| **Schema Types** | ✅ Typed entities | ✅ Typed | ❌ Untyped |
-
-#### Cedar Comparison
-
-Cedar excels at attribute-based access control (ABAC) with a focus on AWS integration:
-
-```cedar
-// Cedar policy
-permit(
-    principal == User::"alice",
-    action == Action::"view",
-    resource
-) when {
-    resource.classification == "public"
+// Auto-derived kid (convenient for development)
+let creds = ClientCredentials {
+    client_id: "my_service".into(),
+    private_key: Ed25519PrivateKey::from_pem_file("key.pem")?,
+    certificate_id: None,  // SDK derives from public key
 };
 ```
 
+### Transport Security
+
+- TLS 1.2+ required for production
+- Certificate pinning available for high-security
+- No `insecure()` in production
+
+### Insecure Mode for Development
+
+The SDK provides an explicit escape hatch for development/testing only:
+
 ```rust
-// InferaDB IPL - combines ReBAC with ABAC
-entity Document {
-    permissions {
-        view: viewer when {
-            resource.classification == "public" or
-            principal.has_clearance(resource.classification)
+// ⚠️ DEVELOPMENT ONLY - This disables TLS verification
+let client = Client::builder()
+    .url("https://localhost:8443")  // Self-signed cert
+    .credentials(creds)
+    .insecure()  // Disables TLS verification
+    .build()
+    .await?;
+```
+
+**Safety Mechanisms**:
+
+```rust
+impl ClientBuilder<HasUrl, HasAuth, HasVault> {
+    /// Disable TLS verification (DEVELOPMENT ONLY)
+    ///
+    /// # Security Warning
+    ///
+    /// This method disables TLS certificate verification, making the
+    /// connection vulnerable to man-in-the-middle attacks. Only use
+    /// this for local development or testing.
+    ///
+    /// # Panics (in production builds)
+    ///
+    /// When compiled with `cfg(not(debug_assertions))` (release mode),
+    /// this method will panic unless INFERADB_ALLOW_INSECURE=1 is set.
+    pub fn insecure(mut self) -> Self {
+        #[cfg(not(debug_assertions))]
+        {
+            if std::env::var("INFERADB_ALLOW_INSECURE").as_deref() != Ok("1") {
+                panic!(
+                    "insecure() called in release build without INFERADB_ALLOW_INSECURE=1. \
+                     This is a security risk and is disabled by default."
+                );
+            }
         }
+
+        tracing::warn!(
+            target: "inferadb::security",
+            "TLS verification disabled - this is insecure!"
+        );
+
+        self.tls_config = TlsConfig::Insecure;
+        self
     }
 }
 ```
 
-**Choose InferaDB over Cedar when:**
-
-- You need relationship-based access (teams, folders, sharing)
-- You want a managed distributed service
-- You need real-time permission updates
-- Multi-tenancy is a requirement
-
-**Choose Cedar when:**
-
-- Pure attribute-based policies suffice
-- You need deep AWS integration
-- You want embeddable library (no network)
-
-#### OPA/Rego Comparison
-
-OPA is a general-purpose policy engine using Rego:
-
-```rego
-# Rego policy
-allow {
-    input.action == "view"
-    input.user == data.documents[input.resource].viewers[_]
-}
-```
+**Compile-time Detection**:
 
 ```rust
-// InferaDB - relationships are first-class
-let allowed = client.check("user:alice", "view", "document:readme").await?;
+// Feature flag to completely remove insecure() from release builds
+#[cfg(feature = "insecure")]
+pub fn insecure(mut self) -> Self { /* ... */ }
+
+// Without the feature, method doesn't exist
+// Cargo.toml:
+// [features]
+// insecure = []  # Must be explicitly enabled
 ```
 
-**Choose InferaDB over OPA when:**
+### Input Validation
 
-- Authorization is your primary use case
-- You need relationship traversal (groups, hierarchies)
-- You want type-safe Rust SDK
-- Latency is critical (InferaDB is optimized for authz)
+- Validate all inputs before sending
+- Sanitize entity IDs (no injection attacks)
+- Limit request sizes
 
-**Choose OPA when:**
+### Audit Requirements
 
-- You need general policy beyond authorization
-- Rego's flexibility is required
-- You have existing Rego policies
-
-### Standards & Specifications
-
-- [RFC 7523](https://datatracker.ietf.org/doc/html/rfc7523) - JWT Bearer client authentication
-- [RFC 7517](https://datatracker.ietf.org/doc/html/rfc7517) - JSON Web Key (JWK)
-- [AuthZEN](https://openid.net/wg/authzen/) - Authorization API interoperability
-
-### InferaDB Documentation
-
-- [Engine CLAUDE.md](../engine/CLAUDE.md) - Engine architecture and patterns
-- [Control Authentication](../control/docs/authentication.md) - Authentication flows
-- [IPL Specification](../engine/concept.ipl) - Policy language reference
+- Log all authorization decisions (configurable)
+- Include request IDs for traceability
+- Support compliance logging formats
