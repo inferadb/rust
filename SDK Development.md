@@ -26,6 +26,10 @@ Internal design document for SDK implementers. For user-facing documentation, se
 
 ## Table of Contents
 
+### Getting Started
+
+- [5-Minute Quickstart](#5-minute-quickstart)
+
 ### Part 1: Vision & Architecture
 
 - [Design Philosophy](#design-philosophy)
@@ -43,7 +47,7 @@ Internal design document for SDK implementers. For user-facing documentation, se
 - [Health Check & Lifecycle](#health-check--lifecycle)
 - [Vault Scoping](#vault-scoping)
   - [Sub-Client Types](#sub-client-types)
-- [Middleware & Interceptors](#middleware-and-interceptors)
+- [Middleware and Interceptors](#middleware-and-interceptors)
 
 ### Part 3: Type System & Safety
 
@@ -120,8 +124,77 @@ Internal design document for SDK implementers. For user-facing documentation, se
 
 - [Protocol Support](#protocol-support)
 - [Feature Flags](#feature-flags)
+- [WASM / Browser Usage](#wasm--browser-usage)
 - [Safety Guarantees](#safety-guarantees)
+- [Security Considerations](#security-considerations)
 - [Release Strategy](#release-strategy)
+
+---
+
+## 5-Minute Quickstart
+
+Get up and running with InferaDB in minutes.
+
+### Installation
+
+```toml
+# Cargo.toml
+[dependencies]
+inferadb = "0.1"
+tokio = { version = "1", features = ["full"] }
+```
+
+### Basic Usage
+
+```rust
+use inferadb::prelude::*;
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    // 1. Create client with explicit configuration
+    let client = Client::builder()
+        .url("https://api.inferadb.com")
+        .credentials(ClientCredentialsConfig {
+            client_id: "your_client_id".into(),
+            private_key: Ed25519PrivateKey::from_pem_file("path/to/private-key.pem")?,
+            certificate_id: None,
+        })
+        .build()
+        .await?;
+
+    // 2. Get vault context (organization-first hierarchy)
+    let vault = client
+        .organization("org_8675309...")
+        .vault("vlt_01JFQGK...");
+
+    // 3. Write a relationship
+    vault.relationships()
+        .write(Relationship::new("document:readme", "viewer", "user:alice"))
+        .await?;
+
+    // 4. Check permission (returns bool)
+    let allowed = vault
+        .check("user:alice", "view", "document:readme")
+        .await?;
+
+    println!("Alice can view: {}", allowed);  // true
+
+    // 5. Use require() for HTTP handlers (fails fast on denial)
+    vault.check("user:alice", "view", "document:readme")
+        .require()
+        .await?;  // Returns Ok(()) or Err(AccessDenied)
+
+    println!("Access granted!");
+    Ok(())
+}
+```
+
+### Next Steps
+
+- **[Authorization Checks](#authorization-checks)**: Learn `check()`, `require()`, `explain()`
+- **[Relationship Management](#relationship-management)**: CRUD operations for the graph
+- **[Testing Support](#testing-support)**: MockClient, InMemoryClient, TestVault
+- **[Error Handling](#error-handling)**: Error types and retry strategies
 
 ---
 
@@ -157,6 +230,47 @@ Internal design document for SDK implementers. For user-facing documentation, se
 | Watch/real-time     | SSE + gRPC streaming                  | gRPC only               | No                 | No              |
 | Trace/explain       | Full decision trace                   | Limited                 | Limited            | No              |
 | Protocol choice     | gRPC + REST                           | gRPC only               | HTTP only          | HTTP only       |
+
+### API Ordering Rationale (Quick Reference)
+
+The SDK uses context-appropriate parameter orderings. Keep this reference handy:
+
+| API                                                    | Order                           | Mental Model                            |
+| ------------------------------------------------------ | ------------------------------- | --------------------------------------- |
+| `check(sub, perm, res)`                                | Subject → Permission → Resource | "Can **who** do **what** to **which**?" |
+| `Relationship::new(res, rel, sub)`                     | Resource → Relation → Subject   | Graph edge: `res -[rel]→ sub`           |
+| `resources().accessible_by(sub).with_permission(perm)` | Subject → Permission            | "What can **who** **do**?"              |
+| `subjects().with_permission(perm).on_resource(res)`    | Permission → Resource           | "Who can **do** to **which**?"          |
+| `relationships().list().resource(res).relation(rel)`   | Resource → Relation             | Filter by edge origin                   |
+
+**Why different orderings?**
+
+1. **`check()` uses "question" order**: Matches natural language "Can Alice view the document?" → `check("user:alice", "view", "doc:readme")`
+
+2. **`Relationship` uses "graph edge" order**: Matches ReBAC graph mental model where edges flow from resource to subject: `document:readme -[viewer]→ user:alice`
+
+3. **Query builders use "filter chain" order**: Each method narrows the result set, so order follows the question being asked
+
+**Mnemonic**:
+
+- **Checks**: "**Who** can do **what** to **which**?" → Subject, Permission, Resource
+- **Relationships**: "**Which** has **what** with **whom**?" → Resource, Relation, Subject
+- **Queries**: Start with what you're looking for, then add filters
+
+**Conversion helpers**:
+
+```rust
+// When you have the data in a different order, use named parameters
+let rel = Relationship::builder()
+    .resource("document:readme")
+    .relation("viewer")
+    .subject("user:alice")
+    .build();
+
+// Or use the from_check helper to convert check parameters to relationship
+let rel = Relationship::from_check_params("user:alice", "viewer", "document:readme");
+// Result: Relationship { resource: "document:readme", relation: "viewer", subject: "user:alice" }
+```
 
 ---
 
@@ -371,23 +485,89 @@ use inferadb::{
     // Results and errors
     Error,
     ErrorKind,
-    Forbidden,
+    AccessDenied,
 
     // Keys
     Ed25519PrivateKey,
 };
 ```
 
-**Extended Prelude** (with derive macros):
+### Tiered Preludes
+
+For projects that need finer control over imports, the SDK offers tiered preludes:
+
+**Core Prelude** (`inferadb::prelude::core`) - Minimal, essential types only:
 
 ```rust
-// Include derive macros for type-safe relationships
-use inferadb::prelude::*;
-use inferadb::derive::*;  // Resource, Subject, Relation derives
+use inferadb::prelude::core::*;
 
-#[derive(Resource)]
-#[resource(type = "document")]
-struct Document { id: String }
+// Includes only:
+// - Client, OrganizationClient, VaultClient
+// - AuthorizationClient trait
+// - Relationship, Decision, Context
+// - Error, ErrorKind, AccessDenied
+// - ConsistencyToken
+```
+
+**Full Prelude** (`inferadb::prelude`) - All commonly used types (default):
+
+```rust
+use inferadb::prelude::*;
+
+// Includes core plus:
+// - Configuration types (RetryConfig, CacheConfig, etc.)
+// - Credential types
+// - Transport types
+// - Ed25519PrivateKey
+```
+
+**Extended Prelude** (`inferadb::prelude::extended`) - Everything including optional features:
+
+```rust
+use inferadb::prelude::extended::*;
+
+// Includes full plus:
+// - derive::* (Resource, Subject macros)
+// - testing::* (MockClient, InMemoryClient, TestVault)
+// - integrations::* (framework extractors, middleware)
+```
+
+**When to Use Each**:
+
+| Prelude    | Use Case                        | Binary Size Impact |
+| ---------- | ------------------------------- | ------------------ |
+| `core`     | Minimal footprint, library code | Smallest           |
+| Default    | Most applications               | Standard           |
+| `extended` | Feature-rich apps, test code    | Largest            |
+
+```rust
+// Library code - minimal dependencies
+mod authz {
+    use inferadb::prelude::core::*;
+
+    pub async fn check_access(vault: &impl AuthorizationClient, ...) { }
+}
+
+// Application code - full features
+mod main {
+    use inferadb::prelude::*;
+
+    // Full configuration available
+    let client = Client::builder()
+        .retry(RetryConfig::default())
+        .build()
+        .await?;
+}
+
+// Test code - testing utilities
+#[cfg(test)]
+mod tests {
+    use inferadb::prelude::extended::*;
+
+    let mock = MockClient::builder()
+        .check("user:alice", "view", "doc:1", true)
+        .build();
+}
 ```
 
 ---
@@ -471,7 +651,6 @@ All config types implement `Default` with sensible production values:
 ```rust
 /// Unified retry configuration covering both mechanics and policy
 #[derive(Debug, Clone)]
-#[must_use = "RetryConfig must be passed to a builder to take effect"]
 pub struct RetryConfig {
     // Retry mechanics (how to retry)
     pub max_retries: u32,
@@ -491,7 +670,6 @@ pub struct RetryConfig {
 
 /// Retry budget to prevent retry storms under high load
 #[derive(Debug, Clone)]
-#[must_use = "RetryBudget must be passed to RetryConfig to take effect"]
 pub struct RetryBudget {
     /// Time window for tracking retry ratio
     pub ttl: Duration,
@@ -534,7 +712,6 @@ impl Default for RetryBudget {
 
 /// Per-operation-category retry settings
 #[derive(Debug, Clone)]
-#[must_use = "OperationRetry must be passed to RetryConfig to take effect"]
 pub struct OperationRetry {
     /// Override max_retries for this category (None = use default)
     pub max_retries: Option<u32>,
@@ -648,7 +825,6 @@ impl RetryConfig {
 
 /// Cache configuration with production defaults
 #[derive(Debug, Clone)]
-#[must_use = "CacheConfig must be passed to a builder to take effect"]
 pub struct CacheConfig {
     /// TTL for permission check results
     pub permission_ttl: Duration,
@@ -712,9 +888,38 @@ impl CacheConfig {
     }
 }
 
+/// Strategy for invalidating cached entries
+#[derive(Debug, Clone, Default)]
+pub enum CacheInvalidation {
+    /// TTL-based expiration only (default)
+    /// Entries expire based on their TTL; no active invalidation.
+    #[default]
+    TtlOnly,
+
+    /// Use watch stream for real-time invalidation
+    /// Client subscribes to relationship changes and evicts affected entries.
+    Watch,
+
+    /// Invalidate on consistency token mismatch
+    /// Entries are evicted when a newer consistency token is observed.
+    ConsistencyToken,
+
+    /// Custom invalidation via callback
+    /// Allows integration with external cache invalidation systems.
+    Custom(Box<dyn CacheInvalidator + Send + Sync>),
+}
+
+/// Trait for custom cache invalidation strategies
+pub trait CacheInvalidator: std::fmt::Debug {
+    /// Called when a cache entry should be checked for invalidation
+    fn should_invalidate(&self, key: &str, cached_at: DateTime<Utc>) -> bool;
+
+    /// Called when relationships change (if subscribed to changes)
+    fn on_relationship_change(&self, event: &WatchEvent);
+}
+
 /// Token refresh configuration with production defaults
 #[derive(Debug, Clone)]
-#[must_use = "RefreshConfig must be passed to a builder to take effect"]
 pub struct RefreshConfig {
     /// Refresh when this fraction of token lifetime has elapsed (0.0-1.0)
     pub threshold_ratio: f64,
@@ -834,6 +1039,34 @@ pub enum BuildError {
     #[error("connection failed: {0}")]
     ConnectionFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
+
+/// Error type for authentication failures during client operations
+#[derive(Debug, thiserror::Error)]
+pub enum AuthError {
+    /// Token request failed (e.g., invalid credentials, server error)
+    #[error("token request failed: {0}")]
+    TokenRequestFailed(String),
+
+    /// Token response was invalid or unparseable
+    #[error("invalid token response: {0}")]
+    InvalidTokenResponse(String),
+
+    /// Token has expired and refresh failed
+    #[error("token expired and refresh failed: {0}")]
+    TokenExpired(String),
+
+    /// Credentials were rejected by the server (401/403)
+    #[error("credentials rejected: {0}")]
+    CredentialsRejected(String),
+
+    /// JWT signing failed
+    #[error("failed to sign JWT: {0}")]
+    SigningFailed(String),
+
+    /// Private key is invalid or unsupported
+    #[error("invalid private key: {0}")]
+    InvalidKey(#[from] KeyError),
+}
 ```
 
 ### Connection Lifecycle
@@ -923,12 +1156,12 @@ This is an **async-first SDK**. All I/O methods are async; there are no `check_s
 
 ### Why Async-Only
 
-| Reason | Explanation |
-|--------|-------------|
-| **Ecosystem alignment** | Rust async ecosystem (tokio, hyper, tonic) is mature and standard for network I/O |
-| **Performance** | Async enables concurrent requests, connection pooling, and efficient resource usage |
-| **Simplicity** | One API surface to document, test, and maintain |
-| **No hidden blocking** | Sync wrappers hide `block_on()` calls that can panic in async contexts |
+| Reason                  | Explanation                                                                         |
+| ----------------------- | ----------------------------------------------------------------------------------- |
+| **Ecosystem alignment** | Rust async ecosystem (tokio, hyper, tonic) is mature and standard for network I/O   |
+| **Performance**         | Async enables concurrent requests, connection pooling, and efficient resource usage |
+| **Simplicity**          | One API surface to document, test, and maintain                                     |
+| **No hidden blocking**  | Sync wrappers hide `block_on()` calls that can panic in async contexts              |
 
 ### The Exception: `build_sync()`
 
@@ -1003,11 +1236,11 @@ fn sync_callback(handle: &tokio::runtime::Handle, vault: &VaultClient) -> Result
 
 We considered a `sync` feature that would provide blocking wrappers, but decided against it:
 
-| Approach | Problem |
-|----------|---------|
+| Approach                            | Problem                                                 |
+| ----------------------------------- | ------------------------------------------------------- |
 | `#[cfg(feature = "sync")]` wrappers | Hidden `block_on()` panics if called from async context |
-| Separate `inferadb-sync` crate | Maintenance burden, API drift, user confusion |
-| Codegen both variants | Complexity, larger binary, documentation burden |
+| Separate `inferadb-sync` crate      | Maintenance burden, API drift, user confusion           |
+| Codegen both variants               | Complexity, larger binary, documentation burden         |
 
 The patterns above give full control to users who need blocking behavior, without the SDK making assumptions about runtime context.
 
@@ -1136,10 +1369,10 @@ impl<Url, Auth> ClientBuilder<Url, Auth> {
 
 The builder uses a two-tier validation approach:
 
-| Level | When | What's Checked | Mechanism |
-|-------|------|----------------|-----------|
-| **Compile-time** | Type checking | Required field presence (URL, auth) | Typestate phantom types |
-| **Runtime (`build()`)** | At `build()` call | Semantic correctness | `Result<Client, BuildError>` |
+| Level                   | When              | What's Checked                      | Mechanism                    |
+| ----------------------- | ----------------- | ----------------------------------- | ---------------------------- |
+| **Compile-time**        | Type checking     | Required field presence (URL, auth) | Typestate phantom types      |
+| **Runtime (`build()`)** | At `build()` call | Semantic correctness                | `Result<Client, BuildError>` |
 
 **Compile-time (typestate enforced):**
 
@@ -1474,6 +1707,30 @@ pub trait CredentialsProvider: Send + Sync + 'static {
         // Default: no-op
     }
 }
+
+/// Error type for credential providers
+#[derive(Debug, thiserror::Error)]
+pub enum CredentialsError {
+    /// Credentials not found (e.g., missing environment variable, secret not in vault)
+    #[error("credentials not found: {0}")]
+    NotFound(String),
+
+    /// Failed to load or parse credentials
+    #[error("failed to load credentials: {0}")]
+    LoadError(String),
+
+    /// Credentials provider is unavailable (e.g., network error to secrets manager)
+    #[error("credentials provider unavailable: {0}")]
+    Unavailable(#[source] Box<dyn std::error::Error + Send + Sync>),
+
+    /// Credentials have been revoked or are invalid
+    #[error("credentials revoked or invalid")]
+    Revoked,
+
+    /// Rate limited by credentials provider
+    #[error("credentials provider rate limited, retry after {0:?}")]
+    RateLimited(Option<Duration>),
+}
 ```
 
 **Built-in Implementations**:
@@ -1483,37 +1740,6 @@ pub trait CredentialsProvider: Send + Sync + 'static {
 impl CredentialsProvider for ClientCredentialsConfig {
     async fn get_credentials(&self) -> Result<ClientCredentialsConfig, CredentialsError> {
         Ok(self.clone())
-    }
-}
-
-// Environment variable provider
-pub struct EnvCredentialsProvider {
-    client_id_var: String,
-    private_key_var: String,
-}
-
-impl EnvCredentialsProvider {
-    pub fn new(client_id_var: &str, private_key_var: &str) -> Self {
-        Self {
-            client_id_var: client_id_var.into(),
-            private_key_var: private_key_var.into(),
-        }
-    }
-}
-
-#[async_trait]
-impl CredentialsProvider for EnvCredentialsProvider {
-    async fn get_credentials(&self) -> Result<ClientCredentialsConfig, CredentialsError> {
-        let client_id = std::env::var(&self.client_id_var)
-            .map_err(|_| CredentialsError::NotFound(self.client_id_var.clone()))?;
-        let private_key_pem = std::env::var(&self.private_key_var)
-            .map_err(|_| CredentialsError::NotFound(self.private_key_var.clone()))?;
-
-        Ok(ClientCredentialsConfig {
-            client_id,
-            private_key: Ed25519PrivateKey::from_pem(private_key_pem.as_bytes())?,
-            certificate_id: None,
-        })
     }
 }
 ```
@@ -1593,15 +1819,6 @@ let client = Client::builder()
     .build()
     .await?;
 
-// Environment-based credentials
-let client = Client::builder()
-    .credentials(EnvCredentialsProvider::new(
-        "INFERADB_CLIENT_ID",
-        "INFERADB_PRIVATE_KEY",
-    ))
-    .build()
-    .await?;
-
 // Bearer token
 let client = Client::builder()
     .credentials(BearerCredentialsConfig {
@@ -1642,6 +1859,40 @@ let client = Client::builder()
     .build()
     .await?;
 ```
+
+**Pool Configuration Options**:
+
+| Option              | Default     | Description                                     |
+| ------------------- | ----------- | ----------------------------------------------- |
+| `pool_size`         | 10          | Maximum number of connections per host          |
+| `idle_timeout`      | 90 seconds  | Time before idle connections are closed         |
+| `max_idle_per_host` | `pool_size` | Maximum idle connections to retain per host     |
+| `pool_timeout`      | 30 seconds  | Max time to wait for a connection from the pool |
+| `http2_only`        | false       | Force HTTP/2 (required for gRPC)                |
+| `http2_keepalive`   | 20 seconds  | HTTP/2 keepalive ping interval                  |
+
+```rust
+// Full pool configuration example
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .pool_size(50)                               // High-throughput application
+    .idle_timeout(Duration::from_secs(120))      // Keep connections longer
+    .max_idle_per_host(20)                       // Don't keep all 50 idle
+    .pool_timeout(Duration::from_secs(10))       // Fail fast if pool exhausted
+    .http2_only(true)                            // Use HTTP/2 multiplexing
+    .http2_keepalive(Duration::from_secs(30))    // Keep HTTP/2 connections alive
+    .build()
+    .await?;
+```
+
+**Pool Sizing Guidance**:
+
+| Scenario                      | pool_size | Notes                                 |
+| ----------------------------- | --------- | ------------------------------------- |
+| Low traffic (< 10 req/s)      | 5-10      | Default is usually sufficient         |
+| Medium traffic (10-100 req/s) | 20-50     | Balance between latency and resources |
+| High traffic (> 100 req/s)    | 50-100    | HTTP/2 multiplexing helps here        |
+| Burst-heavy                   | 100+      | Size for peak, idle_timeout cleans up |
 
 ### Connection Lifecycle Diagram
 
@@ -1699,6 +1950,248 @@ let client = Client::builder()
     .request_timeout(Duration::from_secs(30))
     .build()
     .await?;
+```
+
+### TLS Configuration
+
+Configure TLS for security requirements, including custom CA certificates and mutual TLS (mTLS).
+
+**Custom CA Certificates**:
+
+```rust
+// Add custom CA certificates (for private PKI or self-signed certs)
+let client = Client::builder()
+    .url("https://inferadb.internal.corp")
+    .tls(TlsConfig::new()
+        .add_root_certificate(Certificate::from_pem(include_bytes!("corp-ca.pem"))?))
+    .build()
+    .await?;
+
+// Load from system trust store plus custom CA
+let client = Client::builder()
+    .url("https://inferadb.internal.corp")
+    .tls(TlsConfig::new()
+        .with_native_roots()  // Include system CAs
+        .add_root_certificate(Certificate::from_pem(corp_ca_bytes)?))
+    .build()
+    .await?;
+```
+
+**Mutual TLS (mTLS)**:
+
+```rust
+// Client certificate authentication (for zero-trust environments)
+let client = Client::builder()
+    .url("https://inferadb.secure.corp")
+    .tls(TlsConfig::new()
+        .client_identity(Identity::from_pem(
+            include_bytes!("client-cert.pem"),
+            include_bytes!("client-key.pem"),
+        )?))
+    .build()
+    .await?;
+
+// mTLS with custom CA
+let client = Client::builder()
+    .url("https://inferadb.secure.corp")
+    .tls(TlsConfig::new()
+        .add_root_certificate(Certificate::from_pem(ca_cert)?)
+        .client_identity(Identity::from_pem(client_cert, client_key)?))
+    .build()
+    .await?;
+```
+
+**TLS Configuration Types**:
+
+```rust
+/// TLS configuration for secure connections
+#[derive(Debug, Clone)]
+pub struct TlsConfig {
+    /// Additional root certificates to trust
+    root_certificates: Vec<Certificate>,
+    /// Client identity for mTLS
+    client_identity: Option<Identity>,
+    /// Include system/native root certificates
+    use_native_roots: bool,
+    /// Minimum TLS version (default: 1.2)
+    min_version: TlsVersion,
+    /// Enable certificate hostname verification (default: true)
+    verify_hostname: bool,
+    /// ALPN protocols (default: ["h2", "http/1.1"])
+    alpn_protocols: Vec<String>,
+}
+
+impl TlsConfig {
+    pub fn new() -> Self {
+        Self {
+            root_certificates: Vec::new(),
+            client_identity: None,
+            use_native_roots: true,
+            min_version: TlsVersion::Tls12,
+            verify_hostname: true,
+            alpn_protocols: vec!["h2".into(), "http/1.1".into()],
+        }
+    }
+
+    /// Add a root certificate to trust
+    pub fn add_root_certificate(mut self, cert: Certificate) -> Self {
+        self.root_certificates.push(cert);
+        self
+    }
+
+    /// Set client identity for mTLS
+    pub fn client_identity(mut self, identity: Identity) -> Self {
+        self.client_identity = Some(identity);
+        self
+    }
+
+    /// Include system root certificates (default: true)
+    pub fn with_native_roots(mut self) -> Self {
+        self.use_native_roots = true;
+        self
+    }
+
+    /// Use only explicitly added certificates
+    pub fn without_native_roots(mut self) -> Self {
+        self.use_native_roots = false;
+        self
+    }
+
+    /// Set minimum TLS version
+    pub fn min_version(mut self, version: TlsVersion) -> Self {
+        self.min_version = version;
+        self
+    }
+}
+
+/// TLS version requirement
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TlsVersion {
+    Tls12,
+    Tls13,
+}
+
+/// A PEM-encoded certificate
+#[derive(Debug, Clone)]
+pub struct Certificate(Vec<u8>);
+
+impl Certificate {
+    pub fn from_pem(pem: &[u8]) -> Result<Self, Error> {
+        // Validate PEM format
+        Ok(Self(pem.to_vec()))
+    }
+
+    pub fn from_der(der: &[u8]) -> Result<Self, Error> {
+        Ok(Self(der.to_vec()))
+    }
+}
+
+/// A client identity (certificate + private key) for mTLS
+#[derive(Debug, Clone)]
+pub struct Identity {
+    cert: Vec<u8>,
+    key: Vec<u8>,
+}
+
+impl Identity {
+    pub fn from_pem(cert_pem: &[u8], key_pem: &[u8]) -> Result<Self, Error> {
+        Ok(Self {
+            cert: cert_pem.to_vec(),
+            key: key_pem.to_vec(),
+        })
+    }
+
+    /// Load identity from a PKCS#12/PFX bundle.
+    /// Note: Planned for v0.2 release.
+    pub fn from_pkcs12(pkcs12: &[u8], password: &str) -> Result<Self, Error> {
+        // TODO(v0.2): Implement PKCS#12 parsing using rustls-pemfile or similar
+        Err(Error::new(ErrorKind::ConfigurationError, "PKCS#12 support not yet available"))
+    }
+}
+```
+
+### Proxy Configuration
+
+Configure HTTP/HTTPS/SOCKS proxy for corporate network environments.
+
+```rust
+// HTTP proxy
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .proxy(Proxy::http("http://proxy.corp:8080")?)
+    .build()
+    .await?;
+
+// HTTPS proxy
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .proxy(Proxy::https("http://proxy.corp:8080")?)
+    .build()
+    .await?;
+
+// SOCKS5 proxy
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .proxy(Proxy::socks5("socks5://proxy.corp:1080")?)
+    .build()
+    .await?;
+
+// Proxy with authentication
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .proxy(Proxy::https("http://proxy.corp:8080")?
+        .basic_auth("username", "password"))
+    .build()
+    .await?;
+
+// No proxy for specific hosts
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .proxy(Proxy::https("http://proxy.corp:8080")?
+        .no_proxy("localhost,127.0.0.1,.internal.corp"))
+    .build()
+    .await?;
+```
+
+**Proxy Types**:
+
+```rust
+/// Proxy configuration
+#[derive(Debug, Clone)]
+pub struct Proxy {
+    /// Proxy URL
+    url: Url,
+    /// Proxy type
+    kind: ProxyKind,
+    /// Authentication credentials
+    auth: Option<ProxyAuth>,
+    /// Hosts to bypass proxy
+    no_proxy: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ProxyKind {
+    Http,
+    Https,
+    Socks5,
+}
+
+impl Proxy {
+    /// HTTP proxy (for HTTP connections)
+    pub fn http(url: &str) -> Result<Self, Error>;
+
+    /// HTTPS proxy (for HTTPS connections via CONNECT)
+    pub fn https(url: &str) -> Result<Self, Error>;
+
+    /// SOCKS5 proxy
+    pub fn socks5(url: &str) -> Result<Self, Error>;
+
+    /// Add basic authentication
+    pub fn basic_auth(mut self, username: &str, password: &str) -> Self;
+
+    /// Set hosts to bypass proxy (comma-separated)
+    pub fn no_proxy(mut self, hosts: &str) -> Self;
+}
 ```
 
 ### Client Cloning Semantics
@@ -1811,9 +2304,16 @@ client.wait_ready_with(ReadinessConfig {
 #[derive(Debug, Clone)]
 pub struct HealthResponse {
     pub status: HealthStatus,
+    pub version: String,
     pub latency: Duration,
     pub components: HashMap<String, ComponentHealth>,
-    pub server_version: Option<String>,
+    pub timestamp: DateTime<Utc>,
+}
+
+impl HealthResponse {
+    pub fn is_healthy(&self) -> bool {
+        self.status == HealthStatus::Healthy
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1828,6 +2328,7 @@ pub struct ComponentHealth {
     pub status: HealthStatus,
     pub message: Option<String>,
     pub latency: Option<Duration>,
+    pub last_check: DateTime<Utc>,
 }
 ```
 
@@ -1885,6 +2386,48 @@ impl ShutdownHandle {
     pub fn is_shutting_down(&self) -> bool {
         self.inner.is_shutting_down()
     }
+}
+```
+
+**Shutdown Phases**:
+
+| Phase              | Client Behavior                                          | In-Flight Requests     |
+| ------------------ | -------------------------------------------------------- | ---------------------- |
+| Normal             | Accepts new requests, processes normally                 | Continue               |
+| Shutdown initiated | Rejects new requests with `Error { kind: ShuttingDown }` | Continue to completion |
+| Draining           | No new requests, waiting for in-flight                   | Complete or timeout    |
+| Force shutdown     | Closes all connections immediately                       | Cancelled with error   |
+| Complete           | All resources released                                   | N/A                    |
+
+**Drop Behavior**:
+
+If a `Client` is dropped without explicit shutdown, in-flight requests may be cancelled abruptly. For production applications, always use explicit shutdown:
+
+```rust
+// ❌ Bad: abrupt drop may cancel in-flight requests
+{
+    let client = Client::builder().build().await?;
+    // ... use client ...
+}  // Dropped here - connections may close abruptly
+
+// ✅ Good: explicit shutdown with timeout
+let (client, shutdown) = Client::builder().build_with_shutdown().await?;
+// ... use client ...
+shutdown.shutdown_timeout(Duration::from_secs(30)).await;
+```
+
+**Shutdown Notification**:
+
+Check if the client is shutting down to avoid starting new work:
+
+```rust
+async fn process_request(client: &Client, vault: &VaultClient) -> Result<(), Error> {
+    if client.is_shutting_down() {
+        return Err(Error::shutting_down());
+    }
+
+    // Proceed with request
+    vault.check("user:alice", "view", "doc:1").await
 }
 ```
 
@@ -1950,14 +2493,14 @@ The SDK uses a unified hierarchy where operations flow through organizations and
 
 The `VaultClient` type provides both authorization and management operations:
 
-| Category      | Methods                                                                |
-| ------------- | ---------------------------------------------------------------------- |
-| Authorization | `check()`, `check_batch()`, `expand()`                                 |
-| Resources     | `resources().list()` (extensible for future resource-based operations) |
-| Subjects      | `subjects().list()` (extensible for future subject-based operations)   |
-| Relationships | `relationships().list()`, `.write()`, `.delete()` (full CRUD)          |
-| Streaming     | `watch()`, `simulate()`                                                |
-| Management    | `schemas()`, `tokens()`, `roles()`, `get()`, `update()`, `delete()`    |
+| Category      | Methods                                                                           |
+| ------------- | --------------------------------------------------------------------------------- |
+| Authorization | `check()`, `check_batch()`, `expand()`                                            |
+| Resources     | `resources().accessible_by().with_permission()` (extensible for resource queries) |
+| Subjects      | `subjects().with_permission().on_resource()` (extensible for subject queries)     |
+| Relationships | `relationships().list()`, `.write()`, `.delete()` (full CRUD)                     |
+| Streaming     | `watch()`, `simulate()`                                                           |
+| Management    | `schemas()`, `tokens()`, `roles()`, `get()`, `update()`, `delete()`               |
 
 ### Single Operation
 
@@ -2033,9 +2576,19 @@ impl OrganizationClient {
 }
 
 impl VaultClient {
+    // Accessors for logging, debugging, and context propagation
+    /// Returns the organization ID this client is scoped to.
+    pub fn organization_id(&self) -> &str { &self.org_id }
+
+    /// Returns the vault ID this client is scoped to.
+    pub fn vault_id(&self) -> &str { &self.vault_id }
+
     // Authorization operations
     pub async fn check(&self, subject: &str, permission: &str, resource: &str) -> Result<bool, Error>;
+    /// Owned version of check() for use when you need 'static lifetime (e.g., storing futures)
+    pub async fn check_owned(&self, subject: String, permission: String, resource: String) -> Result<bool, Error>;
     pub async fn check_batch(&self, checks: impl IntoIterator<Item = Check>) -> CheckBatchStream;
+    pub fn expand(&self, resource: &str, relation: &str) -> ExpandBuilder;
     pub fn watch(&self) -> WatchBuilder;
     pub fn simulate(&self) -> SimulateBuilder;
 
@@ -2052,6 +2605,10 @@ impl VaultClient {
     pub async fn update(&self, update: UpdateVault) -> Result<VaultInfo, Error>;
     pub async fn delete(&self) -> Result<(), Error>;
 }
+
+// Accessor usage example:
+// let vault = client.organization("org_123").vault("vlt_456");
+// log::info!("Checking in {}/{}", vault.organization_id(), vault.vault_id());
 ```
 
 ### Sub-Client Types
@@ -2070,27 +2627,49 @@ pub struct ResourcesClient<'a> {
 }
 
 impl<'a> ResourcesClient<'a> {
-    /// List all resources a subject can access with the given permission.
+    /// Start a query for resources accessible by a subject.
     ///
-    /// Returns a builder that can be further configured before executing.
+    /// Returns a builder that must be further configured with `.with_permission()`.
     ///
     /// # Example
     /// ```rust
     /// // Find all documents Alice can view
     /// let docs = vault.resources()
-    ///     .list("user:alice", "view")
+    ///     .accessible_by("user:alice")
+    ///     .with_permission("view")
     ///     .resource_type("document")
     ///     .collect()
     ///     .await?;
     /// ```
-    pub fn list(&self, subject: impl Into<Cow<'a, str>>, permission: impl Into<Cow<'a, str>>) -> ResourcesListBuilder<'a>;
+    pub fn accessible_by(&self, subject: impl Into<Cow<'a, str>>) -> ResourcesQueryBuilder<'a>;
 
     // Future extensibility:
-    // pub fn count(&self, subject: &str, permission: &str) -> ResourcesCountBuilder<'a>;
-    // pub fn exists(&self, subject: &str, permission: &str, resource: &str) -> ResourcesExistsBuilder<'a>;
+    // pub fn count(&self) -> ResourcesCountBuilder<'a>;
+    // pub fn exists(&self, resource: &str) -> ResourcesExistsBuilder<'a>;
 }
 
-/// Builder for resource list queries.
+/// Builder for resource queries - requires subject and permission.
+pub struct ResourcesQueryBuilder<'a> {
+    vault: &'a VaultClient,
+    subject: Cow<'a, str>,
+}
+
+impl<'a> ResourcesQueryBuilder<'a> {
+    /// Specify the permission to check (required).
+    #[must_use]
+    pub fn with_permission(self, permission: impl Into<Cow<'a, str>>) -> ResourcesListBuilder<'a> {
+        ResourcesListBuilder {
+            vault: self.vault,
+            subject: self.subject,
+            permission: permission.into(),
+            resource_type: None,
+            consistency: None,
+            page_size: None,
+        }
+    }
+}
+
+/// Builder for resource list queries (after subject and permission are set).
 pub struct ResourcesListBuilder<'a> {
     vault: &'a VaultClient,
     subject: Cow<'a, str>,
@@ -2141,6 +2720,25 @@ impl<'a> ResourcesListBuilder<'a> {
     /// Get paginated results with cursor.
     pub async fn cursor(self, cursor: Option<&str>) -> Result<CursorPage<String>, Error>;
 }
+
+/// Builder wrapper that limits results to first N items.
+/// Created by calling `.take(n)` on a ResourcesListBuilder.
+pub struct ResourcesListTake<'a> {
+    inner: ResourcesListBuilder<'a>,
+    limit: usize,
+}
+
+impl<'a> ResourcesListTake<'a> {
+    /// Execute as a stream, stopping after limit items.
+    pub fn stream(self) -> impl Stream<Item = Result<String, Error>> + 'a {
+        self.inner.stream().take(self.limit)
+    }
+
+    /// Collect limited results into a Vec.
+    pub async fn collect(self) -> Result<Vec<String>, Error> {
+        self.stream().try_collect().await
+    }
+}
 ````
 
 #### SubjectsClient
@@ -2155,25 +2753,49 @@ pub struct SubjectsClient<'a> {
 }
 
 impl<'a> SubjectsClient<'a> {
-    /// List all subjects that have the given permission on a resource.
+    /// Start a query for subjects with a given permission.
+    ///
+    /// Returns a builder that must be further configured with `.on_resource()`.
     ///
     /// # Example
     /// ```rust
     /// // Find all users who can edit this document
     /// let editors = vault.subjects()
-    ///     .list("edit", "document:readme")
+    ///     .with_permission("edit")
+    ///     .on_resource("document:readme")
     ///     .subject_type("user")
     ///     .collect()
     ///     .await?;
     /// ```
-    pub fn list(&self, permission: impl Into<Cow<'a, str>>, resource: impl Into<Cow<'a, str>>) -> SubjectsListBuilder<'a>;
+    pub fn with_permission(&self, permission: impl Into<Cow<'a, str>>) -> SubjectsQueryBuilder<'a>;
 
     // Future extensibility:
-    // pub fn count(&self, permission: &str, resource: &str) -> SubjectsCountBuilder<'a>;
-    // pub fn exists(&self, permission: &str, resource: &str, subject: &str) -> SubjectsExistsBuilder<'a>;
+    // pub fn count(&self) -> SubjectsCountBuilder<'a>;
+    // pub fn exists(&self, subject: &str) -> SubjectsExistsBuilder<'a>;
 }
 
-/// Builder for subject list queries.
+/// Builder for subject queries - requires permission and resource.
+pub struct SubjectsQueryBuilder<'a> {
+    vault: &'a VaultClient,
+    permission: Cow<'a, str>,
+}
+
+impl<'a> SubjectsQueryBuilder<'a> {
+    /// Specify the resource to check (required).
+    #[must_use]
+    pub fn on_resource(self, resource: impl Into<Cow<'a, str>>) -> SubjectsListBuilder<'a> {
+        SubjectsListBuilder {
+            vault: self.vault,
+            permission: self.permission,
+            resource: resource.into(),
+            subject_type: None,
+            consistency: None,
+            page_size: None,
+        }
+    }
+}
+
+/// Builder for subject list queries (after permission and resource are set).
 pub struct SubjectsListBuilder<'a> {
     vault: &'a VaultClient,
     permission: Cow<'a, str>,
@@ -2222,6 +2844,25 @@ impl<'a> SubjectsListBuilder<'a> {
 
     /// Get paginated results with cursor.
     pub async fn cursor(self, cursor: Option<&str>) -> Result<CursorPage<String>, Error>;
+}
+
+/// Builder wrapper that limits results to first N items.
+/// Created by calling `.take(n)` on a SubjectsListBuilder.
+pub struct SubjectsListTake<'a> {
+    inner: SubjectsListBuilder<'a>,
+    limit: usize,
+}
+
+impl<'a> SubjectsListTake<'a> {
+    /// Execute as a stream, stopping after limit items.
+    pub fn stream(self) -> impl Stream<Item = Result<String, Error>> + 'a {
+        self.inner.stream().take(self.limit)
+    }
+
+    /// Collect limited results into a Vec.
+    pub async fn collect(self) -> Result<Vec<String>, Error> {
+        self.stream().try_collect().await
+    }
 }
 ````
 
@@ -2443,6 +3084,25 @@ impl<'a> RelationshipsListBuilder<'a> {
     /// Get paginated results with offset.
     pub async fn offset(self, offset: u64, limit: u32) -> Result<OffsetPage<Relationship<'static>>, Error>;
 }
+
+/// Builder wrapper that limits results to first N items.
+/// Created by calling `.take(n)` on a RelationshipsListBuilder.
+pub struct RelationshipsListTake<'a> {
+    inner: RelationshipsListBuilder<'a>,
+    limit: usize,
+}
+
+impl<'a> RelationshipsListTake<'a> {
+    /// Execute as a stream, stopping after limit items.
+    pub fn stream(self) -> impl Stream<Item = Result<Relationship<'static>, Error>> + 'a {
+        self.inner.stream().take(self.limit)
+    }
+
+    /// Collect limited results into a Vec.
+    pub async fn collect(self) -> Result<Vec<Relationship<'static>>, Error> {
+        self.stream().try_collect().await
+    }
+}
 ```
 
 #### Write Builders
@@ -2520,6 +3180,61 @@ impl WriteResult {
     /// Get the consistency token for subsequent reads.
     pub fn consistency_token(&self) -> &ConsistencyToken {
         &self.consistency_token
+    }
+}
+
+/// Precondition for conditional write/delete operations.
+/// Enables optimistic concurrency control and atomic compare-and-swap patterns.
+#[derive(Debug, Clone)]
+pub enum Precondition {
+    /// Relationship must not exist (for create-if-not-exists)
+    NotExists {
+        resource: String,
+        relation: String,
+        /// Use "*" to match any subject
+        subject: String,
+    },
+
+    /// Relationship must exist (for update-if-exists or CAS)
+    Exists {
+        resource: String,
+        relation: String,
+        /// Use "*" to match any subject
+        subject: String,
+    },
+
+    /// Consistency token must match (optimistic locking)
+    TokenMatches(ConsistencyToken),
+
+    /// Multiple preconditions that must all be satisfied
+    All(Vec<Precondition>),
+
+    /// At least one precondition must be satisfied
+    Any(Vec<Precondition>),
+}
+
+impl Precondition {
+    /// Create a "must not exist" precondition
+    pub fn not_exists(resource: impl Into<String>, relation: impl Into<String>, subject: impl Into<String>) -> Self {
+        Self::NotExists {
+            resource: resource.into(),
+            relation: relation.into(),
+            subject: subject.into(),
+        }
+    }
+
+    /// Create a "must exist" precondition
+    pub fn exists(resource: impl Into<String>, relation: impl Into<String>, subject: impl Into<String>) -> Self {
+        Self::Exists {
+            resource: resource.into(),
+            relation: relation.into(),
+            subject: subject.into(),
+        }
+    }
+
+    /// Create a consistency token precondition
+    pub fn token_matches(token: ConsistencyToken) -> Self {
+        Self::TokenMatches(token)
     }
 }
 
@@ -2653,6 +3368,22 @@ pub struct DeleteBatchResult {
     pub consistency_token: ConsistencyToken,
 }
 
+/// Preview of what a delete-where operation would affect.
+/// Returned by `DeleteWhereBuilder::dry_run()`.
+#[derive(Debug, Clone)]
+pub struct DeletePreview {
+    /// Number of relationships that would be deleted.
+    pub count: u64,
+    /// Sample of relationships that would be deleted (up to 100).
+    pub sample: Vec<Relationship<'static>>,
+    /// Whether the sample is exhaustive (count <= sample.len()).
+    pub is_exhaustive: bool,
+    /// Breakdown by entity type.
+    pub by_entity_type: HashMap<String, u64>,
+    /// Breakdown by relation.
+    pub by_relation: HashMap<String, u64>,
+}
+
 /// Builder for delete-by-query operations.
 /// See [Bulk Delete by Query](#bulk-delete-by-query) for detailed usage.
 pub struct DeleteWhereBuilder<'a> {
@@ -2710,6 +3441,41 @@ pub struct DeleteWhereResult {
     /// Consistency token.
     pub consistency_token: ConsistencyToken,
 }
+
+/// Builder for streaming write operations.
+/// Unlike WriteBatchBuilder (atomic), this writes each relationship independently
+/// and streams results as they complete.
+pub struct WriteStreamBuilder<'a> {
+    vault: &'a VaultClient,
+    relationships: Vec<Relationship<'a>>,
+    continue_on_error: bool,
+}
+
+impl<'a> WriteStreamBuilder<'a> {
+    /// Continue processing remaining relationships if one fails (default: true)
+    #[must_use]
+    pub fn continue_on_error(mut self, continue_on_error: bool) -> Self {
+        self.continue_on_error = continue_on_error;
+        self
+    }
+
+    /// Get the result stream.
+    /// Each item is a Result indicating success or failure for that relationship.
+    pub fn stream(self) -> impl Stream<Item = Result<WriteResult, Error>> + 'a {
+        // Implementation streams results as each write completes
+    }
+
+    /// Collect all results, stopping on first error.
+    pub async fn collect(self) -> Result<Vec<WriteResult>, Error> {
+        self.stream().try_collect().await
+    }
+
+    /// Collect all results, including errors.
+    /// Returns Ok with a Vec of individual results.
+    pub async fn collect_all(self) -> Vec<Result<WriteResult, Error>> {
+        self.stream().collect().await
+    }
+}
 ```
 
 #### Pagination Types
@@ -2747,10 +3513,10 @@ pub type Page<T> = CursorPage<T>;
 
 **Why sub-clients instead of flat methods?**
 
-| Approach                                 | Pros                  | Cons                               |
-| ---------------------------------------- | --------------------- | ---------------------------------- |
-| Flat methods (`vault.list_resources()`)  | Shorter call chains   | Pollutes namespace, hard to extend |
-| Sub-clients (`vault.resources().list()`) | Extensible, organized | Extra method call                  |
+| Approach                                                            | Pros                  | Cons                               |
+| ------------------------------------------------------------------- | --------------------- | ---------------------------------- |
+| Flat methods (`vault.list_resources()`)                             | Shorter call chains   | Pollutes namespace, hard to extend |
+| Sub-clients (`vault.resources().accessible_by().with_permission()`) | Extensible, organized | Extra method call                  |
 
 The sub-client pattern:
 
@@ -2866,9 +3632,10 @@ async fn handle_request(
     let user = extract_user(&request);
     let resource = extract_resource(&request);
 
-    if !vault.check(&user, "access", &resource).await? {
-        return Err(Error::Forbidden);
-    }
+    // Use require() for clean fail-fast authorization
+    vault.check(&user, "access", &resource)
+        .require()
+        .await?;  // Returns Err(AccessDenied) on denial
 
     // Process request...
 }
@@ -3127,6 +3894,34 @@ Beyond schema-derived types, the SDK provides strongly-typed ID wrappers that pr
 ```rust
 use std::borrow::Cow;
 
+/// Error type for parsing entity references and subject references
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum ParseError {
+    /// Missing colon separator in "type:id" format
+    #[error("missing ':' separator in entity reference")]
+    MissingColon,
+
+    /// Empty entity type
+    #[error("entity type cannot be empty")]
+    EmptyType,
+
+    /// Empty entity ID
+    #[error("entity ID cannot be empty")]
+    EmptyId,
+
+    /// Invalid characters in entity type (must be alphanumeric + underscore)
+    #[error("invalid characters in entity type: {0}")]
+    InvalidTypeChars(String),
+
+    /// Invalid characters in entity ID
+    #[error("invalid characters in entity ID: {0}")]
+    InvalidIdChars(String),
+
+    /// Invalid userset format (for SubjectRef with #relation)
+    #[error("invalid userset format: {0}")]
+    InvalidUserset(String),
+}
+
 /// A reference to an entity (resource or subject) in the format "type:id"
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EntityRef<'a> {
@@ -3201,6 +3996,32 @@ impl<'a> SubjectRef<'a> {
     pub fn is_userset(&self) -> bool { self.relation.is_some() }
 }
 
+/// Strongly-typed organization identifier
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct OrganizationId(String);
+
+impl OrganizationId {
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    pub fn as_str(&self) -> &str { &self.0 }
+}
+
+impl From<&str> for OrganizationId {
+    fn from(s: &str) -> Self { Self(s.to_string()) }
+}
+
+impl From<String> for OrganizationId {
+    fn from(s: String) -> Self { Self(s) }
+}
+
+impl std::fmt::Display for OrganizationId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Strongly-typed vault identifier
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VaultId(String);
@@ -3255,6 +4076,51 @@ let rel = Relationship::new(
     "viewer",
     SubjectRef::parse("user:alice")?,
 );
+```
+
+### Display Trait Implementations
+
+All core types implement `Display` for ergonomic logging, debugging, and error messages:
+
+| Type               | Display Output Example                          | Notes                           |
+| ------------------ | ----------------------------------------------- | ------------------------------- |
+| `EntityRef`        | `"document:readme"`                             | `type:id` format                |
+| `SubjectRef`       | `"user:alice"` or `"group:admins#member"`       | Includes subrelation if present |
+| `Relationship`     | `"document:readme#viewer@user:alice"`           | Compact graph edge format       |
+| `Decision`         | `"allow"` or `"deny"`                           | Lowercase boolean string        |
+| `Error`            | `"rate limited: Too many requests (req_abc)"`   | Kind + message + request_id     |
+| `ErrorKind`        | `"rate limited"`                                | Lowercase human-readable        |
+| `AccessDenied`     | `"access denied: user:alice cannot view doc:1"` | Actionable message              |
+| `ConsistencyToken` | `"ct_01JFQG..."`                                | Truncated for readability       |
+| `OrganizationId`   | `"org_8675309..."`                              | Full ID                         |
+| `VaultId`          | `"vlt_01JFQG..."`                               | Full ID                         |
+
+**Usage in Logging**:
+
+```rust
+// Display makes logging natural
+tracing::info!("Checking permission: {} {} {}", subject, permission, resource);
+
+// Format strings work intuitively
+let msg = format!("Created relationship: {}", relationship);
+
+// Error messages are user-friendly
+eprintln!("Authorization failed: {}", access_denied);
+```
+
+**Relationship Formats**:
+
+```rust
+let rel = Relationship::new("document:readme", "viewer", "user:alice");
+
+// Display format (compact, for logging)
+println!("{}", rel);  // "document:readme#viewer@user:alice"
+
+// Debug format (full structure, for debugging)
+println!("{:?}", rel);  // Relationship { resource: "document:readme", ... }
+
+// Alternative format (via method)
+println!("{}", rel.as_tuple());  // "(document:readme, viewer, user:alice)"
 ```
 
 ---
@@ -3343,6 +4209,114 @@ impl<'a> Relationship<'a> {
 }
 ```
 
+### Parameter Order: Why Relationship and check() Differ
+
+The `Relationship` struct and `check()` method use different parameter orders. This is intentional and aligns with common usage patterns:
+
+| API                   | Order                             | Rationale                                            |
+| --------------------- | --------------------------------- | ---------------------------------------------------- |
+| `Relationship::new()` | `(resource, relation, subject)`   | Matches graph edge: `resource --relation--> subject` |
+| `check()`             | `(subject, permission, resource)` | Matches question: "Can subject do X to resource?"    |
+
+**Relationship Order - Graph Edge Mental Model**:
+
+```rust
+// Think: "document:readme has viewer user:alice"
+// Or:    "document:readme --viewer--> user:alice"
+Relationship::new("document:readme", "viewer", "user:alice")
+//                 ^resource          ^relation  ^subject
+```
+
+**check() Order - Question Mental Model**:
+
+```rust
+// Think: "Can Alice view the readme?"
+// Or:    "Does Alice have view permission on readme?"
+vault.check("user:alice", "view", "document:readme").await?
+//          ^subject      ^perm   ^resource
+```
+
+**Consistency with Builders**:
+
+Builder methods follow the same patterns:
+
+```rust
+// Relationship filtering - resource-first (like Relationship::new)
+vault.relationships()
+    .resource("document:readme")  // First filter by resource
+    .relation("viewer")           // Then by relation
+    .subject("user:alice")        // Finally by subject
+    .collect().await?;
+
+// Query accessibility - subject-first (like check())
+vault.resources()
+    .accessible_by("user:alice")  // Who is asking?
+    .with_permission("view")      // What do they want to do?
+    .resource_type("document")    // What type of resource?
+    .collect().await?;
+```
+
+**Mnemonic**: "Who can do what to which?" for `check()`, "Which has what with whom?" for `Relationship`.
+
+### When to Use Cow vs Into<String>
+
+The SDK uses `Cow<'a, str>` internally for zero-copy efficiency, but exposes ergonomic `impl Into<String>` constructors by default. Here's when to use each:
+
+| Scenario                     | Use                        | Reason                                   |
+| ---------------------------- | -------------------------- | ---------------------------------------- |
+| **Typical application code** | `Relationship::new()`      | Convenience outweighs micro-optimization |
+| **String literals in code**  | `Relationship::borrowed()` | Zero allocation for static strings       |
+| **Hot path (>10K ops/sec)**  | `Relationship::borrowed()` | Avoid allocation overhead                |
+| **Building from user input** | `Relationship::new()`      | Input is already owned                   |
+| **Storing in collections**   | `OwnedRelationship`        | Needs `'static` lifetime                 |
+| **Sending across threads**   | `.into_owned()`            | Needs `'static` lifetime                 |
+| **Builder method chains**    | `impl Into<Cow<'a, str>>`  | Accepts both borrowed and owned          |
+
+**Examples**:
+
+```rust
+// ✅ Typical app code - use new() for simplicity
+vault.relationships()
+    .write(Relationship::new(doc_id, "viewer", user_id))
+    .await?;
+
+// ✅ Static strings - use borrowed() to avoid allocation
+const ADMIN_RELATION: &str = "admin";
+vault.relationships()
+    .write(Relationship::borrowed("org:default", ADMIN_RELATION, "user:root"))
+    .await?;
+
+// ✅ Hot path batch operations - use borrowed where possible
+for (subject, resource) in large_batch {
+    let rel = Relationship::borrowed(resource.as_str(), "viewer", subject.as_str());
+    batch.push(rel.into_owned());  // Convert when storing
+}
+
+// ✅ Builder methods use Into<Cow<'a, str>> - accepts both
+vault.resources()
+    .accessible_by("user:alice")        // &str - borrowed
+    .with_permission(perm_string)        // String - owned
+    .resource_type(Cow::Borrowed("doc")) // Explicit Cow
+    .collect()
+    .await?;
+```
+
+**Internal API Design Note**:
+
+Builder methods that filter queries use `impl Into<Cow<'a, str>>` to accept both borrowed and owned data efficiently:
+
+```rust
+impl<'a> ResourcesListBuilder<'a> {
+    // Accepts &str, String, and Cow<'a, str>
+    pub fn resource_type(mut self, resource_type: impl Into<Cow<'a, str>>) -> Self {
+        self.resource_type = Some(resource_type.into());
+        self
+    }
+}
+```
+
+This is more efficient than `impl Into<String>` when the caller has a `&str`, because it avoids allocation.
+
 ### Zero-Copy Batch Checks
 
 ```rust
@@ -3374,6 +4348,115 @@ let checks: Vec<CheckRequest> = vec![
 | Data from parsed input     | `Relationship::borrowed()` if input outlives call |
 | Cross-thread/async storage | `Relationship::owned()` or `.into_owned()`        |
 | Unknown lifetime           | `Relationship::owned()`                           |
+
+### Lifetime Troubleshooting
+
+Common lifetime issues and solutions when working with `Cow<'a, str>` APIs:
+
+**Problem: "borrowed value does not live long enough"**
+
+```rust
+// ❌ This won't compile - builder outlives the borrowed string
+async fn check_user(vault: &VaultClient, user_id: String) -> Result<bool, Error> {
+    let user_ref = format!("user:{}", user_id);
+    let builder = vault.check(&user_ref, "view", "doc:1");
+    // ... do other work ...
+    builder.await  // Error: user_ref doesn't live long enough
+}
+
+// ✅ Solution 1: Don't store the builder, await immediately
+async fn check_user(vault: &VaultClient, user_id: String) -> Result<bool, Error> {
+    let user_ref = format!("user:{}", user_id);
+    vault.check(&user_ref, "view", "doc:1").await
+}
+
+// ✅ Solution 2: Use owned data for deferred execution
+async fn check_user(vault: &VaultClient, user_id: String) -> Result<bool, Error> {
+    let user_ref = format!("user:{}", user_id);
+    vault.check_owned(user_ref, "view".to_string(), "doc:1".to_string()).await
+}
+```
+
+**Problem: "cannot return value referencing local variable"**
+
+```rust
+// ❌ This won't compile - returning a reference to local data
+fn build_relationships(ids: &[String]) -> Vec<Relationship<'_>> {
+    ids.iter()
+        .map(|id| Relationship::borrowed("doc:1", "viewer", id.as_str()))
+        .collect()  // Error: can't return borrowed data
+}
+
+// ✅ Solution: Use into_owned() before returning
+fn build_relationships(ids: &[String]) -> Vec<OwnedRelationship> {
+    ids.iter()
+        .map(|id| Relationship::borrowed("doc:1", "viewer", id.as_str()).into_owned())
+        .collect()
+}
+
+// ✅ Or use Relationship::new() which is always owned
+fn build_relationships(ids: &[String]) -> Vec<OwnedRelationship> {
+    ids.iter()
+        .map(|id| Relationship::new("doc:1", "viewer", id))
+        .collect()
+}
+```
+
+**Problem: Moving builder across await points**
+
+```rust
+// ❌ Complex case: builder with borrowed data across await
+async fn conditional_check(vault: &VaultClient, condition: bool) -> Result<bool, Error> {
+    let subject = get_subject().await?;  // Returns String
+    let builder = vault.resources()
+        .accessible_by(&subject)  // Borrows subject
+        .with_permission("view");
+
+    if condition {
+        do_something_else().await;  // subject must live past this await
+    }
+
+    builder.collect().await  // Error if subject dropped
+}
+
+// ✅ Solution: Structure code to not need the builder to outlive the borrow
+async fn conditional_check(vault: &VaultClient, condition: bool) -> Result<bool, Error> {
+    let subject = get_subject().await?;
+
+    if condition {
+        do_something_else().await;
+    }
+
+    // Create builder after all awaits that don't need it
+    vault.resources()
+        .accessible_by(&subject)
+        .with_permission("view")
+        .collect()
+        .await
+}
+```
+
+**Pattern: Builder Lifetime Boundaries**
+
+The key insight is that builders with borrowed data must be awaited before the borrowed data goes out of scope. Structure your code so that:
+
+1. Borrowed data is created
+2. Builder is created from borrowed data
+3. Builder is awaited (consuming the borrow)
+4. Original data can now be dropped
+
+```rust
+// ✅ Correct pattern
+async fn process(vault: &VaultClient) -> Result<(), Error> {
+    let data = fetch_data().await?;  // 1. Create data
+
+    vault.check(&data.user, "view", &data.resource)  // 2. Create builder
+        .await?;  // 3. Await (borrow ends here)
+
+    // 4. data can be dropped or modified now
+    Ok(())
+}
+```
 
 ---
 
@@ -3632,7 +4715,7 @@ async fn get_document(
     // Guard clause - fail fast on denial
     vault.check(user_id, "view", doc_id)
         .require()
-        .await?;  // Returns 403 Forbidden on denial
+        .await?;  // Returns Err(AccessDenied) on denial → 403 in HTTP handlers
 
     // Authorized - proceed with operation
     let doc = fetch_document(doc_id).await?;
@@ -3644,7 +4727,7 @@ async fn get_document(
 
 - Fail-fast semantics match HTTP authorization flow
 - `?` operator provides clean early-return
-- `Forbidden` error integrates with Axum/Actix error handlers
+- `AccessDenied` error integrates with Axum/Actix error handlers
 - Reads naturally: "require view permission on doc"
 
 ### Core API
@@ -3694,6 +4777,7 @@ The `check()` method returns a builder that implements `IntoFuture`, enabling bo
 ```rust
 /// Builder for authorization check requests.
 /// Implements IntoFuture for ergonomic await syntax.
+#[must_use = "CheckRequest does nothing until awaited"]
 pub struct CheckRequest<'a> {
     vault: &'a VaultClient,
     subject: Cow<'a, str>,
@@ -3775,10 +4859,10 @@ let allowed = check.await?;  // Execute when ready
 
 Some methods transform the builder into a different type with a different return value. These are **terminal transformations** - you cannot chain further options after calling them:
 
-| Method        | Transforms To          | Returns                 | Notes                    |
-| ------------- | ---------------------- | ----------------------- | ------------------------ |
-| `.detailed()` | `DetailedCheckRequest` | `Decision`              | Full decision with trace |
-| `.require()`  | `RequireCheckRequest`  | `Result<(), Forbidden>` | Early-return pattern     |
+| Method        | Transforms To          | Returns                    | Notes                    |
+| ------------- | ---------------------- | -------------------------- | ------------------------ |
+| `.detailed()` | `DetailedCheckRequest` | `Decision`                 | Full decision with trace |
+| `.require()`  | `RequireCheckRequest`  | `Result<(), AccessDenied>` | Early-return pattern     |
 
 ```rust
 // ✅ Correct: Options before transformation
@@ -3825,10 +4909,10 @@ if !allowed {
 
 These patterns are useful in specific scenarios but are secondary to the hero pattern.
 
-| Helper                | Use When                             | Returns                    |
-| --------------------- | ------------------------------------ | -------------------------- |
-| `then(closure)`       | Conditionally execute on success     | `Result<Option<T>, Error>` |
-| `filter_authorized()` | Filter collections by permission     | `Result<Vec<T>, Error>`    |
+| Helper                | Use When                         | Returns                    |
+| --------------------- | -------------------------------- | -------------------------- |
+| `then(closure)`       | Conditionally execute on success | `Result<Option<T>, Error>` |
+| `filter_authorized()` | Filter collections by permission | `Result<Vec<T>, Error>`    |
 
 #### Then Pattern
 
@@ -3857,23 +4941,25 @@ let accessible_docs = vault
     .await?;
 ```
 
-### Forbidden Error Type
+### AccessDenied Error Type
 
-The `Forbidden` error returned by `require()` integrates with common web frameworks:
+The `AccessDenied` error returned by `require()` integrates with common web frameworks.
+
+**Note**: `AccessDenied` (authorization decision "deny") is distinct from `ErrorKind::Forbidden` (lacking permission for a management API operation). See [Error Semantics](#check-vs-require-error-semantics) for details.
 
 ```rust
-/// Error returned when authorization is denied
+/// Error returned when authorization is denied (subject lacks permission)
 #[derive(Debug, Clone)]
-pub struct Forbidden {
+pub struct AccessDenied {
     pub subject: String,
     pub permission: String,
     pub resource: String,
     pub request_id: Option<String>,
 }
 
-impl std::error::Error for Forbidden {}
+impl std::error::Error for AccessDenied {}
 
-impl Forbidden {
+impl AccessDenied {
     /// Convert to HTTP status code
     pub fn status_code(&self) -> u16 { 403 }
 
@@ -3884,12 +4970,12 @@ impl Forbidden {
 }
 
 // Integrates with common error types
-impl From<Forbidden> for axum::http::StatusCode {
-    fn from(_: Forbidden) -> Self { Self::FORBIDDEN }
+impl From<AccessDenied> for axum::http::StatusCode {
+    fn from(_: AccessDenied) -> Self { Self::FORBIDDEN }
 }
 
-impl From<Forbidden> for actix_web::error::Error {
-    fn from(e: Forbidden) -> Self {
+impl From<AccessDenied> for actix_web::error::Error {
+    fn from(e: AccessDenied) -> Self {
         actix_web::error::ErrorForbidden(e.user_message())
     }
 }
@@ -3925,6 +5011,75 @@ let mut stream = vault
 while let Some(result) = stream.next().await {
     let (check, allowed) = result?;
     handle_result(check, allowed);
+}
+```
+
+**Check and CheckBatchStream Types**:
+
+```rust
+/// A single authorization check request
+#[derive(Debug, Clone)]
+pub struct Check<'a> {
+    /// The subject requesting access
+    pub subject: Cow<'a, str>,
+    /// The permission being checked
+    pub permission: Cow<'a, str>,
+    /// The resource being accessed
+    pub resource: Cow<'a, str>,
+    /// Optional consistency token
+    pub consistency: Option<ConsistencyToken>,
+}
+
+impl<'a> Check<'a> {
+    /// Create a new check from tuple-like syntax
+    pub fn new(
+        subject: impl Into<Cow<'a, str>>,
+        permission: impl Into<Cow<'a, str>>,
+        resource: impl Into<Cow<'a, str>>,
+    ) -> Self {
+        Self {
+            subject: subject.into(),
+            permission: permission.into(),
+            resource: resource.into(),
+            consistency: None,
+        }
+    }
+}
+
+/// Convenience: allow tuple conversion for ergonomic batch syntax
+impl<'a> From<(&'a str, &'a str, &'a str)> for Check<'a> {
+    fn from((s, p, r): (&'a str, &'a str, &'a str)) -> Self {
+        Self::new(s, p, r)
+    }
+}
+
+/// Stream of batch check results
+pub struct CheckBatchStream<'a> {
+    // Internal implementation
+    inner: Pin<Box<dyn Stream<Item = Result<(Check<'a>, bool), Error>> + Send + 'a>>,
+}
+
+impl<'a> CheckBatchStream<'a> {
+    /// Collect all results into a Vec
+    pub async fn collect(self) -> Result<Vec<(Check<'a>, bool)>, Error> {
+        self.inner.try_collect().await
+    }
+
+    /// Get the underlying stream for custom processing
+    pub fn stream(self) -> impl Stream<Item = Result<(Check<'a>, bool), Error>> + 'a {
+        self.inner
+    }
+}
+
+/// Authorization check representation used in simulation results
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthorizationCheck {
+    /// The subject that was checked
+    pub subject: String,
+    /// The permission that was checked
+    pub permission: String,
+    /// The resource that was checked
+    pub resource: String,
 }
 ```
 
@@ -4075,6 +5230,66 @@ print_tree(&expansion, 0);
 //       Computed: user:alice has folder:docs#editor via group:engineering
 ```
 
+**ExpandBuilder and ExpansionNode Types**:
+
+```rust
+/// Builder for expand operations
+pub struct ExpandBuilder<'a> {
+    vault: &'a VaultClient,
+    resource: Cow<'a, str>,
+    relation: Cow<'a, str>,
+    max_depth: Option<u32>,
+    include_intermediate: bool,
+}
+
+impl<'a> ExpandBuilder<'a> {
+    /// Limit expansion depth (default: no limit)
+    #[must_use]
+    pub fn max_depth(mut self, depth: u32) -> Self {
+        self.max_depth = Some(depth);
+        self
+    }
+
+    /// Include intermediate nodes in the result (default: false)
+    #[must_use]
+    pub fn include_intermediate(mut self, include: bool) -> Self {
+        self.include_intermediate = include;
+        self
+    }
+}
+
+impl<'a> IntoFuture for ExpandBuilder<'a> {
+    type Output = Result<ExpansionNode, Error>;
+    type IntoFuture = impl Future<Output = Self::Output>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        async move { /* ... */ }
+    }
+}
+
+/// A node in the permission expansion tree
+#[derive(Debug, Clone)]
+pub struct ExpansionNode {
+    /// Type of operation at this node
+    pub operation: NodeOperation,
+
+    /// Human-readable description of this expansion step
+    pub description: String,
+
+    /// Whether this path grants access
+    pub grants_access: bool,
+
+    /// Child nodes (for compound operations like union/intersection)
+    pub children: Vec<ExpansionNode>,
+
+    /// The relationship that led to this node (if applicable)
+    pub relationship: Option<OwnedRelationship>,
+
+    /// Source location in schema
+    pub source: Option<SchemaLocation>,
+}
+```
+
 ---
 
 ## Structured Decision Traces
@@ -4148,6 +5363,70 @@ pub struct NodeMetrics {
     pub cache_hits: u32,
     pub cache_misses: u32,
     pub relationships_traversed: u32,
+}
+
+/// Why the authorization decision was made
+#[derive(Debug, Clone)]
+pub enum DecisionReason {
+    /// Direct relationship exists between subject and resource
+    DirectRelationship(OwnedRelationship),
+    /// Permission granted through computed permission path
+    ComputedPermission { path: Vec<String> },
+    /// Permission granted through group/role membership
+    GroupMembership { group: String, relation: String },
+    /// Permission denied - no valid path found
+    NoValidPath,
+    /// Permission denied - excluded by explicit denial rule
+    ExplicitDenial { rule: String },
+    /// ABAC condition evaluated
+    ConditionResult { condition: String, satisfied: bool },
+}
+
+/// Metadata about the decision execution
+#[derive(Debug, Clone)]
+pub struct DecisionMetadata {
+    /// Unique request identifier
+    pub request_id: String,
+    /// Total evaluation time
+    pub duration: Duration,
+    /// Whether the result was served from cache
+    pub cached: bool,
+    /// Consistency token used for the evaluation
+    pub consistency_token: Option<ConsistencyToken>,
+    /// Schema version used for evaluation
+    pub schema_version: u64,
+    /// Timestamp of the evaluation
+    pub evaluated_at: DateTime<Utc>,
+}
+
+/// Unique identifier for a decision tree node
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NodeId(pub String);
+
+impl NodeId {
+    /// Create a new node ID
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+}
+
+impl std::fmt::Display for NodeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Location in the schema where a permission rule is defined
+#[derive(Debug, Clone)]
+pub struct SchemaLocation {
+    /// Entity type name (e.g., "document", "folder")
+    pub entity_type: String,
+    /// Relation or permission name
+    pub relation: String,
+    /// Line number in schema file (if available)
+    pub line: Option<u32>,
+    /// Column number in schema file (if available)
+    pub column: Option<u32>,
 }
 ```
 
@@ -4378,6 +5657,75 @@ pub enum SuggestionAction {
     AddToGroup { group: String },
     ModifyAttribute { attribute: String, value: String },
 }
+
+/// Metadata about the explanation query execution
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExplanationMetadata {
+    /// Unique request identifier
+    pub request_id: String,
+    /// Total evaluation time
+    pub duration: Duration,
+    /// Number of relationships traversed
+    pub relationships_traversed: u32,
+    /// Maximum depth reached during traversal
+    pub max_depth_reached: u32,
+    /// Schema version used for evaluation
+    pub schema_version: u64,
+    /// Timestamp of the evaluation
+    pub evaluated_at: DateTime<Utc>,
+}
+
+/// Schema context for the permission being explained
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchemaContext {
+    /// The entity type definition
+    pub entity_type: String,
+    /// The relation/permission definition as it appears in schema
+    pub definition: String,
+    /// Dependencies (other relations this permission depends on)
+    pub dependencies: Vec<String>,
+    /// Schema version
+    pub schema_version: u64,
+}
+
+/// An ABAC condition that was evaluated
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvaluatedCondition {
+    /// The condition expression
+    pub expression: String,
+    /// Whether the condition was satisfied
+    pub satisfied: bool,
+    /// The attributes that were evaluated
+    pub evaluated_attributes: Vec<EvaluatedAttribute>,
+    /// Error if condition evaluation failed
+    pub error: Option<String>,
+}
+
+/// An attribute value used in condition evaluation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvaluatedAttribute {
+    /// Attribute name
+    pub name: String,
+    /// Attribute value (as JSON)
+    pub value: serde_json::Value,
+    /// Source of the attribute value
+    pub source: AttributeSource,
+}
+
+/// Where an attribute value came from
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AttributeSource {
+    /// Stored on the resource
+    Resource,
+    /// Stored on the subject
+    Subject,
+    /// Stored on the relationship
+    Relationship,
+    /// Provided in the request context
+    Context,
+    /// Default value from schema
+    Default,
+}
 ```
 
 ### Explanation Options
@@ -4501,6 +5849,101 @@ let results = vault
     .await?;
 
 // Results: [true, false, true, true]
+```
+
+**SimulateBuilder Type**:
+
+```rust
+/// Builder for what-if simulation queries
+pub struct SimulateBuilder<'a> {
+    vault: &'a VaultClient,
+    added_relationships: Vec<Relationship<'a>>,
+    removed_relationships: Vec<Relationship<'a>>,
+    compare_to_current: bool,
+    include_trace: bool,
+}
+
+impl<'a> SimulateBuilder<'a> {
+    /// Add a hypothetical relationship for simulation
+    #[must_use]
+    pub fn with_relationship(mut self, rel: Relationship<'a>) -> Self {
+        self.added_relationships.push(rel);
+        self
+    }
+
+    /// Add multiple hypothetical relationships for simulation
+    #[must_use]
+    pub fn with_relationships(mut self, rels: impl IntoIterator<Item = Relationship<'a>>) -> Self {
+        self.added_relationships.extend(rels);
+        self
+    }
+
+    /// Remove a relationship for simulation (as if it doesn't exist)
+    #[must_use]
+    pub fn without_relationship(mut self, rel: Relationship<'a>) -> Self {
+        self.removed_relationships.push(rel);
+        self
+    }
+
+    /// Also run the check against current state to see if result differs
+    #[must_use]
+    pub fn compare_to_current(mut self, compare: bool) -> Self {
+        self.compare_to_current = compare;
+        self
+    }
+
+    /// Include full decision trace in the result
+    #[must_use]
+    pub fn with_trace(mut self) -> Self {
+        self.include_trace = true;
+        self
+    }
+
+    /// Run a single simulated check
+    pub fn check(
+        self,
+        subject: impl Into<Cow<'a, str>>,
+        permission: impl Into<Cow<'a, str>>,
+        resource: impl Into<Cow<'a, str>>,
+    ) -> SimulateCheckBuilder<'a> {
+        SimulateCheckBuilder { /* ... */ }
+    }
+
+    /// Run multiple simulated checks with the same hypothetical state
+    pub fn check_batch(
+        self,
+        checks: impl IntoIterator<Item = (&'a str, &'a str, &'a str)>,
+    ) -> SimulateBatchBuilder<'a> {
+        SimulateBatchBuilder { /* ... */ }
+    }
+}
+
+/// Builder for a single simulated check (implements IntoFuture)
+pub struct SimulateCheckBuilder<'a> { /* ... */ }
+
+impl<'a> IntoFuture for SimulateCheckBuilder<'a> {
+    type Output = Result<SimulationResult, Error>;
+    type IntoFuture = impl Future<Output = Self::Output>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        async move { /* ... */ }
+    }
+}
+
+/// Builder for batch simulated checks
+pub struct SimulateBatchBuilder<'a> { /* ... */ }
+
+impl<'a> SimulateBatchBuilder<'a> {
+    /// Collect all results into a Vec
+    pub async fn collect(self) -> Result<Vec<SimulationResult>, Error> {
+        /* ... */
+    }
+
+    /// Stream results as they complete
+    pub fn stream(self) -> impl Stream<Item = Result<SimulationResult, Error>> {
+        /* ... */
+    }
+}
 ```
 
 ### Simulation Response
@@ -4657,6 +6100,47 @@ See [DeleteWhereBuilder](#delete-builders) for the full type definition.
 | Subject + resource           | ✅      | Remove user from specific resource        |
 | Subject type + resource type | ⚠️      | Requires confirmation above threshold     |
 
+**No Matches Behavior**:
+
+When `delete_where()` finds no relationships matching the filters, it succeeds with `count: 0`. This is intentional for idempotency:
+
+```rust
+// First call - deletes Alice's access
+let result = vault.relationships()
+    .delete_where()
+    .subject("user:alice")
+    .resource("document:readme")
+    .execute()
+    .await?;
+
+println!("Deleted: {}", result.count);  // e.g., 3
+
+// Second call - same filters, no matches
+let result = vault.relationships()
+    .delete_where()
+    .subject("user:alice")
+    .resource("document:readme")
+    .execute()
+    .await?;
+
+println!("Deleted: {}", result.count);  // 0 - not an error
+
+// Non-existent subject - also succeeds with count: 0
+let result = vault.relationships()
+    .delete_where()
+    .subject("user:nonexistent")
+    .execute()
+    .await?;
+
+assert_eq!(result.count, 0);  // No error, just zero matches
+```
+
+This behavior ensures:
+
+- Idempotent cleanup scripts can be safely re-run
+- User offboarding workflows don't fail if already completed
+- Defensive deletion doesn't require existence checks
+
 ### Relationship Type Design
 
 The `Relationship` type uses `Cow<'a, str>` for zero-copy efficiency while supporting both borrowed and owned data. See [Zero-Copy APIs](#zero-copy-apis) for the full type definition.
@@ -4673,13 +6157,10 @@ Relationship::new(format!("doc:{}", id), "viewer", subject);
 Relationship::borrowed("document:readme", "viewer", "user:alice");
 ```
 
-**Type Alias for Owned Data**: When you need `'static` lifetime (e.g., storing in collections, sending across threads):
+**Type Alias for Owned Data**: When you need `'static` lifetime (e.g., storing in collections, sending across threads), use `OwnedRelationship` (see [Zero-Copy APIs](#zero-copy-apis)):
 
 ```rust
-/// Convenience alias for owned relationships
-pub type OwnedRelationship = Relationship<'static>;
-
-// Use when storing or sending
+// Use OwnedRelationship when storing or sending across threads
 let rel: OwnedRelationship = Relationship::owned("doc:1", "viewer", "user:alice");
 ```
 
@@ -4945,6 +6426,144 @@ vault.relationships().write(rel).request_id(id).await?;  // Returns cached Ok
 // (may fail if relationship already exists)
 ```
 
+### Request ID Lifecycle
+
+Understanding how request IDs work across retries is critical for safe operations.
+
+#### The Golden Rule: Same ID = Same Operation
+
+When retrying, **always reuse the same request ID**. The server deduplicates based on the ID:
+
+```rust
+async fn write_with_retry(
+    vault: &VaultClient,
+    relationship: Relationship<'_>,
+    max_retries: usize,
+) -> Result<WriteResult, Error> {
+    // Generate ID ONCE, before any attempts
+    let request_id = Uuid::new_v4();
+
+    let mut last_error = None;
+
+    for attempt in 0..=max_retries {
+        let result = vault.relationships()
+            .write(relationship.clone())
+            .request_id(request_id)  // ← Same ID for ALL attempts
+            .await;
+
+        match result {
+            Ok(response) => return Ok(response),
+            Err(e) if e.is_retriable() => {
+                last_error = Some(e);
+                tokio::time::sleep(backoff(attempt)).await;
+                // Continue with same request_id
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    Err(last_error.unwrap())
+}
+```
+
+#### Common Mistake: New ID Per Retry
+
+```rust
+// ❌ WRONG: New ID per attempt can cause duplicates
+async fn write_with_retry_wrong(vault: &VaultClient, relationship: Relationship<'_>) {
+    for _ in 0..3 {
+        let request_id = Uuid::new_v4();  // ❌ New ID each time!
+
+        match vault.relationships()
+            .write(relationship.clone())
+            .request_id(request_id)
+            .await
+        {
+            Ok(_) => return,
+            Err(_) => continue,  // Retrying with different ID could create duplicates
+        }
+    }
+}
+
+// ✅ CORRECT: Generate ID once, reuse across retries
+async fn write_with_retry_correct(vault: &VaultClient, relationship: Relationship<'_>) {
+    let request_id = Uuid::new_v4();  // ✅ Generate ONCE
+
+    for _ in 0..3 {
+        match vault.relationships()
+            .write(relationship.clone())
+            .request_id(request_id)  // ✅ Reuse same ID
+            .await
+        {
+            Ok(_) => return,
+            Err(_) => continue,  // Safe - server deduplicates
+        }
+    }
+}
+```
+
+#### Crash Recovery Pattern
+
+For writes that must survive process crashes, persist the request ID:
+
+```rust
+/// Durable write that can recover from crashes
+async fn durable_write(
+    vault: &VaultClient,
+    db: &Database,
+    relationship: Relationship<'_>,
+) -> Result<(), Error> {
+    // Check if we have a pending request ID for this operation
+    let operation_key = format!("{}:{}:{}",
+        relationship.resource,
+        relationship.relation,
+        relationship.subject
+    );
+
+    let request_id = match db.get_pending_request(&operation_key).await? {
+        Some(id) => {
+            // Resuming after crash - reuse the same ID
+            id
+        }
+        None => {
+            // New operation - generate and persist ID
+            let id = Uuid::new_v4();
+            db.save_pending_request(&operation_key, id).await?;
+            id
+        }
+    };
+
+    // Perform the write
+    vault.relationships()
+        .write(relationship)
+        .request_id(request_id)
+        .await?;
+
+    // Success - clear the pending ID
+    db.clear_pending_request(&operation_key).await?;
+
+    Ok(())
+}
+```
+
+#### Request ID vs Relationship Existence
+
+Request IDs and `unless_exists()` serve different purposes:
+
+| Mechanism         | Purpose                                   | Scope                        |
+| ----------------- | ----------------------------------------- | ---------------------------- |
+| `request_id()`    | Deduplicate retries of the same operation | Per request_id, time-bounded |
+| `unless_exists()` | Skip if relationship already exists       | Per relationship, permanent  |
+
+```rust
+// Scenario: Retry-safe creation, don't overwrite existing
+vault.relationships()
+    .write(Relationship::new("doc:1", "viewer", "user:alice"))
+    .request_id(request_id)   // Safe retries
+    .unless_exists()          // Don't fail if already exists
+    .await?;
+```
+
 ### Conditional Writes
 
 ```rust
@@ -5091,14 +6710,18 @@ Write ───► Token Created ───► Token Valid ───► Token Exp
 ```rust
 // Find all documents Alice can view
 let resources = vault
-    .resources().list("user:alice", "view")
+    .resources()
+    .accessible_by("user:alice")
+    .with_permission("view")
     .resource_type("document")
     .collect()
     .await?;
 
 // Paginated results
 let page = vault
-    .resources().list("user:alice", "view")
+    .resources()
+    .accessible_by("user:alice")
+    .with_permission("view")
     .resource_type("document")
     .page_size(100)
     .page(1)
@@ -5110,7 +6733,9 @@ let page = vault
 ```rust
 // Find all users who can edit this document
 let subjects = vault
-    .subjects().list("edit", "document:readme")
+    .subjects()
+    .with_permission("edit")
+    .on_resource("document:readme")
     .subject_type("user")
     .collect()
     .await?;
@@ -5153,7 +6778,9 @@ let mut all_resources = Vec::new();
 
 loop {
     let page = vault
-        .resources().list("user:alice", "view")
+        .resources()
+        .accessible_by("user:alice")
+        .with_permission("view")
         .limit(100)
         .cursor(cursor.as_deref())
         .await?;
@@ -5229,10 +6856,10 @@ True streaming without hidden buffering - `.collect()` is opt-in, not the defaul
 
 The SDK uses different patterns based on return cardinality:
 
-| Return Type         | Pattern                              | Example                                                        |
-| ------------------- | ------------------------------------ | -------------------------------------------------------------- |
-| **Single value**    | `IntoFuture` (direct `.await`)       | `vault.check(...).await?` → `bool`                             |
-| **Multiple values** | Explicit `.stream()` or `.collect()` | `vault.resources().list(...).collect().await?` → `Vec<String>` |
+| Return Type         | Pattern                              | Example                                                                                      |
+| ------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------- |
+| **Single value**    | `IntoFuture` (direct `.await`)       | `vault.check(...).await?` → `bool`                                                           |
+| **Multiple values** | Explicit `.stream()` or `.collect()` | `vault.resources().accessible_by(...).with_permission(...).collect().await?` → `Vec<String>` |
 
 **Why this distinction?**
 
@@ -5244,9 +6871,9 @@ The SDK uses different patterns based on return cardinality:
 let allowed = vault.check("user:alice", "view", "doc:1").await?;
 
 // Multiple values: must choose .stream() or .collect()
-let docs = vault.resources().list("user:alice", "view").collect().await?;
+let docs = vault.resources().accessible_by("user:alice").with_permission("view").collect().await?;
 // OR
-let mut stream = vault.resources().list("user:alice", "view").stream();
+let mut stream = vault.resources().accessible_by("user:alice").with_permission("view").stream();
 ```
 
 ### Explicit Stream API
@@ -5256,7 +6883,9 @@ use futures::{Stream, StreamExt, TryStreamExt};
 
 // Returns impl Stream - NO buffering, NO collect
 let stream = vault
-    .resources().list("user:alice", "view")
+    .resources()
+    .accessible_by("user:alice")
+    .with_permission("view")
     .resource_type("document")
     .stream();  // Explicit: returns Stream, not collected Vec
 
@@ -5278,13 +6907,17 @@ let processed: Vec<_> = stream
 ```rust
 // ❌ Anti-pattern: Defeats streaming, buffers everything
 let resources = vault
-    .resources().list("user:alice", "view")
+    .resources()
+    .accessible_by("user:alice")
+    .with_permission("view")
     .collect()  // Loads ALL into memory
     .await?;
 
 // ✅ True streaming: Process without buffering
 let mut stream = vault
-    .resources().list("user:alice", "view")
+    .resources()
+    .accessible_by("user:alice")
+    .with_permission("view")
     .stream();
 
 while let Some(resource) = stream.try_next().await? {
@@ -5293,7 +6926,9 @@ while let Some(resource) = stream.try_next().await? {
 
 // ✅ Bounded collection: When you need a Vec but want limits
 let resources = vault
-    .resources().list("user:alice", "view")
+    .resources()
+    .accessible_by("user:alice")
+    .with_permission("view")
     .take(100)  // Limit before collecting
     .collect()
     .await?;
@@ -5341,7 +6976,9 @@ Understanding streaming behavior across transports:
 // Backpressure: If consumer is slow, server sees flow control signals
 
 let mut stream = vault
-    .resources().list("user:alice", "view")
+    .resources()
+    .accessible_by("user:alice")
+    .with_permission("view")
     .stream();  // Opens gRPC server stream
 
 // Each .next() pulls one item from the stream
@@ -5360,7 +6997,9 @@ while let Some(resource) = stream.try_next().await? {
 // SDK buffers incoming events to prevent data loss
 
 let mut stream = vault
-    .resources().list("user:alice", "view")
+    .resources()
+    .accessible_by("user:alice")
+    .with_permission("view")
     .stream();
 
 // Events buffer while consumer processes
@@ -5374,7 +7013,7 @@ while let Some(resource) = stream.try_next().await? {
 
 ```rust
 // Streams surface errors as items, not panics
-let mut stream = vault.resources().list("user:alice", "view").stream();
+let mut stream = vault.resources().accessible_by("user:alice").with_permission("view").stream();
 
 while let Some(result) = stream.next().await {
     match result {
@@ -5443,6 +7082,279 @@ let mut stream = vault
     .await?;
 ```
 
+### Watch Filter Options
+
+Comprehensive filtering to receive only relevant changes:
+
+```rust
+// Filter by resource type
+let stream = vault.watch()
+    .filter(WatchFilter::resource_type("document"))
+    .run()
+    .await?;
+
+// Filter by subject type
+let stream = vault.watch()
+    .filter(WatchFilter::subject_type("user"))
+    .run()
+    .await?;
+
+// Filter by relation
+let stream = vault.watch()
+    .filter(WatchFilter::relation("viewer"))
+    .run()
+    .await?;
+
+// Filter by operation type
+let stream = vault.watch()
+    .filter(WatchFilter::operations([Operation::Create, Operation::Delete]))
+    .run()
+    .await?;
+
+// Filter by specific resource
+let stream = vault.watch()
+    .filter(WatchFilter::resource("document:readme"))
+    .run()
+    .await?;
+
+// Filter by specific subject
+let stream = vault.watch()
+    .filter(WatchFilter::subject("user:alice"))
+    .run()
+    .await?;
+
+// Combine multiple filters (AND logic)
+let stream = vault.watch()
+    .filter(WatchFilter::resource_type("document"))
+    .filter(WatchFilter::relation("viewer"))
+    .filter(WatchFilter::operations([Operation::Create]))
+    .run()
+    .await?;
+```
+
+**WatchFilter Types**:
+
+```rust
+pub enum WatchFilter {
+    /// Filter by resource type (e.g., "document", "folder")
+    ResourceType(String),
+
+    /// Filter by subject type (e.g., "user", "group")
+    SubjectType(String),
+
+    /// Filter by specific resource ID
+    Resource(String),
+
+    /// Filter by specific subject ID
+    Subject(String),
+
+    /// Filter by relation name
+    Relation(String),
+
+    /// Filter by operation type
+    Operations(Vec<Operation>),
+
+    /// Custom filter expression (server-evaluated)
+    Custom(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Operation {
+    Create,
+    Delete,
+}
+```
+
+### Watch Reconnection Behavior
+
+The watch stream automatically handles disconnections with configurable retry:
+
+```rust
+// Default: auto-reconnect with exponential backoff
+let stream = vault.watch()
+    .resumable()
+    .run()
+    .await?;
+
+// Custom reconnection configuration
+let stream = vault.watch()
+    .resumable()
+    .reconnect(ReconnectConfig {
+        max_retries: Some(10),           // None = infinite
+        initial_backoff: Duration::from_millis(100),
+        max_backoff: Duration::from_secs(30),
+        backoff_multiplier: 2.0,
+        jitter: 0.1,
+    })
+    .run()
+    .await?;
+
+// Disable auto-reconnect (fail on disconnect)
+let stream = vault.watch()
+    .no_reconnect()
+    .run()
+    .await?;
+```
+
+**Reconnection Semantics**:
+
+| Event                | Behavior with `.resumable()`          | Without `.resumable()`          |
+| -------------------- | ------------------------------------- | ------------------------------- |
+| Network timeout      | Reconnect from last revision          | Stream ends with error          |
+| Server restart       | Reconnect from last revision          | Stream ends with error          |
+| Auth token expired   | Attempt token refresh, then reconnect | Stream ends with `Unauthorized` |
+| Server returns error | Depends on error type                 | Stream ends with error          |
+| Max retries exceeded | Stream ends with error                | N/A                             |
+
+**Resumption with Checkpoints**:
+
+```rust
+// The stream tracks its position internally
+let mut stream = vault.watch()
+    .resumable()
+    .run()
+    .await?;
+
+// After processing, you can save the checkpoint for crash recovery
+while let Some(change) = stream.next().await {
+    let change = change?;
+
+    // Process the change
+    process_change(&change).await?;
+
+    // Save checkpoint to database for crash recovery
+    save_checkpoint(change.revision).await?;
+}
+
+// On restart, resume from checkpoint
+let checkpoint = load_checkpoint().await?;
+let stream = vault.watch()
+    .from_revision(checkpoint)
+    .resumable()
+    .run()
+    .await?;
+```
+
+### Watch Event Types
+
+```rust
+#[derive(Debug, Clone)]
+pub struct WatchEvent {
+    /// The operation that occurred
+    pub operation: Operation,
+
+    /// The relationship that changed
+    pub relationship: OwnedRelationship,
+
+    /// Server revision number (for resumption)
+    pub revision: u64,
+
+    /// Timestamp of the change
+    pub timestamp: DateTime<Utc>,
+
+    /// Actor who made the change (if audit logging enabled)
+    pub actor: Option<String>,
+
+    /// Request ID of the original operation
+    pub request_id: Option<String>,
+}
+
+impl WatchEvent {
+    /// Check if this is a creation event
+    pub fn is_create(&self) -> bool {
+        self.operation == Operation::Create
+    }
+
+    /// Check if this is a deletion event
+    pub fn is_delete(&self) -> bool {
+        self.operation == Operation::Delete
+    }
+}
+
+/// Builder for watch streams
+pub struct WatchBuilder<'a> {
+    vault: &'a VaultClient,
+    filters: Vec<WatchFilter>,
+    from_revision: Option<u64>,
+    resumable: bool,
+    reconnect_config: Option<ReconnectConfig>,
+}
+
+impl<'a> WatchBuilder<'a> {
+    /// Add a filter to narrow which changes are received
+    #[must_use]
+    pub fn filter(mut self, filter: WatchFilter) -> Self {
+        self.filters.push(filter);
+        self
+    }
+
+    /// Resume from a specific revision (for crash recovery)
+    #[must_use]
+    pub fn from_revision(mut self, revision: u64) -> Self {
+        self.from_revision = Some(revision);
+        self
+    }
+
+    /// Enable automatic reconnection on disconnect
+    #[must_use]
+    pub fn resumable(mut self) -> Self {
+        self.resumable = true;
+        self
+    }
+
+    /// Disable automatic reconnection
+    #[must_use]
+    pub fn no_reconnect(mut self) -> Self {
+        self.resumable = false;
+        self
+    }
+
+    /// Configure custom reconnection behavior
+    #[must_use]
+    pub fn reconnect(mut self, config: ReconnectConfig) -> Self {
+        self.reconnect_config = Some(config);
+        self.resumable = true;
+        self
+    }
+
+    /// Start the watch stream
+    pub async fn run(self) -> Result<impl Stream<Item = Result<WatchEvent, Error>>, Error> {
+        // ...
+    }
+}
+
+/// Configuration for stream reconnection behavior
+#[derive(Debug, Clone)]
+pub struct ReconnectConfig {
+    /// Maximum number of reconnection attempts (None = infinite)
+    pub max_retries: Option<u32>,
+
+    /// Initial backoff duration
+    pub initial_backoff: Duration,
+
+    /// Maximum backoff duration
+    pub max_backoff: Duration,
+
+    /// Backoff multiplier (e.g., 2.0 for exponential)
+    pub backoff_multiplier: f64,
+
+    /// Random jitter factor (0.0 - 1.0)
+    pub jitter: f64,
+}
+
+impl Default for ReconnectConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: None,  // Infinite retries
+            initial_backoff: Duration::from_millis(100),
+            max_backoff: Duration::from_secs(30),
+            backoff_multiplier: 2.0,
+            jitter: 0.1,
+        }
+    }
+}
+```
+
 ### Resumable Streams
 
 ```rust
@@ -5459,7 +7371,9 @@ let stream = vault
 ```rust
 // Stream respects backpressure - server won't overwhelm client
 let mut stream = vault
-    .resources().list("user:alice", "view")
+    .resources()
+    .accessible_by("user:alice")
+    .with_permission("view")
     .stream();
 
 // Slow consumer is fine - server pauses
@@ -5476,18 +7390,147 @@ let buffered = stream
     .await?;
 ```
 
+### Cancellation Semantics
+
+Understanding how to cancel in-flight operations and clean up streams is critical for well-behaved applications.
+
+#### Drop-Based Cancellation
+
+All SDK futures and streams support Drop-based cancellation. When a future or stream is dropped before completion, the underlying operation is cancelled:
+
+```rust
+use tokio::time::timeout;
+
+// Timeout cancels the future if it takes too long
+let result = timeout(Duration::from_secs(1), vault.check("user:alice", "view", "doc:1")).await;
+
+match result {
+    Ok(Ok(allowed)) => println!("Allowed: {}", allowed),
+    Ok(Err(e)) => println!("SDK error: {}", e),
+    Err(_) => println!("Operation timed out and was cancelled"),
+}
+```
+
+#### Stream Cancellation
+
+Streams are cancelled when dropped. This is safe and expected:
+
+```rust
+let mut stream = vault.watch().stream();
+
+// Process for 60 seconds, then stop
+let deadline = Instant::now() + Duration::from_secs(60);
+
+loop {
+    tokio::select! {
+        Some(event) = stream.next() => {
+            handle_event(event?);
+        }
+        _ = tokio::time::sleep_until(deadline) => {
+            // Stream is dropped here, cleanly closing the connection
+            break;
+        }
+    }
+}
+// stream dropped - server connection gracefully closed
+```
+
+#### Explicit Cancellation with AbortHandle
+
+For more control, use `AbortHandle`:
+
+```rust
+use futures::future::AbortHandle;
+
+// Create abortable check
+let (check_future, abort_handle) = futures::future::abortable(
+    vault.check("user:alice", "view", "doc:1")
+);
+
+// Spawn the check
+let handle = tokio::spawn(check_future);
+
+// Cancel from elsewhere
+abort_handle.abort();
+
+// Handle will return Err(Aborted)
+match handle.await {
+    Ok(Ok(Ok(allowed))) => println!("Completed: {}", allowed),
+    Ok(Ok(Err(e))) => println!("SDK error: {}", e),
+    Ok(Err(_)) => println!("Cancelled"),
+    Err(e) => println!("Task panicked: {}", e),
+}
+```
+
+#### Watch Stream Graceful Shutdown
+
+The `watch()` stream supports explicit shutdown for graceful termination:
+
+```rust
+let (stream, shutdown) = vault.watch()
+    .with_shutdown()
+    .stream();
+
+// In shutdown handler
+shutdown.trigger();  // Gracefully closes the stream
+
+// Stream will complete on next iteration
+while let Some(event) = stream.next().await {
+    if matches!(event, Err(Error::Shutdown)) {
+        println!("Watch stream shut down gracefully");
+        break;
+    }
+    handle_event(event?);
+}
+```
+
+#### Cancellation Safety
+
+| Operation                                 | Cancellation Safe? | Notes                                             |
+| ----------------------------------------- | ------------------ | ------------------------------------------------- |
+| `check().await`                           | ✅ Yes             | Unary request, no side effects                    |
+| `check_batch().collect().await`           | ✅ Yes             | Partial results discarded                         |
+| `relationships().write().await`           | ⚠️ Caution         | May complete on server even if client cancels     |
+| `relationships().write_batch().await`     | ⚠️ Caution         | Atomic - all or nothing, but may commit on server |
+| `watch().stream()`                        | ✅ Yes             | Drop closes connection cleanly                    |
+| `resources().accessible_by(...).stream()` | ✅ Yes             | Drop closes connection cleanly                    |
+
+**Important**: Write operations may complete on the server even if the client cancels. Always use idempotency keys for writes that might be cancelled:
+
+```rust
+let request_id = Uuid::new_v4();
+
+// Even if this times out and we retry, the request_id prevents duplicates
+let result = timeout(
+    Duration::from_secs(5),
+    vault.relationships()
+        .write(Relationship::new("doc:1", "viewer", "user:alice"))
+        .request_id(request_id)
+).await;
+
+match result {
+    Ok(Ok(_)) => println!("Write confirmed"),
+    Ok(Err(e)) => println!("Write failed: {}", e),
+    Err(_) => {
+        // Timed out - but write may have succeeded on server
+        // Safe to retry with same request_id
+        println!("Timed out, will retry with same request_id");
+    }
+}
+```
+
 ---
 
 ## Caching
 
 ### Cache Behavior Summary
 
-| Property | Behavior |
-|----------|----------|
-| **Scope** | Per-client, in-memory |
-| **Safety** | Best-effort optimization; always safe to disable |
-| **Consistency tokens** | Bypass cache, force fresh read from server |
-| **Watch invalidation** | Real-time cache invalidation via server events |
+| Property               | Behavior                                         |
+| ---------------------- | ------------------------------------------------ |
+| **Scope**              | Per-client, in-memory                            |
+| **Safety**             | Best-effort optimization; always safe to disable |
+| **Consistency tokens** | Bypass cache, force fresh read from server       |
+| **Watch invalidation** | Real-time cache invalidation via server events   |
 
 ### Local Decision Cache
 
@@ -5535,12 +7578,12 @@ let maybe_stale = vault
 
 **Cache + Consistency Decision Matrix**:
 
-| Request Type | Cache Behavior | Server Hit | Use When |
-|--------------|----------------|------------|----------|
-| `check().await` | Cache hit if fresh | Only on miss | Normal authorization checks |
-| `check().at_least_as_fresh_as(token).await` | **Bypassed** | Always | Immediately after write |
-| `check().consistency(Strong).await` | **Bypassed** | Always | When staleness is unacceptable |
-| `check().consistency(Eventual).await` | Cache hit if exists | On miss/expiry | Maximum performance |
+| Request Type                                | Cache Behavior      | Server Hit     | Use When                       |
+| ------------------------------------------- | ------------------- | -------------- | ------------------------------ |
+| `check().await`                             | Cache hit if fresh  | Only on miss   | Normal authorization checks    |
+| `check().at_least_as_fresh_as(token).await` | **Bypassed**        | Always         | Immediately after write        |
+| `check().consistency(Strong).await`         | **Bypassed**        | Always         | When staleness is unacceptable |
+| `check().consistency(Eventual).await`       | Cache hit if exists | On miss/expiry | Maximum performance            |
 
 ### Read-After-Write Recipe
 
@@ -5607,22 +7650,22 @@ let client = Client::builder()
 
 **Trade-offs**:
 
-| Approach | Latency | Consistency | Complexity |
-|----------|---------|-------------|------------|
-| TTL-based | Low | Eventual (bounded staleness) | Simple |
-| Consistency tokens | Medium | Strong (for token holder) | Moderate |
-| Watch invalidation | Low | Near real-time | Higher (connection overhead) |
+| Approach           | Latency | Consistency                  | Complexity                   |
+| ------------------ | ------- | ---------------------------- | ---------------------------- |
+| TTL-based          | Low     | Eventual (bounded staleness) | Simple                       |
+| Consistency tokens | Medium  | Strong (for token holder)    | Moderate                     |
+| Watch invalidation | Low     | Near real-time               | Higher (connection overhead) |
 
 ### When to Use Each Approach
 
-| Scenario | Recommended Approach |
-|----------|---------------------|
-| High-throughput reads, staleness OK | TTL-based caching (default) |
-| Read immediately after your own write | Consistency token |
-| Multi-service, writer notifies readers | Pass consistency token between services |
-| Real-time permission revocation | Watch invalidation |
-| Maximum consistency, latency acceptable | `Consistency::Strong` (no caching) |
-| Debugging/testing | `CacheConfig::disabled()` |
+| Scenario                                | Recommended Approach                    |
+| --------------------------------------- | --------------------------------------- |
+| High-throughput reads, staleness OK     | TTL-based caching (default)             |
+| Read immediately after your own write   | Consistency token                       |
+| Multi-service, writer notifies readers  | Pass consistency token between services |
+| Real-time permission revocation         | Watch invalidation                      |
+| Maximum consistency, latency acceptable | `Consistency::Strong` (no caching)      |
+| Debugging/testing                       | `CacheConfig::disabled()`               |
 
 ---
 
@@ -5765,6 +7808,19 @@ pub enum Resolution {
     Hourly,
     Daily,
     Weekly,
+}
+
+/// Grouping options for statistics breakdown
+#[derive(Debug, Clone, Copy)]
+pub enum GroupBy {
+    /// Group by entity type (e.g., "document", "user", "folder")
+    EntityType,
+    /// Group by relation name (e.g., "viewer", "owner", "member")
+    Relation,
+    /// Group by subject type
+    SubjectType,
+    /// Group by both entity type and relation
+    EntityTypeAndRelation,
 }
 ```
 
@@ -7493,6 +9549,144 @@ for rec in &preflight.recommendations {
 }
 ```
 
+### Safe Schema Deployment Workflow
+
+Recommended workflow for production schema changes:
+
+```rust
+use inferadb::schema::{DeploymentPlan, SafetyLevel};
+
+let vault = client.organization(&org_id).vault(&vault_id);
+
+// Step 1: Validate and analyze the new schema
+let analysis = vault.schemas()
+    .analyze(new_schema)
+    .compare_to_active()  // Compare against current active schema
+    .include_impact_analysis()  // Check relationship compatibility
+    .await?;
+
+// Step 2: Review safety assessment
+match analysis.safety_level {
+    SafetyLevel::Safe => {
+        println!("✓ Schema change is safe to deploy");
+    }
+    SafetyLevel::RequiresReview => {
+        println!("⚠ Schema change requires manual review:");
+        for issue in &analysis.review_items {
+            println!("  - {}", issue);
+        }
+    }
+    SafetyLevel::Dangerous => {
+        println!("✗ Schema change has dangerous implications:");
+        for issue in &analysis.dangerous_items {
+            println!("  - {}", issue);
+        }
+        return Err("Aborting: schema change too risky".into());
+    }
+}
+
+// Step 3: Simulate impact on existing permissions
+let simulation = vault.schemas()
+    .simulate_with_schema(new_schema)
+    .sample_checks(1000)  // Test 1000 random permission checks
+    .await?;
+
+println!("Permission changes:");
+println!("  Newly allowed: {}", simulation.newly_allowed);
+println!("  Newly denied: {}", simulation.newly_denied);
+println!("  Unchanged: {}", simulation.unchanged);
+
+// Review specific changes
+for change in simulation.changes.iter().take(10) {
+    println!("  {} {} {} on {}: {} → {}",
+        change.subject, change.permission, change.resource,
+        if change.was_allowed { "was allowed" } else { "was denied" },
+        if change.now_allowed { "now allowed" } else { "now denied" }
+    );
+}
+
+// Step 4: Create deployment plan
+let plan = vault.schemas()
+    .plan_deployment(new_schema)
+    .with_canary(10, Duration::from_secs(30 * 60))  // 10% for 30 min
+    .with_auto_rollback_on_error_rate(0.01)  // Rollback if >1% errors
+    .await?;
+
+println!("Deployment plan:");
+println!("  Phase 1: Deploy to {}% of traffic", plan.canary_percentage);
+println!("  Observation period: {:?}", plan.observation_duration);
+println!("  Auto-rollback threshold: {}% error rate", plan.rollback_threshold * 100.0);
+
+// Step 5: Execute deployment with confirmation
+vault.schemas()
+    .execute_plan(&plan)
+    .require_confirmation("I understand this will affect production traffic")
+    .await?;
+```
+
+**Deployment Safety Types**:
+
+```rust
+/// Safety assessment for schema changes
+#[derive(Debug, Clone)]
+pub struct SchemaAnalysis {
+    /// Overall safety level
+    pub safety_level: SafetyLevel,
+    /// Issues requiring human review
+    pub review_items: Vec<String>,
+    /// Dangerous changes that should block deployment
+    pub dangerous_items: Vec<String>,
+    /// Breaking changes detected
+    pub breaking_changes: Vec<BreakingChange>,
+    /// Number of existing relationships affected
+    pub affected_relationship_count: u64,
+    /// Number of relationships that would become invalid
+    pub invalid_relationship_count: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SafetyLevel {
+    /// No breaking changes, safe for automatic deployment
+    Safe,
+    /// Minor changes that should be reviewed
+    RequiresReview,
+    /// Potentially dangerous changes, requires explicit confirmation
+    Dangerous,
+}
+
+/// Simulation results for schema changes
+#[derive(Debug, Clone)]
+pub struct SchemaSimulation {
+    /// Checks that would change from denied to allowed
+    pub newly_allowed: u64,
+    /// Checks that would change from allowed to denied
+    pub newly_denied: u64,
+    /// Checks that remain unchanged
+    pub unchanged: u64,
+    /// Detailed list of permission changes (sampled)
+    pub changes: Vec<PermissionChange>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PermissionChange {
+    pub subject: String,
+    pub permission: String,
+    pub resource: String,
+    pub was_allowed: bool,
+    pub now_allowed: bool,
+}
+
+/// Deployment plan for controlled rollout
+#[derive(Debug, Clone)]
+pub struct DeploymentPlan {
+    pub schema_version_id: String,
+    pub canary_percentage: u8,
+    pub observation_duration: Duration,
+    pub rollback_threshold: f64,
+    pub auto_promote: bool,
+}
+```
+
 ### Schema Types
 
 ```rust
@@ -8120,6 +10314,10 @@ pub enum ErrorKind {
     ConfigurationError,
     SerializationError,
     BuildError,
+    ShuttingDown,
+
+    // Resilience errors
+    CircuitOpen,
 }
 ```
 
@@ -8127,38 +10325,38 @@ pub enum ErrorKind {
 
 The SDK normalizes HTTP and gRPC status codes into `ErrorKind` variants:
 
-| HTTP | gRPC | ErrorKind | Description |
-|------|------|-----------|-------------|
-| 400 | `INVALID_ARGUMENT` | `InvalidInput` | Malformed request, invalid parameters |
-| 401 | `UNAUTHENTICATED` | `Unauthorized` | Missing/expired/invalid credentials |
-| 403 | `PERMISSION_DENIED` | `Forbidden` | Authenticated but not authorized for **management** operation |
-| 404 | `NOT_FOUND` | `NotFound` | Resource doesn't exist |
-| 409 | `ALREADY_EXISTS` / `ABORTED` | `Conflict` | Concurrent modification, optimistic lock failure |
-| 412 | `FAILED_PRECONDITION` | `PreconditionFailed` | Precondition (e.g., consistency token) not met |
-| 422 | `INVALID_ARGUMENT` | `SchemaViolation` | Relationship violates schema constraints |
-| 429 | `RESOURCE_EXHAUSTED` | `RateLimited` | Rate limit exceeded, check `retry_after()` |
-| 500 | `INTERNAL` | `ServerError` | Server-side error |
-| 503 | `UNAVAILABLE` | `ServiceUnavailable` | Server temporarily unavailable |
-| — | `DEADLINE_EXCEEDED` | `Timeout` | Request timed out |
-| — | — | `ConnectionFailed` | TCP/TLS connection failure |
-| — | — | `TlsError` | TLS handshake/certificate error |
+| HTTP | gRPC                         | ErrorKind            | Description                                                   |
+| ---- | ---------------------------- | -------------------- | ------------------------------------------------------------- |
+| 400  | `INVALID_ARGUMENT`           | `InvalidInput`       | Malformed request, invalid parameters                         |
+| 401  | `UNAUTHENTICATED`            | `Unauthorized`       | Missing/expired/invalid credentials                           |
+| 403  | `PERMISSION_DENIED`          | `Forbidden`          | Authenticated but not authorized for **management** operation |
+| 404  | `NOT_FOUND`                  | `NotFound`           | Resource doesn't exist                                        |
+| 409  | `ALREADY_EXISTS` / `ABORTED` | `Conflict`           | Concurrent modification, optimistic lock failure              |
+| 412  | `FAILED_PRECONDITION`        | `PreconditionFailed` | Precondition (e.g., consistency token) not met                |
+| 422  | `INVALID_ARGUMENT`           | `SchemaViolation`    | Relationship violates schema constraints                      |
+| 429  | `RESOURCE_EXHAUSTED`         | `RateLimited`        | Rate limit exceeded, check `retry_after()`                    |
+| 500  | `INTERNAL`                   | `ServerError`        | Server-side error                                             |
+| 503  | `UNAVAILABLE`                | `ServiceUnavailable` | Server temporarily unavailable                                |
+| —    | `DEADLINE_EXCEEDED`          | `Timeout`            | Request timed out                                             |
+| —    | —                            | `ConnectionFailed`   | TCP/TLS connection failure                                    |
+| —    | —                            | `TlsError`           | TLS handshake/certificate error                               |
 
 ### check() vs require() Error Semantics
 
-**Critical distinction**: Authorization *decisions* (allowed/denied) are **not errors**. Only *failures* (network, auth, validation) are errors.
+**Critical distinction**: Authorization _decisions_ (allowed/denied) are **not errors**. Only _failures_ (network, auth, validation) are errors.
 
-| Scenario | `check().await?` returns | `check().require().await?` returns |
-|----------|--------------------------|-----------------------------------|
-| User is allowed | `Ok(true)` | `Ok(())` |
-| User is denied (no permission) | `Ok(false)` | `Err(Forbidden)` |
-| Invalid credentials (401) | `Err(Error { kind: Unauthorized })` | `Err(Error { kind: Unauthorized })` |
-| Relationship violates schema | `Err(Error { kind: SchemaViolation })` | `Err(Error { kind: SchemaViolation })` |
-| Network timeout | `Err(Error { kind: Timeout })` | `Err(Error { kind: Timeout })` |
-| Rate limited (429) | `Err(Error { kind: RateLimited })` | `Err(Error { kind: RateLimited })` |
+| Scenario                       | `check().await?` returns               | `check().require().await?` returns     |
+| ------------------------------ | -------------------------------------- | -------------------------------------- |
+| User is allowed                | `Ok(true)`                             | `Ok(())`                               |
+| User is denied (no permission) | `Ok(false)`                            | `Err(AccessDenied)`                    |
+| Invalid credentials (401)      | `Err(Error { kind: Unauthorized })`    | `Err(Error { kind: Unauthorized })`    |
+| Relationship violates schema   | `Err(Error { kind: SchemaViolation })` | `Err(Error { kind: SchemaViolation })` |
+| Network timeout                | `Err(Error { kind: Timeout })`         | `Err(Error { kind: Timeout })`         |
+| Rate limited (429)             | `Err(Error { kind: RateLimited })`     | `Err(Error { kind: RateLimited })`     |
 
-**Note**: `Forbidden` (the struct returned by `require()`) is **distinct** from `ErrorKind::Forbidden`:
+**Note**: `AccessDenied` (the struct returned by `require()`) is **distinct** from `ErrorKind::Forbidden`:
 
-- `Forbidden` struct → Authorization decision was "deny" (normal business logic)
+- `AccessDenied` struct → Authorization decision was "deny" (normal business logic)
 - `ErrorKind::Forbidden` → Authenticated but lacking permission for a **management API** operation (e.g., user can't modify vault settings)
 
 ```rust
@@ -8166,10 +10364,10 @@ The SDK normalizes HTTP and gRPC status codes into `ErrorKind` variants:
 let allowed = vault.check("user:alice", "view", "doc:1").await?;
 // allowed: bool - false means "not authorized" (expected business outcome)
 
-// With require() - denial becomes Err(Forbidden)
+// With require() - denial becomes Err(AccessDenied)
 vault.check("user:alice", "view", "doc:1")
     .require()
-    .await?;  // Err(Forbidden { subject, permission, resource, ... })
+    .await?;  // Err(AccessDenied { subject, permission, resource, ... })
 
 // Management API - 403 becomes ErrorKind::Forbidden
 vault.schemas().update(new_schema).await?;
@@ -8178,19 +10376,19 @@ vault.schemas().update(new_schema).await?;
 
 ### Retry Recommendations by ErrorKind
 
-| ErrorKind | Auto-Retry | User Action | Notes |
-|-----------|------------|-------------|-------|
-| `Timeout` | ✅ Yes | Wait and retry | Respects `RetryConfig` |
-| `ConnectionFailed` | ✅ Yes | Check network | Exponential backoff |
-| `ServiceUnavailable` | ✅ Yes | Wait and retry | Server is temporarily down |
-| `RateLimited` | ✅ Yes | Honor `retry_after()` | SDK respects Retry-After header |
-| `Unauthorized` | ❌ No | Re-authenticate | Token expired or revoked |
-| `Forbidden` | ❌ No | Check permissions | User lacks management permission |
-| `InvalidInput` | ❌ No | Fix request | Client bug - won't succeed on retry |
-| `NotFound` | ❌ No | Verify resource exists | Resource may have been deleted |
-| `Conflict` | ⚠️ Conditional | Re-fetch and retry | Optimistic lock failure - re-read state first |
-| `SchemaViolation` | ❌ No | Fix relationship | Violates schema constraints |
-| `ServerError` | ⚠️ Conditional | Report to support | May be transient; limited retries |
+| ErrorKind            | Auto-Retry     | User Action            | Notes                                         |
+| -------------------- | -------------- | ---------------------- | --------------------------------------------- |
+| `Timeout`            | ✅ Yes         | Wait and retry         | Respects `RetryConfig`                        |
+| `ConnectionFailed`   | ✅ Yes         | Check network          | Exponential backoff                           |
+| `ServiceUnavailable` | ✅ Yes         | Wait and retry         | Server is temporarily down                    |
+| `RateLimited`        | ✅ Yes         | Honor `retry_after()`  | SDK respects Retry-After header               |
+| `Unauthorized`       | ❌ No          | Re-authenticate        | Token expired or revoked                      |
+| `Forbidden`          | ❌ No          | Check permissions      | User lacks management permission              |
+| `InvalidInput`       | ❌ No          | Fix request            | Client bug - won't succeed on retry           |
+| `NotFound`           | ❌ No          | Verify resource exists | Resource may have been deleted                |
+| `Conflict`           | ⚠️ Conditional | Re-fetch and retry     | Optimistic lock failure - re-read state first |
+| `SchemaViolation`    | ❌ No          | Fix relationship       | Violates schema constraints                   |
+| `ServerError`        | ⚠️ Conditional | Report to support      | May be transient; limited retries             |
 
 **SDK auto-retry behavior**:
 
@@ -8241,57 +10439,143 @@ impl Error {
     }
 }
 
-/// gRPC status information (when using gRPC transport)
-#[derive(Debug, Clone)]
-pub struct GrpcStatus {
-    pub code: i32,          // tonic::Code as i32
-    pub message: String,
-    pub details: Vec<u8>,   // Serialized google.rpc.Status details
+// Display implementation for user-friendly error messages
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.kind, self.message)?;
+        if let Some(req_id) = &self.request_id {
+            write!(f, " (request_id: {})", req_id)?;
+        }
+        Ok(())
+    }
 }
 
-/// Extended error details for authorization failures
-#[derive(Debug, Clone)]
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.source.as_ref().map(|e| e.as_ref() as _)
+    }
+}
+
+impl std::fmt::Display for ErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidInput => write!(f, "invalid input"),
+            Self::Unauthorized => write!(f, "unauthorized"),
+            Self::Forbidden => write!(f, "forbidden"),
+            Self::NotFound => write!(f, "not found"),
+            Self::Conflict => write!(f, "conflict"),
+            Self::RateLimited => write!(f, "rate limited"),
+            Self::Timeout => write!(f, "timeout"),
+            Self::ConnectionFailed => write!(f, "connection failed"),
+            Self::ServiceUnavailable => write!(f, "service unavailable"),
+            Self::ShuttingDown => write!(f, "client shutting down"),
+            // ... other variants
+            _ => write!(f, "{:?}", self),
+        }
+    }
+}
+```
+
+**Display Output Examples**:
+
+```rust
+// Error Display output examples:
+// "rate limited: Too many requests (request_id: req_abc123)"
+// "timeout: Request timed out after 30s (request_id: req_def456)"
+// "unauthorized: Invalid API key"
+
+// Use in error chains with thiserror:
+#[derive(thiserror::Error, Debug)]
+enum MyAppError {
+    #[error("authorization check failed")]
+    AuthCheck(#[from] inferadb::Error),
+}
+
+// Error output: "authorization check failed: rate limited: Too many requests"
+```
+
+/// gRPC status information (when using gRPC transport) #[derive(Debug, Clone)]
+pub struct GrpcStatus {
+pub code: i32, // tonic::Code as i32
+pub message: String,
+pub details: Vec<u8>, // Serialized google.rpc.Status details
+}
+
+/// Extended error details for authorization failures #[derive(Debug, Clone)]
 pub enum ErrorDetails {
-    /// Schema validation failure
-    Schema(SchemaError),
+/// Schema validation failure
+Schema(SchemaError),
 
     /// Authorization check details (why denied)
     Authorization(AuthorizationError),
 
     /// Precondition failure details
     Precondition(PreconditionError),
+
 }
 
 #[derive(Debug, Clone)]
 pub struct SchemaError {
-    pub entity_type: Option<String>,
-    pub relation: Option<String>,
-    pub violation: SchemaViolation,
+pub entity_type: Option<String>,
+pub relation: Option<String>,
+pub violation: SchemaViolation,
 }
 
 #[derive(Debug, Clone)]
 pub enum SchemaViolation {
-    UnknownEntityType,
-    UnknownRelation,
-    InvalidSubjectType { expected: Vec<String>, got: String },
-    CyclicRelationship { path: Vec<String> },
+UnknownEntityType,
+UnknownRelation,
+InvalidSubjectType { expected: Vec<String>, got: String },
+CyclicRelationship { path: Vec<String> },
 }
 
 #[derive(Debug, Clone)]
 pub struct AuthorizationError {
-    pub subject: String,
-    pub permission: String,
-    pub resource: String,
-    pub reason: DenialReason,
+pub subject: String,
+pub permission: String,
+pub resource: String,
+pub reason: DenialReason,
 }
 
 #[derive(Debug, Clone)]
 pub enum DenialReason {
-    NoPath,                    // No relationship path exists
-    ConditionFailed(String),   // ABAC condition failed
-    Explicit,                  // Explicit deny rule
+NoPath, // No relationship path exists
+ConditionFailed(String), // ABAC condition failed
+Explicit, // Explicit deny rule
 }
-```
+
+/// Error details when a precondition fails #[derive(Debug, Clone)]
+pub struct PreconditionError {
+/// The precondition that failed
+pub precondition: PreconditionSummary,
+/// Human-readable description of why it failed
+pub message: String,
+/// Current state that caused the failure (if available)
+pub current_state: Option<String>,
+}
+
+/// Summary of a failed precondition for error reporting #[derive(Debug, Clone)]
+pub enum PreconditionSummary {
+/// Expected relationship to not exist, but it did
+UnexpectedExists {
+resource: String,
+relation: String,
+subject: String,
+},
+/// Expected relationship to exist, but it didn't
+ExpectedExists {
+resource: String,
+relation: String,
+subject: String,
+},
+/// Consistency token didn't match
+TokenMismatch {
+expected: String,
+actual: Option<String>,
+},
+}
+
+````
 
 **Using Protocol Details**:
 
@@ -8325,7 +10609,7 @@ match vault.relationships().write(relationship).await {
         }
     }
 }
-```
+````
 
 ### Error Handling Patterns
 
@@ -8378,17 +10662,18 @@ let client = Client::builder()
 
 ### Retriable Errors
 
-| Error Kind           | Retriable | Notes                  |
-| -------------------- | --------- | ---------------------- |
-| `Timeout`            | Yes       | Network timeout        |
-| `ConnectionFailed`   | Yes       | Connection dropped     |
-| `ServiceUnavailable` | Yes       | Server overloaded      |
-| `RateLimited`        | Yes       | With `retry_after`     |
-| `ServerError`        | Maybe     | 5xx without body       |
-| `Unauthorized`       | No        | Credentials invalid    |
-| `Forbidden`          | No        | Permission denied      |
-| `NotFound`           | No        | Resource doesn't exist |
-| `InvalidInput`       | No        | Bad request            |
+| Error Kind           | Retriable | Notes                   |
+| -------------------- | --------- | ----------------------- |
+| `Timeout`            | Yes       | Network timeout         |
+| `ConnectionFailed`   | Yes       | Connection dropped      |
+| `ServiceUnavailable` | Yes       | Server overloaded       |
+| `RateLimited`        | Yes       | With `retry_after`      |
+| `ServerError`        | Maybe     | 5xx without body        |
+| `Unauthorized`       | No        | Credentials invalid     |
+| `Forbidden`          | No        | Permission denied       |
+| `NotFound`           | No        | Resource doesn't exist  |
+| `InvalidInput`       | No        | Bad request             |
+| `ShuttingDown`       | No        | Client is shutting down |
 
 ### Retry Budget
 
@@ -8402,6 +10687,141 @@ let client = Client::builder()
             .retry_ratio(0.1)))  // Max 10% retries
     .build()
     .await?;
+```
+
+### Client-Side Rate Limiting
+
+Proactively limit outgoing requests to avoid hitting server rate limits. This is useful when you know your application's traffic patterns and want to smooth out request spikes.
+
+```rust
+use inferadb::RateLimiter;
+
+// Configure client-side rate limiting
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(creds)
+    .rate_limiter(RateLimiter::new()
+        .requests_per_second(100)       // Max 100 req/s
+        .burst_size(20)                 // Allow bursts of 20
+        .per_operation(OperationType::Check, 500)  // Higher limit for checks
+        .per_operation(OperationType::Write, 50))  // Lower for writes
+    .build()
+    .await?;
+```
+
+**Rate Limiter Behavior**:
+
+| Scenario                  | Behavior                                            |
+| ------------------------- | --------------------------------------------------- |
+| Under limit               | Request proceeds immediately                        |
+| At limit, burst available | Request proceeds, decrements burst                  |
+| At limit, no burst        | Future yields until token available                 |
+| Backpressure timeout      | Returns `Error { kind: RateLimited }` (client-side) |
+
+```rust
+// Configure backpressure behavior
+let client = Client::builder()
+    .rate_limiter(RateLimiter::new()
+        .requests_per_second(100)
+        .backpressure_timeout(Duration::from_secs(5))  // Wait max 5s for token
+        .on_backpressure(BackpressureStrategy::Yield)) // Default: yield
+    .build()
+    .await?;
+
+// Alternative: fail fast instead of waiting
+let client = Client::builder()
+    .rate_limiter(RateLimiter::new()
+        .requests_per_second(100)
+        .on_backpressure(BackpressureStrategy::Error)) // Return error immediately
+    .build()
+    .await?;
+```
+
+**Client vs Server Rate Limiting**:
+
+| Aspect      | Client-Side                      | Server-Side                      |
+| ----------- | -------------------------------- | -------------------------------- |
+| Enforcement | Proactive, before request sent   | Reactive, after request received |
+| Error type  | Immediate, no network round-trip | 429 response from server         |
+| Retry-After | Computed locally                 | Provided by server               |
+| Use case    | Smoothing traffic, known limits  | Hard enforcement, multi-tenant   |
+
+**Rate Limiter Types**:
+
+```rust
+/// Client-side rate limiter using token bucket algorithm
+#[derive(Debug, Clone)]
+pub struct RateLimiter {
+    requests_per_second: u32,
+    burst_size: u32,
+    per_operation_limits: HashMap<OperationType, u32>,
+    backpressure_timeout: Duration,
+    backpressure_strategy: BackpressureStrategy,
+}
+
+impl RateLimiter {
+    pub fn new() -> Self {
+        Self {
+            requests_per_second: 100,
+            burst_size: 10,
+            per_operation_limits: HashMap::new(),
+            backpressure_timeout: Duration::from_secs(30),
+            backpressure_strategy: BackpressureStrategy::Yield,
+        }
+    }
+
+    pub fn requests_per_second(mut self, rps: u32) -> Self {
+        self.requests_per_second = rps;
+        self
+    }
+
+    pub fn burst_size(mut self, size: u32) -> Self {
+        self.burst_size = size;
+        self
+    }
+
+    pub fn per_operation(mut self, op: OperationType, limit: u32) -> Self {
+        self.per_operation_limits.insert(op, limit);
+        self
+    }
+
+    pub fn backpressure_timeout(mut self, timeout: Duration) -> Self {
+        self.backpressure_timeout = timeout;
+        self
+    }
+
+    pub fn on_backpressure(mut self, strategy: BackpressureStrategy) -> Self {
+        self.backpressure_strategy = strategy;
+        self
+    }
+}
+
+/// Operation types for per-operation rate limits
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OperationType {
+    /// Authorization checks (check, check_batch, expand)
+    Check,
+    /// Read operations (list resources, subjects, relationships)
+    Read,
+    /// Write operations (write, delete relationships)
+    Write,
+    /// Watch streams
+    Watch,
+    /// Management operations (schemas, tokens, etc.)
+    Management,
+}
+
+/// Strategy when rate limit backpressure is reached
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BackpressureStrategy {
+    /// Yield until a token is available (default)
+    #[default]
+    Yield,
+    /// Return an error immediately
+    Error,
+    /// Drop the request silently (for fire-and-forget scenarios)
+    Drop,
+}
 ```
 
 ### Idempotency-Aware Retry
@@ -8516,6 +10936,48 @@ vault.relationships()
 | Operation  | Single request   | From client | `.timeout()`         |
 | Connection | TCP connect only | 10 seconds  | `.connect_timeout()` |
 
+**Timeout Semantics (Important)**:
+
+| Timeout Type             | Applies To                   | Includes Retries? | Notes                          |
+| ------------------------ | ---------------------------- | ----------------- | ------------------------------ |
+| `.timeout()`             | Total operation time         | **Yes**           | Wall-clock from call to result |
+| `.per_attempt_timeout()` | Each individual attempt      | No                | Per network round-trip         |
+| `.connect_timeout()`     | TCP connection establishment | No                | Per connection attempt         |
+
+```rust
+// Total timeout: Operation must complete (including all retries) within 5s
+vault.check("user:alice", "view", "doc:1")
+    .timeout(Duration::from_secs(5))
+    .await?;
+
+// Per-attempt timeout: Each attempt gets 1s, but total can be longer with retries
+vault.check("user:alice", "view", "doc:1")
+    .per_attempt_timeout(Duration::from_secs(1))  // Individual attempt limit
+    .timeout(Duration::from_secs(10))             // Overall deadline
+    .await?;
+
+// Example timeline with retries:
+// Attempt 1: 0s → 1s (timeout, retry)
+// Attempt 2: 1.1s → 2.1s (timeout, retry)
+// Attempt 3: 2.2s → 2.5s (success!)
+// Total: 2.5s - within 10s deadline
+```
+
+**Timeout Error Behavior**:
+
+```rust
+match vault.check("user:alice", "view", "doc:1").timeout(Duration::from_millis(100)).await {
+    Err(e) if e.kind() == ErrorKind::Timeout => {
+        // e.is_deadline() - true if total deadline exceeded
+        // e.is_per_attempt() - true if single attempt timed out (may still retry)
+        if e.is_deadline() {
+            tracing::error!("Operation deadline exceeded, no more retries");
+        }
+    }
+    result => result?,
+}
+```
+
 ### Cancellation & Abort
 
 Operations can be cancelled by dropping the future or using explicit abort handles:
@@ -8593,65 +11055,223 @@ while let Some(result) = stream.next().await {
 | `resources/subjects/relationships().list()` | Yes               | Partial results available     |
 | `watch()`                                   | Yes               | Clean disconnect              |
 
----
-
-## Graceful Degradation
-
-### Fail-Open vs Fail-Closed
-
-```rust
-// Fail-closed (default, more secure)
-let allowed = vault
-    .check("user:alice", "view", "document:readme")
-    .on_error(OnError::Deny)  // Default
-    .await
-    .unwrap_or(false);
-
-// Fail-open (for non-critical paths)
-let allowed = vault
-    .check("user:alice", "view", "document:readme")
-    .on_error(OnError::Allow)
-    .await
-    .unwrap_or(true);
-```
-
 ### Circuit Breaker
 
+Circuit breakers prevent cascade failures by temporarily stopping requests to a failing service. Unlike retry, which handles transient failures, circuit breakers protect against sustained outages.
+
 ```rust
-use inferadb::resilience::{CircuitBreaker, CircuitState};
+use inferadb::CircuitBreakerConfig;
 
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .circuit_breaker(CircuitBreaker::default()
-        .failure_threshold(5)
-        .success_threshold(2)
-        .timeout(Duration::from_secs(30)))
+    .credentials(creds)
+    .circuit_breaker(CircuitBreakerConfig::default()
+        .failure_threshold(5)           // Open after 5 consecutive failures
+        .success_threshold(2)           // Close after 2 successes in half-open
+        .timeout(Duration::from_secs(30))  // Try half-open after 30s
+        .failure_rate_threshold(0.5)    // Or open at 50% failure rate
+        .minimum_requests(10))          // Need 10 requests before rate applies
     .build()
     .await?;
-
-// Check circuit state
-if client.circuit_state() == CircuitState::Open {
-    // Use fallback
-    return Ok(cached_decision);
-}
 ```
 
 **Circuit Breaker States**:
 
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Circuit Breaker States                          │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│   ┌──────────┐    failure_threshold    ┌──────────┐                │
+│   │  CLOSED  │ ───────exceeded───────► │   OPEN   │                │
+│   │          │                         │          │                │
+│   │ (normal  │                         │ (reject  │                │
+│   │  traffic)│ ◄──success_threshold──  │  fast)   │                │
+│   └──────────┘          met            └────┬─────┘                │
+│        ▲                                    │                       │
+│        │                              timeout                       │
+│        │                              elapsed                       │
+│        │                                    │                       │
+│        │     success_threshold        ┌────▼─────┐                 │
+│        └────────── met ───────────────│HALF-OPEN │                 │
+│                                       │          │                 │
+│              failure ─────────────────│ (test    │                 │
+│              (back to OPEN)           │  traffic)│                 │
+│                                       └──────────┘                 │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**State Behaviors**:
+
+| State     | Behavior                                     | Transitions To             |
+| --------- | -------------------------------------------- | -------------------------- |
+| Closed    | All requests pass through normally           | Open (on threshold breach) |
+| Open      | Requests fail immediately with `CircuitOpen` | Half-Open (after timeout)  |
+| Half-Open | Limited requests to test recovery            | Closed or Open             |
+
+**Circuit Breaker Types**:
+
 ```rust
-/// Circuit breaker state machine
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CircuitState {
-    /// Circuit is closed, requests flow normally
-    Closed,
-    /// Circuit is open, requests are rejected immediately
-    Open,
-    /// Circuit is testing, allowing limited requests through
-    HalfOpen,
+/// Circuit breaker configuration
+#[derive(Debug, Clone)]
+pub struct CircuitBreakerConfig {
+    /// Number of consecutive failures to open the circuit
+    failure_threshold: u32,
+    /// Number of successes in half-open state to close the circuit
+    success_threshold: u32,
+    /// Duration to wait before transitioning from open to half-open
+    timeout: Duration,
+    /// Failure rate threshold (0.0-1.0) to open the circuit
+    failure_rate_threshold: Option<f64>,
+    /// Minimum requests before failure rate is evaluated
+    minimum_requests: u32,
+    /// Which errors count as failures
+    failure_predicate: FailurePredicate,
+}
+
+impl Default for CircuitBreakerConfig {
+    fn default() -> Self {
+        Self {
+            failure_threshold: 5,
+            success_threshold: 2,
+            timeout: Duration::from_secs(30),
+            failure_rate_threshold: None,
+            minimum_requests: 10,
+            failure_predicate: FailurePredicate::default(),
+        }
+    }
+}
+
+impl CircuitBreakerConfig {
+    pub fn failure_threshold(mut self, threshold: u32) -> Self {
+        self.failure_threshold = threshold;
+        self
+    }
+
+    pub fn success_threshold(mut self, threshold: u32) -> Self {
+        self.success_threshold = threshold;
+        self
+    }
+
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    pub fn failure_rate_threshold(mut self, rate: f64) -> Self {
+        self.failure_rate_threshold = Some(rate);
+        self
+    }
+
+    pub fn minimum_requests(mut self, count: u32) -> Self {
+        self.minimum_requests = count;
+        self
+    }
+
+    /// Customize which errors count as circuit breaker failures
+    pub fn failure_predicate(mut self, predicate: FailurePredicate) -> Self {
+        self.failure_predicate = predicate;
+        self
+    }
+}
+
+/// Determines which errors count toward circuit breaker failure threshold
+#[derive(Debug, Clone)]
+pub struct FailurePredicate {
+    /// Count these error kinds as failures (default: Timeout, ConnectionFailed, ServiceUnavailable)
+    include: Vec<ErrorKind>,
+    /// Exclude these error kinds from failure count
+    exclude: Vec<ErrorKind>,
+}
+
+impl Default for FailurePredicate {
+    /// Default: Timeout, ConnectionFailed, ServiceUnavailable, ServerError are failures
+    fn default() -> Self {
+        Self {
+            include: vec![
+                ErrorKind::Timeout,
+                ErrorKind::ConnectionFailed,
+                ErrorKind::ServiceUnavailable,
+                ErrorKind::ServerError,
+            ],
+            exclude: vec![],
+        }
+    }
+}
+
+impl FailurePredicate {
+    /// Only count specific error kinds as failures
+    pub fn only(kinds: impl IntoIterator<Item = ErrorKind>) -> Self {
+        Self {
+            include: kinds.into_iter().collect(),
+            exclude: vec![],
+        }
+    }
+
+    /// Add an error kind to exclude from failure count
+    pub fn exclude(mut self, kind: ErrorKind) -> Self {
+        self.exclude.push(kind);
+        self
+    }
 }
 ```
 
-**State Inspection API**:
+**Circuit Breaker Error**:
+
+```rust
+// When circuit is open, requests fail immediately
+match vault.check("user:alice", "view", "doc:1").await {
+    Err(e) if e.kind() == ErrorKind::CircuitOpen => {
+        // Circuit is open - don't retry, use fallback
+        tracing::warn!("Circuit open, using cached decision");
+        use_cached_decision("user:alice", "view", "doc:1")
+    }
+    Err(e) => Err(e.into()),
+    Ok(allowed) => Ok(allowed),
+}
+```
+
+**Monitoring Circuit State**:
+
+```rust
+// Access circuit breaker state for observability
+let state = client.circuit_breaker_state();
+println!("Circuit state: {:?}", state.current_state());
+println!("Failure count: {}", state.failure_count());
+println!("Success count: {}", state.success_count());
+
+// Register a callback for state changes
+client.on_circuit_state_change(|old, new| {
+    tracing::warn!(
+        old_state = ?old,
+        new_state = ?new,
+        "Circuit breaker state changed"
+    );
+    // Alert, update metrics, etc.
+});
+```
+
+**Per-Operation Circuit Breakers**:
+
+```rust
+// Different circuit breakers for different operation types
+let client = Client::builder()
+    .circuit_breaker_for(OperationType::Check, CircuitBreakerConfig::default()
+        .failure_threshold(10)
+        .timeout(Duration::from_secs(15)))
+    .circuit_breaker_for(OperationType::Write, CircuitBreakerConfig::default()
+        .failure_threshold(3)
+        .timeout(Duration::from_secs(60)))
+    .build()
+    .await?;
+
+// Check per-operation circuit state
+let check_circuit = client.circuit_stats_for(OperationType::Check);
+let write_circuit = client.circuit_stats_for(OperationType::Write);
+```
+
+**Circuit State Inspection**:
 
 ```rust
 /// Detailed circuit breaker statistics
@@ -8698,6 +11318,17 @@ if stats.state == CircuitState::Open {
 **Circuit Breaker Events**:
 
 ```rust
+/// Events emitted by the circuit breaker
+#[derive(Debug, Clone)]
+pub enum CircuitEvent {
+    /// Circuit transitioned to open state
+    Opened { failure_count: u32, last_error: String },
+    /// Circuit transitioned to half-open state
+    HalfOpened,
+    /// Circuit transitioned to closed state
+    Closed { success_count: u32 },
+}
+
 // Subscribe to circuit breaker state changes
 let mut circuit_events = client.circuit_events();
 tokio::spawn(async move {
@@ -8740,29 +11371,197 @@ async fn maintenance_mode(client: &Client) {
 }
 ```
 
-**Per-Endpoint Circuit Breakers**:
+**Integration with tower**:
+
+For users who prefer the tower ecosystem, the SDK is compatible with `tower::limit::CircuitBreaker`:
 
 ```rust
-// Configure different circuit breakers for different operations
+use tower::ServiceBuilder;
+use inferadb::tower::InferaDbService;
+
+let service = ServiceBuilder::new()
+    .layer(tower::limit::ConcurrencyLimitLayer::new(100))
+    .layer(tower::limit::RateLimitLayer::new(1000, Duration::from_secs(1)))
+    // Use tower's circuit breaker instead of built-in
+    .service(InferaDbService::new(client));
+```
+
+---
+
+## Graceful Degradation
+
+### Fail-Open vs Fail-Closed
+
+```rust
+// Fail-closed (default, more secure)
+let allowed = vault
+    .check("user:alice", "view", "document:readme")
+    .on_error(OnError::Deny)  // Default
+    .await
+    .unwrap_or(false);
+
+// Fail-open (for non-critical paths)
+let allowed = vault
+    .check("user:alice", "view", "document:readme")
+    .on_error(OnError::Allow)
+    .await
+    .unwrap_or(true);
+```
+
+### Comprehensive Degradation Configuration
+
+Configure global degradation behavior for production resilience:
+
+```rust
+use inferadb::{DegradationConfig, FallbackStrategy, FailureMode};
+
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    // Default circuit breaker for most operations
-    .circuit_breaker(CircuitBreaker::default())
-    // Stricter circuit breaker for write operations
-    .circuit_breaker_for("write", CircuitBreaker::default()
-        .failure_threshold(3)  // Open faster on write failures
-        .timeout(Duration::from_secs(60)))  // Stay open longer
-    // More lenient for batch operations
-    .circuit_breaker_for("batch", CircuitBreaker::default()
-        .failure_threshold(10)
-        .timeout(Duration::from_secs(15)))
+    .credentials(creds)
+    .degradation(DegradationConfig::new()
+        // Default failure mode for authorization checks
+        .on_check_failure(FailureMode::Deny)
+
+        // Use cached decisions when service is unavailable
+        .on_unavailable(FallbackStrategy::UseCache {
+            max_age: Duration::from_secs(300),  // Accept cache entries up to 5 min old
+        })
+
+        // For write failures, queue for later retry
+        .on_write_failure(FallbackStrategy::Queue {
+            max_queue_size: 1000,
+            flush_interval: Duration::from_secs(5),
+        })
+
+        // Alert when degradation activates
+        .on_degradation_start(|reason| {
+            tracing::warn!("Entering degraded mode: {}", reason);
+            metrics::counter!("inferadb.degradation.activations").increment(1);
+        })
+
+        // Alert when service recovers
+        .on_degradation_end(|| {
+            tracing::info!("Exiting degraded mode, service recovered");
+        }))
     .build()
     .await?;
-
-// Check per-endpoint circuit state
-let write_circuit = client.circuit_stats_for("write");
-let batch_circuit = client.circuit_stats_for("batch");
 ```
+
+**Degradation Configuration Types**:
+
+```rust
+/// Global degradation behavior configuration
+#[derive(Debug, Clone)]
+pub struct DegradationConfig {
+    /// Default behavior when authorization checks fail
+    on_check_failure: FailureMode,
+    /// Strategy when service is completely unavailable
+    on_unavailable: FallbackStrategy,
+    /// Strategy when write operations fail
+    on_write_failure: FallbackStrategy,
+    /// Strategy when read operations fail
+    on_read_failure: FallbackStrategy,
+    /// Callback when degradation mode activates
+    on_degradation_start: Option<Arc<dyn Fn(String) + Send + Sync>>,
+    /// Callback when service recovers
+    on_degradation_end: Option<Arc<dyn Fn() + Send + Sync>>,
+}
+
+/// How to handle authorization check failures
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FailureMode {
+    /// Deny access on failure (fail-closed, secure default)
+    #[default]
+    Deny,
+    /// Allow access on failure (fail-open, use with caution)
+    Allow,
+    /// Return error to caller (let application decide)
+    Propagate,
+}
+
+/// Type alias for per-request error handling configuration.
+/// Same as `FailureMode` but semantically describes request-level behavior.
+pub type OnError = FailureMode;
+
+/// Fallback strategy when primary service is unavailable
+#[derive(Debug, Clone)]
+pub enum FallbackStrategy {
+    /// Return error immediately (default for writes)
+    Error,
+
+    /// Use cached value if available and not too old
+    UseCache {
+        /// Maximum age of cached value to accept
+        max_age: Duration,
+    },
+
+    /// Queue operation for later retry (for writes)
+    Queue {
+        /// Maximum number of operations to queue
+        max_queue_size: usize,
+        /// How often to attempt flushing the queue
+        flush_interval: Duration,
+    },
+
+    /// Return a default value
+    Default(Box<dyn Fn() -> bool + Send + Sync>),
+
+    /// Call a custom fallback function
+    Custom(Arc<dyn Fn(&CheckRequest) -> Result<bool, Error> + Send + Sync>),
+}
+```
+
+**Per-Operation Degradation**:
+
+```rust
+// Override global degradation for specific operations
+let allowed = vault
+    .check("user:alice", "view", "public-doc:readme")
+    .on_error(OnError::Allow)  // This specific check can fail-open
+    .fallback(FallbackStrategy::Default(Box::new(|| true)))
+    .await?;
+
+// Critical operation - never use fallback
+let allowed = vault
+    .check("user:alice", "delete", "doc:sensitive")
+    .on_error(OnError::Propagate)  // Always return errors
+    .fallback(FallbackStrategy::Error)  // No fallback allowed
+    .await?;
+```
+
+**Degradation Metrics**:
+
+| Metric                               | Type    | Description                         |
+| ------------------------------------ | ------- | ----------------------------------- |
+| `inferadb.degradation.active`        | Gauge   | 1 if in degraded mode, 0 otherwise  |
+| `inferadb.degradation.activations`   | Counter | Number of times degradation started |
+| `inferadb.degradation.cache_hits`    | Counter | Successful cache fallbacks          |
+| `inferadb.degradation.cache_misses`  | Counter | Cache fallback failures (too old)   |
+| `inferadb.degradation.queue_size`    | Gauge   | Current size of retry queue         |
+| `inferadb.degradation.queue_flushes` | Counter | Number of queue flush attempts      |
+
+### Circuit Breaker Integration
+
+Circuit breakers integrate with graceful degradation to provide automatic fallback when the service is unavailable. See [Circuit Breaker](#circuit-breaker) in the Retry & Resilience section for full configuration details.
+
+**Quick Reference**:
+
+```rust
+// When circuit is open, use degradation fallback
+match vault.check("user:alice", "view", "doc:1").await {
+    Err(e) if e.kind() == ErrorKind::CircuitOpen => {
+        // Circuit is open - use cached decision or fail-open/fail-closed
+        tracing::warn!("Circuit open, using fallback");
+        use_cached_decision_or_default()
+    }
+    result => result,
+}
+```
+
+The circuit breaker works in conjunction with:
+- **`on_unavailable(FallbackStrategy::UseCache { ... })`** - Use cached decisions when circuit is open
+- **`on_check_failure(FailureMode::Deny)`** - Fail-closed when no cache available
+- **Circuit events** - Alert when entering/exiting degraded mode
 
 ---
 
@@ -8800,38 +11599,7 @@ let health = client
     .await?;
 ```
 
-**Health Types**:
-
-```rust
-#[derive(Debug, Clone)]
-pub struct HealthResponse {
-    pub status: HealthStatus,
-    pub version: String,
-    pub components: HashMap<String, ComponentHealth>,
-    pub timestamp: DateTime<Utc>,
-}
-
-impl HealthResponse {
-    pub fn is_healthy(&self) -> bool {
-        self.status == HealthStatus::Healthy
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HealthStatus {
-    Healthy,
-    Degraded,
-    Unhealthy,
-}
-
-#[derive(Debug, Clone)]
-pub struct ComponentHealth {
-    pub status: HealthStatus,
-    pub message: Option<String>,
-    pub latency: Option<Duration>,
-    pub last_check: DateTime<Utc>,
-}
-```
+**Health Types**: See [Health Response Structure](#health-response-structure) for `HealthResponse`, `HealthStatus`, and `ComponentHealth` type definitions.
 
 ### Ping & Latency
 
@@ -9168,17 +11936,226 @@ let client = Client::builder()
 
 ### OpenTelemetry
 
+Full OpenTelemetry integration for distributed tracing and metrics export.
+
+**Basic Configuration**:
+
 ```rust
-// Full OTLP integration
+// Simple OTLP integration
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .with_opentelemetry(OtelConfig {
-        service_name: "my-service",
-        endpoint: "http://otel-collector:4317",
-    })
+    .with_opentelemetry(OtelConfig::new("my-service")
+        .endpoint("http://otel-collector:4317"))
     .build()
     .await?;
 ```
+
+**Advanced Configuration with Provider Injection**:
+
+```rust
+use opentelemetry::global;
+use opentelemetry_sdk::trace::TracerProvider;
+use opentelemetry_sdk::metrics::MeterProvider;
+
+// Use your existing OpenTelemetry providers
+let tracer_provider: TracerProvider = /* your tracer provider */;
+let meter_provider: MeterProvider = /* your meter provider */;
+
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .observability(ObservabilityConfig::new()
+        .tracer_provider(tracer_provider)
+        .meter_provider(meter_provider)
+        .propagator(TraceContextPropagator::new())
+        .service_name("my-service")
+        .service_version(env!("CARGO_PKG_VERSION")))
+    .build()
+    .await?;
+```
+
+**Observability Configuration Types**:
+
+```rust
+/// Comprehensive observability configuration
+#[derive(Debug, Clone)]
+pub struct ObservabilityConfig {
+    /// OpenTelemetry tracer provider for distributed tracing
+    tracer_provider: Option<Arc<dyn TracerProvider + Send + Sync>>,
+    /// OpenTelemetry meter provider for metrics
+    meter_provider: Option<Arc<dyn MeterProvider + Send + Sync>>,
+    /// Context propagator (default: W3C TraceContext)
+    propagator: Option<Box<dyn TextMapPropagator + Send + Sync>>,
+    /// Service name for telemetry identification
+    service_name: Option<String>,
+    /// Service version
+    service_version: Option<String>,
+    /// Custom resource attributes
+    resource_attributes: HashMap<String, String>,
+    /// Sampling configuration
+    sampling: SamplingConfig,
+    /// Custom span attributes to include on all spans
+    default_span_attributes: HashMap<String, AttributeValue>,
+}
+
+impl ObservabilityConfig {
+    pub fn new() -> Self {
+        Self {
+            tracer_provider: None,
+            meter_provider: None,
+            propagator: None,
+            service_name: None,
+            service_version: None,
+            resource_attributes: HashMap::new(),
+            sampling: SamplingConfig::default(),
+            default_span_attributes: HashMap::new(),
+        }
+    }
+
+    /// Inject an existing tracer provider
+    pub fn tracer_provider(
+        mut self,
+        provider: impl TracerProvider + Send + Sync + 'static,
+    ) -> Self {
+        self.tracer_provider = Some(Arc::new(provider));
+        self
+    }
+
+    /// Inject an existing meter provider
+    pub fn meter_provider(
+        mut self,
+        provider: impl MeterProvider + Send + Sync + 'static,
+    ) -> Self {
+        self.meter_provider = Some(Arc::new(provider));
+        self
+    }
+
+    /// Set the context propagator (default: W3C TraceContext)
+    pub fn propagator(
+        mut self,
+        propagator: impl TextMapPropagator + Send + Sync + 'static,
+    ) -> Self {
+        self.propagator = Some(Box::new(propagator));
+        self
+    }
+
+    /// Set service name for telemetry
+    pub fn service_name(mut self, name: impl Into<String>) -> Self {
+        self.service_name = Some(name.into());
+        self
+    }
+
+    /// Set service version
+    pub fn service_version(mut self, version: impl Into<String>) -> Self {
+        self.service_version = Some(version.into());
+        self
+    }
+
+    /// Add custom resource attributes
+    pub fn resource_attribute(
+        mut self,
+        key: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
+        self.resource_attributes.insert(key.into(), value.into());
+        self
+    }
+
+    /// Configure sampling behavior
+    pub fn sampling(mut self, config: SamplingConfig) -> Self {
+        self.sampling = config;
+        self
+    }
+
+    /// Add a default span attribute to all spans
+    pub fn default_span_attribute(
+        mut self,
+        key: impl Into<String>,
+        value: impl Into<AttributeValue>,
+    ) -> Self {
+        self.default_span_attributes.insert(key.into(), value.into());
+        self
+    }
+}
+
+/// Sampling configuration for traces
+#[derive(Debug, Clone)]
+pub struct SamplingConfig {
+    /// Base sampling ratio (0.0-1.0)
+    pub ratio: f64,
+    /// Always sample errors
+    pub always_sample_errors: bool,
+    /// Always sample slow operations (above threshold)
+    pub slow_operation_threshold: Option<Duration>,
+    /// Parent-based sampling (inherit from parent span)
+    pub parent_based: bool,
+}
+
+impl Default for SamplingConfig {
+    fn default() -> Self {
+        Self {
+            ratio: 1.0,  // Sample everything by default
+            always_sample_errors: true,
+            slow_operation_threshold: Some(Duration::from_millis(100)),
+            parent_based: true,
+        }
+    }
+}
+
+impl SamplingConfig {
+    /// Sample all traces
+    pub fn always() -> Self {
+        Self { ratio: 1.0, ..Default::default() }
+    }
+
+    /// Never sample (disable tracing)
+    pub fn never() -> Self {
+        Self { ratio: 0.0, always_sample_errors: false, slow_operation_threshold: None, parent_based: false }
+    }
+
+    /// Sample a percentage of traces
+    pub fn ratio(ratio: f64) -> Self {
+        Self { ratio: ratio.clamp(0.0, 1.0), ..Default::default() }
+    }
+}
+```
+
+**Span Attributes Added by SDK**:
+
+| Attribute                  | Description                         | Example                    |
+| -------------------------- | ----------------------------------- | -------------------------- |
+| `inferadb.operation`       | Operation type                      | `check`, `write`, `expand` |
+| `inferadb.vault_id`        | Vault being accessed                | `vlt_01JFQGK...`           |
+| `inferadb.organization_id` | Organization                        | `org_8675309...`           |
+| `inferadb.subject`         | Subject of check (if not sensitive) | `user:alice`               |
+| `inferadb.permission`      | Permission being checked            | `view`                     |
+| `inferadb.resource_type`   | Resource type                       | `document`                 |
+| `inferadb.allowed`         | Check result (on check operations)  | `true`                     |
+| `inferadb.cached`          | Whether result was from cache       | `false`                    |
+| `inferadb.consistency`     | Consistency level used              | `strong`                   |
+
+**Disable Sensitive Attributes**:
+
+```rust
+// Don't include subject/resource in spans (for PII compliance)
+let client = Client::builder()
+    .observability(ObservabilityConfig::new()
+        .redact_sensitive_attributes(true))  // Exclude subject, resource from spans
+    .build()
+    .await?;
+```
+
+**Metrics Emitted**:
+
+| Metric                                  | Type      | Labels                     |
+| --------------------------------------- | --------- | -------------------------- |
+| `inferadb.client.requests`              | Counter   | `operation`, `status`      |
+| `inferadb.client.request.duration`      | Histogram | `operation`                |
+| `inferadb.client.connections.active`    | Gauge     | —                          |
+| `inferadb.client.connections.idle`      | Gauge     | —                          |
+| `inferadb.client.cache.hits`            | Counter   | `cache_type`               |
+| `inferadb.client.cache.misses`          | Counter   | `cache_type`               |
+| `inferadb.client.circuit_breaker.state` | Gauge     | `state` (closed/open/half) |
+| `inferadb.client.retries`               | Counter   | `operation`, `attempt`     |
 
 ### W3C Trace Context Propagation
 
@@ -9219,7 +12196,7 @@ tokio::spawn(async move {
 });
 
 // Context flows through streams
-let mut stream = vault.resources().list("user:alice", "view").stream();
+let mut stream = vault.resources().accessible_by("user:alice").with_permission("view").stream();
 while let Some(resource) = stream.next().await {
     // Each item inherits parent trace context
     process(resource?);
@@ -9304,7 +12281,7 @@ async fn test_get_document_denied() {
         .build();
 
     let result = get_document(&mock, "user:bob", "doc:1").await;
-    assert!(matches!(result, Err(AppError::Forbidden(_))));
+    assert!(matches!(result, Err(AppError::AccessDenied(_))));
 }
 ```
 
@@ -9337,11 +12314,11 @@ let mock = MockClient::builder()
 
 ### Testing Hierarchy
 
-| Client Type | Use Case | Speed | Fidelity |
-|-------------|----------|-------|----------|
-| `MockClient` | Unit tests, fast isolation | ⚡ Fastest | Stub responses |
-| `InMemoryClient` | Integration tests, real graph logic | 🚀 Fast | Full engine, no I/O |
-| `TestVault` | E2E tests against real InferaDB | 🐢 Slower | Production behavior |
+| Client Type      | Use Case                            | Speed      | Fidelity            |
+| ---------------- | ----------------------------------- | ---------- | ------------------- |
+| `MockClient`     | Unit tests, fast isolation          | ⚡ Fastest | Stub responses      |
+| `InMemoryClient` | Integration tests, real graph logic | 🚀 Fast    | Full engine, no I/O |
+| `TestVault`      | E2E tests against real InferaDB     | 🐢 Slower  | Production behavior |
 
 ### InMemoryClient for Integration Tests
 
@@ -9503,7 +12480,7 @@ pub trait AuthorizationClient: Send + Sync {
     async fn delete(&self, relationship: Relationship) -> Result<(), Error>;
 
     fn simulate(&self) -> SimulateBuilder;
-    async fn explain(&self, subject: &str, permission: &str, resource: &str) -> Result<Explanation, Error>;
+    async fn explain(&self, subject: &str, permission: &str, resource: &str) -> Result<PermissionExplanation, Error>;
     // ... additional methods
 }
 
@@ -9512,6 +12489,209 @@ impl AuthorizationClient for VaultClient { /* production */ }
 impl AuthorizationClient for MockClient { /* unit tests */ }
 impl AuthorizationClient for InMemoryClient { /* integration tests */ }
 ```
+
+### Testing Type Definitions
+
+````rust
+/// Mock client for unit testing.
+/// Allows stubbing check results and verifying calls.
+pub struct MockClient {
+    expectations: Arc<Mutex<MockExpectations>>,
+    verify_on_drop: bool,
+}
+
+impl MockClient {
+    /// Create a builder for configuring the mock.
+    pub fn builder() -> MockClientBuilder {
+        MockClientBuilder::new()
+    }
+}
+
+/// Builder for configuring MockClient expectations.
+pub struct MockClientBuilder {
+    check_expectations: Vec<CheckExpectation>,
+    check_patterns: Vec<PatternExpectation>,
+    write_expectations: Vec<WriteExpectation>,
+    verify_on_drop: bool,
+}
+
+impl MockClientBuilder {
+    fn new() -> Self;
+
+    /// Stub a specific check result.
+    pub fn check(
+        mut self,
+        subject: &str,
+        permission: &str,
+        resource: &str,
+        result: bool,
+    ) -> Self;
+
+    /// Stub checks matching a pattern (* as wildcard).
+    pub fn check_pattern(
+        mut self,
+        subject: &str,
+        permission: &str,
+        resource: &str,
+        result: bool,
+    ) -> Self;
+
+    /// Stub a check to return an error.
+    pub fn check_error(
+        mut self,
+        subject: &str,
+        permission: &str,
+        resource: &str,
+        error: Error,
+    ) -> Self;
+
+    /// Stub a successful write operation.
+    pub fn write_ok(mut self, relationship: Relationship<'static>) -> Self;
+
+    /// Stub a write operation to return an error.
+    pub fn write_error(
+        mut self,
+        relationship: Relationship<'static>,
+        error: Error,
+    ) -> Self;
+
+    /// Enable verification that all expectations were consumed on drop.
+    pub fn verify_on_drop(mut self, verify: bool) -> Self;
+
+    /// Build the configured MockClient.
+    pub fn build(self) -> MockClient;
+}
+
+/// In-memory client with full authorization engine.
+/// Provides real permission evaluation without network I/O.
+pub struct InMemoryClient {
+    engine: AuthorizationEngine,
+    relationships: InMemoryStore,
+}
+
+impl InMemoryClient {
+    /// Create an InMemoryClient with the given IPL schema.
+    pub fn with_schema(schema: &str) -> Self;
+
+    /// Create an InMemoryClient from a schema and initial relationships.
+    pub fn with_schema_and_data(
+        schema: &str,
+        relationships: Vec<Relationship<'static>>,
+    ) -> Self;
+
+    /// Access the relationship store for seeding test data.
+    pub fn relationships(&self) -> &RelationshipsClient;
+}
+
+/// Test vault connected to a real InferaDB instance.
+/// Creates an isolated vault that is automatically cleaned up on drop.
+pub struct TestVault {
+    client: VaultClient,
+    vault_id: VaultId,
+    cleanup_on_drop: bool,
+}
+
+impl TestVault {
+    /// Create a new test vault in the given organization.
+    pub async fn create(org: &OrganizationClient) -> Result<Self, Error>;
+
+    /// Create with a specific schema.
+    pub async fn create_with_schema(
+        org: &OrganizationClient,
+        schema: &str,
+    ) -> Result<Self, Error>;
+
+    /// Prevent cleanup on drop (for debugging failed tests).
+    pub fn preserve(mut self) -> Self;
+}
+
+impl Deref for TestVault {
+    type Target = VaultClient;
+    fn deref(&self) -> &Self::Target { &self.client }
+}
+
+impl Drop for TestVault {
+    fn drop(&mut self) {
+        // Spawns cleanup task if cleanup_on_drop is true
+    }
+}
+
+/// Create a client configured for integration testing.
+///
+/// # Example
+/// ```rust
+/// let client = test_client(TestConfig {
+///     url: "http://localhost:8080".into(),
+///     token: "test-token".into(),
+/// }).await?;
+/// ```
+pub async fn test_client(config: TestConfig) -> Result<Client, Error>;
+
+/// Captures authorization decisions for snapshot comparison.
+pub struct SimulationSnapshot {
+    checks: Vec<(String, String, String)>,
+    results: Vec<SimulationResult>,
+}
+
+impl SimulationSnapshot {
+    /// Capture current authorization state for a set of checks.
+    pub async fn capture(
+        client: &impl AuthorizationClient,
+        checks: &[(&str, &str, &str)],
+    ) -> Self;
+
+    /// Get the checks used in this snapshot.
+    pub fn checks(&self) -> Vec<(&str, &str, &str)>;
+
+    /// Assert that results match exactly.
+    pub fn assert_unchanged(&self, other: &[SimulationResult]);
+
+    /// Assert that only specified changes occurred.
+    pub fn assert_diff(&self, other: &[SimulationResult], expected: &[SnapshotDiff]);
+}
+
+/// Individual result in a simulation snapshot.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SimulationResult {
+    pub subject: String,
+    pub permission: String,
+    pub resource: String,
+    pub allowed: bool,
+}
+
+/// Expected change in a snapshot diff.
+#[derive(Debug, Clone)]
+pub struct SnapshotDiff {
+    pub subject: String,
+    pub permission: String,
+    pub resource: String,
+    pub was_allowed: bool,
+    pub now_allowed: bool,
+}
+
+/// Assert that a decision trace matches a saved snapshot.
+///
+/// # Example
+/// ```rust
+/// assert_decision_trace!(
+///     vault,
+///     subject: "user:alice",
+///     permission: "view",
+///     resource: "doc:readme",
+///     snapshot: "view_permission_alice_readme"
+/// );
+/// ```
+#[macro_export]
+macro_rules! assert_decision_trace {
+    ($client:expr, subject: $subj:expr, permission: $perm:expr, resource: $res:expr, snapshot: $name:expr) => {
+        // Expands to:
+        // 1. Execute explain() to get decision trace
+        // 2. Load snapshot from tests/snapshots/{$name}.json
+        // 3. Compare and assert equality
+        // 4. If INFERADB_UPDATE_SNAPSHOTS is set, update snapshot file
+    };
+}
+````
 
 For comprehensive testing patterns including the AuthzTest DSL and scenario testing, see [Testing Guide](docs/guides/testing.md).
 
@@ -9712,7 +12892,6 @@ pub enum TransportStrategy {
 
 /// Conditions that trigger transport fallback
 #[derive(Debug, Clone)]
-#[must_use = "FallbackTrigger must be passed to TransportStrategy to take effect"]
 pub struct FallbackTrigger {
     /// Connection failures (TCP, TLS handshake)
     pub connection_error: bool,
@@ -9875,15 +13054,15 @@ pub enum TransportEvent {
 
 ### Streaming Behavior
 
-| Operation                       | gRPC                       | REST                    |
-| ------------------------------- | -------------------------- | ----------------------- |
-| `check()`                       | Unary                      | POST                    |
-| `check_batch()`                 | Bidirectional stream       | SSE stream              |
-| `resources().list()`            | Server stream              | SSE stream              |
-| `subjects().list()`             | Server stream              | SSE stream              |
-| `relationships().list()`        | Server stream              | SSE stream              |
-| `watch()`                       | Server stream (continuous) | SSE stream (continuous) |
-| `relationships().write_batch()` | Client stream              | POST                    |
+| Operation                                       | gRPC                       | REST                    |
+| ----------------------------------------------- | -------------------------- | ----------------------- |
+| `check()`                                       | Unary                      | POST                    |
+| `check_batch()`                                 | Bidirectional stream       | SSE stream              |
+| `resources().accessible_by().with_permission()` | Server stream              | SSE stream              |
+| `subjects().with_permission().on_resource()`    | Server stream              | SSE stream              |
+| `relationships().list()`                        | Server stream              | SSE stream              |
+| `watch()`                                       | Server stream (continuous) | SSE stream (continuous) |
+| `relationships().write_batch()`                 | Client stream              | POST                    |
 
 ### Transport Escape Hatches
 
@@ -10014,10 +13193,10 @@ let client = Client::builder()
 
 **mTLS vs SDK Authentication**:
 
-| Layer            | Purpose                                     |
-| ---------------- | ------------------------------------------- |
-| mTLS (transport) | Authenticates the *connection* to InferaDB |
-| JWT (SDK auth)   | Authenticates the *application* identity   |
+| Layer            | Purpose                                    |
+| ---------------- | ------------------------------------------ |
+| mTLS (transport) | Authenticates the _connection_ to InferaDB |
+| JWT (SDK auth)   | Authenticates the _application_ identity   |
 
 Both can be used together: mTLS ensures only authorized hosts can connect, while JWT identifies which application is making requests.
 
@@ -10043,6 +13222,9 @@ rest = ["reqwest"]
 rustls = ["reqwest/rustls-tls", "tonic/tls-roots"]
 native-tls = ["reqwest/native-tls", "tonic/tls"]
 
+# Platform support
+wasm = ["rest", "getrandom/js", "chrono/wasmbind"]  # Browser/WASM (REST only)
+
 # Optional features
 tracing = ["tracing", "tracing-futures"]
 metrics = ["metrics", "metrics-exporter-prometheus"]
@@ -10066,6 +13248,164 @@ serde = ["dep:serde", "chrono/serde", "uuid/serde"]
 | `wasm` + `grpc`       | ❌    | gRPC not supported in browsers             |
 | `wasm` + `native-tls` | ❌    | No system TLS in WASM                      |
 | `blocking` + `grpc`   | ✅    | Blocking with gRPC                         |
+
+### Compile-Time Feature Validation
+
+The SDK uses compile-time checks to catch invalid feature combinations before building:
+
+```rust
+// In src/lib.rs - compile-time feature validation
+#[cfg(all(not(feature = "grpc"), not(feature = "rest")))]
+compile_error!(
+    "At least one transport must be enabled. Add `grpc` or `rest` feature:\n\
+     inferadb = { version = \"0.1\", features = [\"rest\"] }"
+);
+
+#[cfg(all(feature = "wasm", feature = "grpc"))]
+compile_error!(
+    "gRPC is not supported in WASM environments. Use REST:\n\
+     inferadb = { version = \"0.1\", features = [\"rest\", \"wasm\"] }"
+);
+
+#[cfg(all(feature = "wasm", feature = "native-tls"))]
+compile_error!(
+    "native-tls is not available in WASM. Browser provides TLS:\n\
+     inferadb = { version = \"0.1\", features = [\"rest\", \"wasm\"] }"
+);
+
+#[cfg(all(feature = "wasm", feature = "blocking"))]
+compile_error!(
+    "Blocking APIs are not available in WASM (single-threaded):\n\
+     Remove the `blocking` feature for WASM builds."
+);
+
+#[cfg(all(feature = "rustls", feature = "native-tls"))]
+compile_error!(
+    "Cannot enable both `rustls` and `native-tls`. Choose one:\n\
+     - `rustls`: Pure Rust, recommended for most use cases\n\
+     - `native-tls`: System TLS, may be required for corporate environments"
+);
+```
+
+**Result**: Users get clear error messages at compile time if they configure incompatible features:
+
+```text
+error: At least one transport must be enabled. Add `grpc` or `rest` feature:
+       inferadb = { version = "0.1", features = ["rest"] }
+  --> src/lib.rs:15:1
+   |
+15 | compile_error!(
+   | ^^^^^^^^^^^^^^^
+```
+
+### Feature Documentation in IDE
+
+The crate uses `#[cfg_attr]` to provide feature-aware documentation:
+
+````rust
+/// Check permission (returns boolean result).
+///
+/// # Transport Support
+/// - **gRPC**: Full support with streaming
+/// - **REST**: Full support via POST `/check`
+///
+/// # Example
+/// ```rust
+#[cfg_attr(feature = "grpc", doc = "// Using gRPC (default, fastest)")]
+#[cfg_attr(feature = "rest", doc = "// Using REST (when gRPC unavailable)")]
+/// let allowed = vault.check("user:alice", "view", "doc:1").await?;
+/// ```
+pub async fn check(...) -> Result<bool, Error> { ... }
+````
+
+---
+
+## WASM / Browser Usage
+
+The SDK supports WebAssembly (WASM) for browser and edge runtime environments with some constraints.
+
+### WASM Feature Configuration
+
+```toml
+[dependencies]
+inferadb = { version = "0.1", default-features = false, features = ["rest", "wasm"] }
+```
+
+### WASM Constraints
+
+| Feature            | Browser/WASM | Native      | Notes                             |
+| ------------------ | ------------ | ----------- | --------------------------------- |
+| gRPC transport     | ❌           | ✅          | gRPC requires HTTP/2 trailers     |
+| REST transport     | ✅           | ✅          | Full support via fetch API        |
+| TLS                | ✅ (browser) | ✅ (rustls) | Browser handles TLS automatically |
+| Connection pooling | Limited      | Full        | Browser manages connections       |
+| File system access | ❌           | ✅          | No credential files in browser    |
+| Environment vars   | ❌           | ✅          | Use explicit configuration        |
+| Blocking APIs      | ❌           | ✅          | WASM is single-threaded           |
+
+### Browser Client Configuration
+
+```rust
+// Browser/WASM client configuration
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(ClientCredentials::api_key("key_..."))  // Explicit credentials
+    .transport(Transport::Rest)  // REST only in browser
+    .build()
+    .await?;
+```
+
+### Credential Handling in Browser
+
+In WASM environments, credentials typically come from JavaScript interop or OAuth flows:
+
+```rust
+// Credentials from JavaScript (e.g., session storage, JS config)
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(BearerCredentialsConfig {
+        token: get_token_from_js(),
+    })
+    .build()
+    .await?;
+
+// OAuth flow with browser redirect
+let oauth = OAuthFlow::browser()
+    .client_id("client_...")
+    .redirect_uri("https://myapp.com/callback")
+    .build();
+
+// Returns URL to redirect user to
+let auth_url = oauth.authorization_url();
+```
+
+### Edge Runtime Compatibility
+
+For Cloudflare Workers, Deno Deploy, and similar edge runtimes:
+
+```toml
+[dependencies]
+inferadb = { version = "0.1", default-features = false, features = ["rest", "wasm"] }
+```
+
+```rust
+// Edge runtime configuration
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(ClientCredentials::api_key(env.secret("INFERADB_API_KEY")?))
+    .build()
+    .await?;
+```
+
+### WASM Binary Size
+
+| Configuration              | Approximate Size |
+| -------------------------- | ---------------- |
+| `rest` + `wasm`            | ~400 KB          |
+| `rest` + `wasm` + `serde`  | ~500 KB          |
+| Full default (native only) | N/A              |
+
+Use `wasm-opt` and `wasm-pack` for production builds to minimize size.
 
 ---
 
@@ -10153,6 +13493,28 @@ vault.check("user:alice", "view", "doc:1")
 | `ClientBuilder`            | Must call `.build()`                    |
 | `Result<T, Error>`         | Standard Rust - results must be handled |
 
+**Types WITHOUT `#[must_use]`**:
+
+Configuration structs like `RetryConfig`, `CacheConfig`, and `FallbackTrigger` intentionally do **not** have `#[must_use]`. This allows users to create configs in advance without warnings:
+
+```rust
+// ✅ No warning - configs can be created and stored for later use
+fn get_retry_config() -> RetryConfig {
+    RetryConfig::default()
+        .max_retries(5)
+        .initial_backoff(Duration::from_millis(100))
+}
+
+// Later...
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .retry(get_retry_config())
+    .build()
+    .await?;
+```
+
+The compile-time safety comes from the builder methods themselves, not the config structs.
+
 ---
 
 ## Release Strategy
@@ -10203,6 +13565,30 @@ Private keys and tokens are cleared from memory when dropped using the `zeroize`
 use zeroize::{Zeroize, ZeroizeOnDrop};
 use secrecy::{Secret, ExposeSecret};
 
+/// Error type for private key operations
+#[derive(Debug, thiserror::Error)]
+pub enum KeyError {
+    /// Key file not found at the specified path
+    #[error("key file not found: {0}")]
+    FileNotFound(std::path::PathBuf),
+
+    /// Failed to read key file
+    #[error("failed to read key file: {0}")]
+    ReadError(#[source] std::io::Error),
+
+    /// Invalid PEM format
+    #[error("invalid PEM format: {0}")]
+    InvalidPem(String),
+
+    /// Unsupported key algorithm (only Ed25519 and RSA supported)
+    #[error("unsupported key algorithm: {0}")]
+    UnsupportedAlgorithm(String),
+
+    /// Key material is malformed
+    #[error("malformed key: {0}")]
+    Malformed(String),
+}
+
 /// Private key wrapper that zeroizes on drop
 #[derive(ZeroizeOnDrop)]
 pub struct Ed25519PrivateKey {
@@ -10211,10 +13597,24 @@ pub struct Ed25519PrivateKey {
 }
 
 impl Ed25519PrivateKey {
-    pub fn from_pem(pem: &[u8]) -> Result<Self, Error> {
+    /// Parse a private key from PEM-encoded bytes
+    pub fn from_pem(pem: &[u8]) -> Result<Self, KeyError> {
         // Parse PEM, copy into zeroizing container
         let bytes = parse_ed25519_private_key(pem)?;
         Ok(Self { inner: bytes })
+    }
+
+    /// Load a private key from a PEM file
+    pub fn from_pem_file(path: impl AsRef<std::path::Path>) -> Result<Self, KeyError> {
+        let path = path.as_ref();
+        let pem = std::fs::read(path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                KeyError::FileNotFound(path.to_path_buf())
+            } else {
+                KeyError::ReadError(e)
+            }
+        })?;
+        Self::from_pem(&pem)
     }
 
     // Explicitly expose for signing only
@@ -10329,6 +13729,25 @@ let client = Client::builder()
 
 **Safety Mechanisms**:
 
+The `insecure()` method is only available when the `insecure` feature flag is enabled. This ensures developers make an explicit compile-time decision to allow insecure connections.
+
+```rust
+// Cargo.toml - only enable for development
+[dependencies]
+inferadb = { version = "0.1", features = ["insecure"] }
+
+// In code
+#[cfg(feature = "insecure")]
+let client = Client::builder()
+    .url("https://localhost:8443")
+    .credentials(creds)
+    .insecure()  // Only available with "insecure" feature
+    .build()
+    .await?;
+```
+
+**Implementation**:
+
 ```rust
 impl ClientBuilder<HasUrl, HasAuth, HasVault> {
     /// Disable TLS verification (DEVELOPMENT ONLY)
@@ -10339,21 +13758,12 @@ impl ClientBuilder<HasUrl, HasAuth, HasVault> {
     /// connection vulnerable to man-in-the-middle attacks. Only use
     /// this for local development or testing.
     ///
-    /// # Panics (in production builds)
+    /// # Availability
     ///
-    /// When compiled with `cfg(not(debug_assertions))` (release mode),
-    /// this method will panic unless INFERADB_ALLOW_INSECURE=1 is set.
+    /// This method is only available when the `insecure` feature flag is enabled.
+    /// This is a compile-time decision to prevent accidental use in production.
+    #[cfg(feature = "insecure")]
     pub fn insecure(mut self) -> Self {
-        #[cfg(not(debug_assertions))]
-        {
-            if std::env::var("INFERADB_ALLOW_INSECURE").as_deref() != Ok("1") {
-                panic!(
-                    "insecure() called in release build without INFERADB_ALLOW_INSECURE=1. \
-                     This is a security risk and is disabled by default."
-                );
-            }
-        }
-
         tracing::warn!(
             target: "inferadb::security",
             "TLS verification disabled - this is insecure!"
@@ -10363,14 +13773,6 @@ impl ClientBuilder<HasUrl, HasAuth, HasVault> {
         self
     }
 }
-```
-
-**Compile-time Detection**:
-
-```rust
-// Feature flag to completely remove insecure() from release builds
-#[cfg(feature = "insecure")]
-pub fn insecure(mut self) -> Self { /* ... */ }
 
 // Without the feature, method doesn't exist
 // Cargo.toml:
@@ -10428,7 +13830,7 @@ let vault = client
     .vault("vlt_production");  // ✅ Allowed
 
 let vault = client
-    .organization("org_other")  // ❌ API returns Forbidden
+    .organization("org_other")  // ❌ API returns ErrorKind::Forbidden
     .vault("vlt_their_data");
 ```
 
