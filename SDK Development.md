@@ -1614,8 +1614,22 @@ pub enum Credentials {
     Client(ClientCredentialsConfig),
     /// Static bearer token (user-initiated requests)
     Bearer(BearerCredentialsConfig),
+    /// API key authentication (simpler, for WASM/browser environments)
+    ApiKey(String),
     /// Dynamic provider for key rotation, secrets managers, HSMs
     Provider(Arc<dyn CredentialsProvider>),
+}
+
+impl Credentials {
+    /// Create credentials from an API key (for WASM/browser environments)
+    pub fn api_key(key: impl Into<String>) -> Self {
+        Self::ApiKey(key.into())
+    }
+
+    /// Create credentials from a bearer token
+    pub fn bearer(token: impl Into<String>) -> Self {
+        Self::Bearer(BearerCredentialsConfig { token: token.into() })
+    }
 }
 
 /// Client credentials using Ed25519 private key
@@ -1730,6 +1744,14 @@ pub enum CredentialsError {
     /// Rate limited by credentials provider
     #[error("credentials provider rate limited, retry after {0:?}")]
     RateLimited(Option<Duration>),
+
+    /// Provider-specific error (e.g., AWS SDK error, Vault API error)
+    #[error("credentials provider error: {0}")]
+    ProviderError(#[source] Box<dyn std::error::Error + Send + Sync>),
+
+    /// Credentials format is invalid or unparseable
+    #[error("invalid credentials format: {0}")]
+    InvalidFormat(String),
 }
 ```
 
@@ -1747,6 +1769,16 @@ impl CredentialsProvider for ClientCredentialsConfig {
 **AWS Secrets Manager Integration**:
 
 ```rust
+/// Expected JSON structure for credentials stored in AWS Secrets Manager.
+/// Customize this to match your secret format.
+#[derive(Debug, Deserialize)]
+struct SecretsPayload {
+    client_id: String,
+    private_key: String,  // PEM-encoded Ed25519 private key
+    #[serde(default)]
+    certificate_id: Option<String>,
+}
+
 pub struct AwsSecretsProvider {
     client: aws_sdk_secretsmanager::Client,
     secret_id: String,
@@ -1773,10 +1805,10 @@ impl CredentialsProvider for AwsSecretsProvider {
             .map_err(|e| CredentialsError::ProviderError(e.into()))?;
 
         let secret_string = secret.secret_string()
-            .ok_or(CredentialsError::InvalidFormat("missing secret_string"))?;
+            .ok_or(CredentialsError::InvalidFormat("missing secret_string".into()))?;
 
         let parsed: SecretsPayload = serde_json::from_str(secret_string)
-            .map_err(|e| CredentialsError::InvalidFormat(e))?;
+            .map_err(|e| CredentialsError::InvalidFormat(e.to_string()))?;
 
         let creds = ClientCredentialsConfig {
             client_id: parsed.client_id,
@@ -2017,6 +2049,9 @@ pub struct TlsConfig {
     min_version: TlsVersion,
     /// Enable certificate hostname verification (default: true)
     verify_hostname: bool,
+    /// Enable server certificate verification (default: true)
+    /// WARNING: Disabling this is insecure and should only be used for development
+    verify_server: bool,
     /// ALPN protocols (default: ["h2", "http/1.1"])
     alpn_protocols: Vec<String>,
 }
@@ -2029,6 +2064,22 @@ impl TlsConfig {
             use_native_roots: true,
             min_version: TlsVersion::Tls12,
             verify_hostname: true,
+            verify_server: true,
+            alpn_protocols: vec!["h2".into(), "http/1.1".into()],
+        }
+    }
+
+    /// Create an insecure TLS config that skips server certificate verification.
+    /// WARNING: Only use for local development with self-signed certificates.
+    #[cfg(feature = "insecure")]
+    pub fn insecure() -> Self {
+        Self {
+            root_certificates: Vec::new(),
+            client_identity: None,
+            use_native_roots: false,
+            min_version: TlsVersion::Tls12,
+            verify_hostname: false,
+            verify_server: false,
             alpn_protocols: vec!["h2".into(), "http/1.1".into()],
         }
     }
@@ -2061,6 +2112,12 @@ impl TlsConfig {
     pub fn min_version(mut self, version: TlsVersion) -> Self {
         self.min_version = version;
         self
+    }
+}
+
+impl Default for TlsConfig {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -3729,17 +3786,138 @@ Middleware wraps the transport layer, allowing cross-cutting concerns:
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+### Middleware Types
+
+```rust
+use std::future::Future;
+use std::pin::Pin;
+
+/// Middleware trait for intercepting SDK requests.
+/// Middleware wraps the transport layer, enabling cross-cutting concerns
+/// like logging, metrics, custom headers, or request transformation.
+#[async_trait]
+pub trait Middleware: Send + Sync + 'static {
+    /// Handle a request, optionally modifying it or the response.
+    /// Call `next.call(req)` to continue the chain.
+    async fn handle(&self, req: Request, next: Next<'_>) -> Result<Response, Error>;
+}
+
+/// An SDK request being processed through the middleware chain.
+#[derive(Debug)]
+pub struct Request {
+    /// The operation being performed (e.g., "check", "write", "list_resources")
+    operation: String,
+    /// Request metadata
+    metadata: RequestMetadata,
+    /// The serialized request body
+    body: Vec<u8>,
+}
+
+impl Request {
+    /// Get the operation name.
+    pub fn operation(&self) -> &str { &self.operation }
+
+    /// Get request metadata (headers, trace context, etc.).
+    pub fn metadata(&self) -> &RequestMetadata { &self.metadata }
+
+    /// Get mutable access to metadata for adding custom headers.
+    pub fn metadata_mut(&mut self) -> &mut RequestMetadata { &mut self.metadata }
+}
+
+/// Request metadata including headers and trace context.
+#[derive(Debug, Clone, Default)]
+pub struct RequestMetadata {
+    /// Custom headers to include in the request
+    pub headers: HashMap<String, String>,
+    /// Trace context for distributed tracing
+    pub trace_context: Option<TraceContext>,
+    /// Request ID (auto-generated if not set)
+    pub request_id: Option<String>,
+}
+
+/// The response from an SDK operation.
+#[derive(Debug)]
+pub struct Response {
+    /// Response metadata
+    metadata: ResponseMetadata,
+    /// The serialized response body
+    body: Vec<u8>,
+}
+
+impl Response {
+    /// Check if the response indicates success.
+    pub fn is_ok(&self) -> bool { self.metadata.status.is_success() }
+
+    /// Get response metadata.
+    pub fn metadata(&self) -> &ResponseMetadata { &self.metadata }
+}
+
+/// Response metadata including status and headers.
+#[derive(Debug, Clone)]
+pub struct ResponseMetadata {
+    /// Response status
+    pub status: ResponseStatus,
+    /// Response headers
+    pub headers: HashMap<String, String>,
+    /// Server-provided request ID
+    pub request_id: Option<String>,
+}
+
+/// Response status.
+#[derive(Debug, Clone, Copy)]
+pub enum ResponseStatus {
+    Success,
+    Error(ErrorKind),
+}
+
+impl ResponseStatus {
+    pub fn is_success(&self) -> bool { matches!(self, Self::Success) }
+}
+
+/// The next middleware or transport in the chain.
+pub struct Next<'a> {
+    inner: Box<dyn FnOnce(Request) -> Pin<Box<dyn Future<Output = Result<Response, Error>> + Send + 'a>> + Send + 'a>,
+}
+
+impl<'a> Next<'a> {
+    /// Call the next middleware or transport.
+    pub async fn call(self, req: Request) -> Result<Response, Error> {
+        (self.inner)(req).await
+    }
+}
+```
+
 ### Adding Custom Middleware
 
 ```rust
-use inferadb::middleware::{Middleware, Request, Response};
+use inferadb::middleware::{Middleware, Request, Response, Next};
+use std::sync::Arc;
 
+/// Example: Audit logging middleware
 struct AuditLogger {
-    logger: Logger,
+    logger: Arc<dyn Log + Send + Sync>,
 }
 
+impl AuditLogger {
+    pub fn new(logger: impl Log + Send + Sync + 'static) -> Self {
+        Self { logger: Arc::new(logger) }
+    }
+}
+
+/// Simple logging trait (or use your preferred logging framework)
+trait Log: Send + Sync {
+    fn log(&self, entry: AuditEntry);
+}
+
+struct AuditEntry {
+    operation: String,
+    duration: Duration,
+    success: bool,
+}
+
+#[async_trait]
 impl Middleware for AuditLogger {
-    async fn handle(&self, req: Request, next: Next) -> Result<Response, Error> {
+    async fn handle(&self, req: Request, next: Next<'_>) -> Result<Response, Error> {
         let start = Instant::now();
         let operation = req.operation().to_string();
 
@@ -3748,16 +3926,18 @@ impl Middleware for AuditLogger {
         self.logger.log(AuditEntry {
             operation,
             duration: start.elapsed(),
-            success: response.is_ok(),
+            success: response.as_ref().map(|r| r.is_ok()).unwrap_or(false),
         });
 
         response
     }
 }
 
+// Usage
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .middleware(AuditLogger::new())
+    .credentials(creds)
+    .middleware(AuditLogger::new(my_logger))
     .build()
     .await?;
 ```
@@ -4205,6 +4385,88 @@ impl<'a> Relationship<'a> {
             relation: Cow::Owned(self.relation.into_owned()),
             subject: Cow::Owned(self.subject.into_owned()),
         }
+    }
+
+    /// Create a relationship builder for named-parameter construction.
+    /// Useful when you have values in a different order than the constructor.
+    pub fn builder() -> RelationshipBuilder {
+        RelationshipBuilder::new()
+    }
+
+    /// Create a relationship from check() parameter order.
+    /// Converts (subject, relation, resource) → Relationship(resource, relation, subject).
+    ///
+    /// # Example
+    /// ```rust
+    /// // Convert check parameters to relationship
+    /// let rel = Relationship::from_check_params("user:alice", "viewer", "document:readme");
+    /// assert_eq!(rel.resource, "document:readme");
+    /// assert_eq!(rel.relation, "viewer");
+    /// assert_eq!(rel.subject, "user:alice");
+    /// ```
+    pub fn from_check_params(
+        subject: impl Into<String>,
+        relation: impl Into<String>,
+        resource: impl Into<String>,
+    ) -> Relationship<'static> {
+        Relationship {
+            resource: Cow::Owned(resource.into()),
+            relation: Cow::Owned(relation.into()),
+            subject: Cow::Owned(subject.into()),
+        }
+    }
+}
+
+/// Builder for constructing relationships with named parameters.
+/// Useful when values come in a different order than `Relationship::new()`.
+#[derive(Debug, Default)]
+pub struct RelationshipBuilder {
+    resource: Option<String>,
+    relation: Option<String>,
+    subject: Option<String>,
+}
+
+impl RelationshipBuilder {
+    /// Create a new relationship builder.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the resource (e.g., "document:readme").
+    pub fn resource(mut self, resource: impl Into<String>) -> Self {
+        self.resource = Some(resource.into());
+        self
+    }
+
+    /// Set the relation (e.g., "viewer", "editor").
+    pub fn relation(mut self, relation: impl Into<String>) -> Self {
+        self.relation = Some(relation.into());
+        self
+    }
+
+    /// Set the subject (e.g., "user:alice").
+    pub fn subject(mut self, subject: impl Into<String>) -> Self {
+        self.subject = Some(subject.into());
+        self
+    }
+
+    /// Build the relationship. Panics if any field is missing.
+    /// For fallible construction, use `try_build()`.
+    pub fn build(self) -> Relationship<'static> {
+        Relationship {
+            resource: Cow::Owned(self.resource.expect("resource is required")),
+            relation: Cow::Owned(self.relation.expect("relation is required")),
+            subject: Cow::Owned(self.subject.expect("subject is required")),
+        }
+    }
+
+    /// Build the relationship, returning an error if any field is missing.
+    pub fn try_build(self) -> Result<Relationship<'static>, &'static str> {
+        Ok(Relationship {
+            resource: Cow::Owned(self.resource.ok_or("resource is required")?),
+            relation: Cow::Owned(self.relation.ok_or("relation is required")?),
+            subject: Cow::Owned(self.subject.ok_or("subject is required")?),
+        })
     }
 }
 ```
@@ -4775,6 +5037,99 @@ for step in &decision.trace {
 The `check()` method returns a builder that implements `IntoFuture`, enabling both simple one-liner usage and optional configuration:
 
 ```rust
+/// ABAC context for attribute-based authorization checks.
+///
+/// Provides additional attributes that can be evaluated by policy conditions,
+/// such as IP addresses, time of day, MFA status, or custom application data.
+#[derive(Debug, Clone, Default)]
+pub struct Context {
+    attributes: HashMap<String, ContextValue>,
+}
+
+/// Values that can be stored in an ABAC context.
+#[derive(Debug, Clone)]
+pub enum ContextValue {
+    String(String),
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    List(Vec<ContextValue>),
+    Map(HashMap<String, ContextValue>),
+}
+
+impl Context {
+    /// Create a new empty context.
+    pub fn new() -> Self {
+        Self {
+            attributes: HashMap::new(),
+        }
+    }
+
+    /// Insert an attribute into the context.
+    /// Supports strings, booleans, integers, and floats.
+    pub fn insert(mut self, key: impl Into<String>, value: impl Into<ContextValue>) -> Self {
+        self.attributes.insert(key.into(), value.into());
+        self
+    }
+
+    /// Get an attribute value by key.
+    pub fn get(&self, key: &str) -> Option<&ContextValue> {
+        self.attributes.get(key)
+    }
+
+    /// Check if context contains a key.
+    pub fn contains(&self, key: &str) -> bool {
+        self.attributes.contains_key(key)
+    }
+
+    /// Get the number of attributes.
+    pub fn len(&self) -> usize {
+        self.attributes.len()
+    }
+
+    /// Check if context is empty.
+    pub fn is_empty(&self) -> bool {
+        self.attributes.is_empty()
+    }
+}
+
+// Convenient From implementations for ContextValue
+impl From<&str> for ContextValue {
+    fn from(s: &str) -> Self {
+        ContextValue::String(s.to_owned())
+    }
+}
+
+impl From<String> for ContextValue {
+    fn from(s: String) -> Self {
+        ContextValue::String(s)
+    }
+}
+
+impl From<bool> for ContextValue {
+    fn from(b: bool) -> Self {
+        ContextValue::Bool(b)
+    }
+}
+
+impl From<i64> for ContextValue {
+    fn from(i: i64) -> Self {
+        ContextValue::Int(i)
+    }
+}
+
+impl From<i32> for ContextValue {
+    fn from(i: i32) -> Self {
+        ContextValue::Int(i as i64)
+    }
+}
+
+impl From<f64> for ContextValue {
+    fn from(f: f64) -> Self {
+        ContextValue::Float(f)
+    }
+}
+
 /// Builder for authorization check requests.
 /// Implements IntoFuture for ergonomic await syntax.
 #[must_use = "CheckRequest does nothing until awaited"]
@@ -4818,6 +5173,20 @@ impl<'a> CheckRequest<'a> {
         self.timeout = Some(timeout);
         self
     }
+
+    /// Transform into a require request that returns `Result<(), AccessDenied>`.
+    /// Use this for guard clauses in HTTP handlers for clean early-return on denial.
+    ///
+    /// # Example
+    /// ```rust
+    /// // In an HTTP handler - returns 403 on denial
+    /// vault.check(user_id, "view", doc_id)
+    ///     .require()
+    ///     .await?;  // Err(AccessDenied) → 403 Forbidden
+    /// ```
+    pub fn require(self) -> RequireCheckRequest<'a> {
+        RequireCheckRequest { inner: self }
+    }
 }
 
 // IntoFuture enables direct .await on the builder
@@ -4828,6 +5197,93 @@ impl<'a> IntoFuture for CheckRequest<'a> {
     fn into_future(self) -> Self::IntoFuture {
         async move {
             self.vault.execute_check(self).await
+        }
+    }
+}
+
+/// Request that returns full decision details instead of just a boolean.
+/// Created via `CheckRequest::detailed()`.
+#[must_use = "DetailedCheckRequest does nothing until awaited"]
+pub struct DetailedCheckRequest<'a> {
+    inner: CheckRequest<'a>,
+}
+
+impl<'a> DetailedCheckRequest<'a> {
+    /// Ensure read-after-write consistency with a token
+    pub fn at_least_as_fresh_as(mut self, token: ConsistencyToken) -> Self {
+        self.inner.consistency = Some(token);
+        self
+    }
+
+    /// Override the client-level timeout for this operation
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.inner.timeout = Some(timeout);
+        self
+    }
+}
+
+impl<'a> IntoFuture for DetailedCheckRequest<'a> {
+    type Output = Result<Decision, Error>;
+    type IntoFuture = impl Future<Output = Self::Output>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        async move {
+            self.inner.vault.execute_detailed_check(self.inner).await
+        }
+    }
+}
+
+/// Request that fails with `AccessDenied` on denial instead of returning `false`.
+/// Created via `CheckRequest::require()`. Ideal for HTTP handler guard clauses.
+#[must_use = "RequireCheckRequest does nothing until awaited"]
+pub struct RequireCheckRequest<'a> {
+    inner: CheckRequest<'a>,
+}
+
+impl<'a> RequireCheckRequest<'a> {
+    /// Add ABAC context to the check
+    pub fn with_context(mut self, context: Context) -> Self {
+        self.inner.context = Some(context);
+        self
+    }
+
+    /// Enable decision trace for debugging
+    pub fn trace(mut self, enabled: bool) -> Self {
+        self.inner.trace = enabled;
+        self
+    }
+
+    /// Ensure read-after-write consistency with a token
+    pub fn at_least_as_fresh_as(mut self, token: ConsistencyToken) -> Self {
+        self.inner.consistency = Some(token);
+        self
+    }
+
+    /// Override the client-level timeout for this operation
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.inner.timeout = Some(timeout);
+        self
+    }
+}
+
+impl<'a> IntoFuture for RequireCheckRequest<'a> {
+    type Output = Result<(), AccessDenied>;
+    type IntoFuture = impl Future<Output = Self::Output>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        async move {
+            let allowed = self.inner.vault.execute_check(self.inner).await
+                .map_err(|e| AccessDenied::from_error(e))?;
+
+            if allowed {
+                Ok(())
+            } else {
+                Err(AccessDenied::new(
+                    self.inner.subject.into_owned(),
+                    self.inner.permission.into_owned(),
+                    self.inner.resource.into_owned(),
+                ))
+            }
         }
     }
 }
@@ -4957,9 +5413,49 @@ pub struct AccessDenied {
     pub request_id: Option<String>,
 }
 
+impl std::fmt::Display for AccessDenied {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "access denied: {} cannot {} on {}",
+            self.subject, self.permission, self.resource
+        )
+    }
+}
+
 impl std::error::Error for AccessDenied {}
 
 impl AccessDenied {
+    /// Create a new AccessDenied error
+    pub fn new(
+        subject: impl Into<String>,
+        permission: impl Into<String>,
+        resource: impl Into<String>,
+    ) -> Self {
+        Self {
+            subject: subject.into(),
+            permission: permission.into(),
+            resource: resource.into(),
+            request_id: None,
+        }
+    }
+
+    /// Create from a general Error (for network/server errors during auth check)
+    pub fn from_error(error: Error) -> Self {
+        Self {
+            subject: String::new(),
+            permission: String::new(),
+            resource: String::new(),
+            request_id: error.request_id().map(String::from),
+        }
+    }
+
+    /// Set the request ID
+    pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
+        self.request_id = Some(request_id.into());
+        self
+    }
+
     /// Convert to HTTP status code
     pub fn status_code(&self) -> u16 { 403 }
 
@@ -6793,46 +7289,26 @@ loop {
     }
 }
 
-// Page-based pagination (for UI pagination)
-let page = vault
+// Offset-based pagination (for UI pagination)
+let page: OffsetPage<_> = vault
     .relationships().list()
     .resource("document:readme")
-    .limit(25)
-    .offset(50)  // Skip first 50
+    .offset(50, 25)  // Skip 50, fetch 25
     .await?;
 
-println!("Showing {}-{} of {}",
+println!("Showing {}-{} of {:?}",
     page.offset + 1,
-    page.offset + page.items.len(),
+    page.offset + page.items.len() as u64,
     page.total);
 ```
 
 **Pagination Types**:
 
+See [Sub-Client Types](#sub-client-types) for the full definitions of `CursorPage<T>` and `OffsetPage<T>`. The `Page<T>` type alias defaults to cursor-based pagination:
+
 ```rust
-#[derive(Debug, Clone)]
-pub struct Page<T> {
-    /// Items in this page
-    pub items: Vec<T>,
-    /// Cursor for next page (None if last page)
-    pub next_cursor: Option<String>,
-    /// Total count (if available)
-    pub total: Option<u64>,
-    /// Current offset (for offset-based pagination)
-    pub offset: u64,
-}
-
-impl<T> Page<T> {
-    /// Whether there are more pages
-    pub fn has_next(&self) -> bool {
-        self.next_cursor.is_some()
-    }
-
-    /// Whether this is the first page
-    pub fn is_first(&self) -> bool {
-        self.offset == 0
-    }
-}
+// Convenience alias - see Sub-Client Types for full definitions
+pub type Page<T> = CursorPage<T>;
 ```
 
 **Pagination vs Streaming**:
@@ -9289,8 +9765,10 @@ pub struct UpdateClient {
     pub description: Option<String>,
 }
 
+/// A public key certificate for client authentication (JWKS).
+/// Not to be confused with `Certificate` in TLS configuration.
 #[derive(Debug, Clone)]
-pub struct Certificate {
+pub struct ClientCertificate {
     pub id: String,
     pub name: String,
     pub fingerprint: String,
@@ -9302,7 +9780,7 @@ pub struct Certificate {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateCertificate {
+pub struct CreateClientCertificate {
     pub name: String,
     pub public_key: String,
 }
@@ -10437,6 +10915,52 @@ impl Error {
     pub fn schema_error(&self) -> Option<&SchemaError> {
         self.details.as_ref().and_then(|d| d.schema_error.as_ref())
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Constructors for common error cases
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Create an invalid input error with a message.
+    pub fn invalid_argument(message: impl Into<String>) -> Self {
+        Self {
+            kind: ErrorKind::InvalidInput,
+            message: message.into(),
+            source: None,
+            request_id: None,
+            retry_after: None,
+            grpc_status: None,
+            http_status: Some(400),
+            details: None,
+        }
+    }
+
+    /// Create a not found error.
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self {
+            kind: ErrorKind::NotFound,
+            message: message.into(),
+            source: None,
+            request_id: None,
+            retry_after: None,
+            grpc_status: None,
+            http_status: Some(404),
+            details: None,
+        }
+    }
+
+    /// Create an internal/server error.
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self {
+            kind: ErrorKind::ServerError,
+            message: message.into(),
+            source: None,
+            request_id: None,
+            retry_after: None,
+            grpc_status: None,
+            http_status: Some(500),
+            details: None,
+        }
+    }
 }
 
 // Display implementation for user-friendly error messages
@@ -10793,6 +11317,12 @@ impl RateLimiter {
     pub fn on_backpressure(mut self, strategy: BackpressureStrategy) -> Self {
         self.backpressure_strategy = strategy;
         self
+    }
+}
+
+impl Default for RateLimiter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -11467,6 +11997,68 @@ pub struct DegradationConfig {
     on_degradation_end: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
+impl DegradationConfig {
+    /// Create a new degradation configuration with secure defaults.
+    pub fn new() -> Self {
+        Self {
+            on_check_failure: FailureMode::Deny,
+            on_unavailable: FallbackStrategy::Error,
+            on_write_failure: FallbackStrategy::Error,
+            on_read_failure: FallbackStrategy::Error,
+            on_degradation_start: None,
+            on_degradation_end: None,
+        }
+    }
+
+    /// Set behavior when authorization checks fail.
+    pub fn on_check_failure(mut self, mode: FailureMode) -> Self {
+        self.on_check_failure = mode;
+        self
+    }
+
+    /// Set strategy when service is completely unavailable.
+    pub fn on_unavailable(mut self, strategy: FallbackStrategy) -> Self {
+        self.on_unavailable = strategy;
+        self
+    }
+
+    /// Set strategy when write operations fail.
+    pub fn on_write_failure(mut self, strategy: FallbackStrategy) -> Self {
+        self.on_write_failure = strategy;
+        self
+    }
+
+    /// Set strategy when read operations fail.
+    pub fn on_read_failure(mut self, strategy: FallbackStrategy) -> Self {
+        self.on_read_failure = strategy;
+        self
+    }
+
+    /// Set callback when degradation mode activates.
+    pub fn on_degradation_start<F>(mut self, callback: F) -> Self
+    where
+        F: Fn(String) + Send + Sync + 'static,
+    {
+        self.on_degradation_start = Some(Arc::new(callback));
+        self
+    }
+
+    /// Set callback when service recovers from degradation.
+    pub fn on_degradation_end<F>(mut self, callback: F) -> Self
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        self.on_degradation_end = Some(Arc::new(callback));
+        self
+    }
+}
+
+impl Default for DegradationConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// How to handle authorization check failures
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FailureMode {
@@ -12117,6 +12709,64 @@ impl SamplingConfig {
         Self { ratio: ratio.clamp(0.0, 1.0), ..Default::default() }
     }
 }
+
+/// Attribute value types for span attributes and resource attributes.
+/// Compatible with OpenTelemetry attribute value types.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AttributeValue {
+    /// String value
+    String(String),
+    /// Boolean value
+    Bool(bool),
+    /// 64-bit signed integer
+    Int(i64),
+    /// 64-bit floating point
+    Float(f64),
+    /// Array of strings
+    StringArray(Vec<String>),
+    /// Array of booleans
+    BoolArray(Vec<bool>),
+    /// Array of integers
+    IntArray(Vec<i64>),
+    /// Array of floats
+    FloatArray(Vec<f64>),
+}
+
+impl From<&str> for AttributeValue {
+    fn from(s: &str) -> Self {
+        Self::String(s.to_owned())
+    }
+}
+
+impl From<String> for AttributeValue {
+    fn from(s: String) -> Self {
+        Self::String(s)
+    }
+}
+
+impl From<bool> for AttributeValue {
+    fn from(b: bool) -> Self {
+        Self::Bool(b)
+    }
+}
+
+impl From<i64> for AttributeValue {
+    fn from(i: i64) -> Self {
+        Self::Int(i)
+    }
+}
+
+impl From<i32> for AttributeValue {
+    fn from(i: i32) -> Self {
+        Self::Int(i as i64)
+    }
+}
+
+impl From<f64> for AttributeValue {
+    fn from(f: f64) -> Self {
+        Self::Float(f)
+    }
+}
 ```
 
 **Span Attributes Added by SDK**:
@@ -12179,6 +12829,387 @@ let trace_context = TraceContext::new()
     .with_trace_id(TraceId::random())
     .with_span_id(SpanId::random())
     .with_sampled(true);
+```
+
+**Tracing Types**:
+
+```rust
+/// W3C Trace Context representation for distributed tracing.
+#[derive(Debug, Clone)]
+pub struct TraceContext {
+    trace_id: TraceId,
+    span_id: SpanId,
+    parent_span_id: Option<SpanId>,
+    sampled: bool,
+    trace_state: Option<String>,
+}
+
+impl TraceContext {
+    /// Create a new trace context with random IDs.
+    pub fn new() -> Self {
+        Self {
+            trace_id: TraceId::random(),
+            span_id: SpanId::random(),
+            parent_span_id: None,
+            sampled: true,
+            trace_state: None,
+        }
+    }
+
+    /// Extract trace context from HTTP headers (W3C Trace Context format).
+    pub fn extract_from_headers(headers: &HeaderMap) -> Result<Self, Error> {
+        let traceparent = headers
+            .get("traceparent")
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| Error::invalid_argument("missing traceparent header"))?;
+
+        let mut context = Self::from_traceparent(traceparent)?;
+
+        // Optionally parse tracestate
+        if let Some(tracestate) = headers.get("tracestate").and_then(|v| v.to_str().ok()) {
+            context.trace_state = Some(tracestate.to_owned());
+        }
+
+        Ok(context)
+    }
+
+    /// Inject trace context into HTTP headers.
+    pub fn inject_into_headers(&self, headers: &mut HeaderMap) {
+        if let Ok(value) = http::HeaderValue::from_str(&self.to_traceparent()) {
+            headers.insert("traceparent", value);
+        }
+        if let Some(state) = &self.trace_state {
+            if let Ok(value) = http::HeaderValue::from_str(state) {
+                headers.insert("tracestate", value);
+            }
+        }
+    }
+
+    /// Set the trace ID.
+    pub fn with_trace_id(mut self, id: TraceId) -> Self {
+        self.trace_id = id;
+        self
+    }
+
+    /// Set the span ID.
+    pub fn with_span_id(mut self, id: SpanId) -> Self {
+        self.span_id = id;
+        self
+    }
+
+    /// Set the parent span ID.
+    pub fn with_parent_span_id(mut self, id: SpanId) -> Self {
+        self.parent_span_id = Some(id);
+        self
+    }
+
+    /// Set whether this trace is sampled.
+    pub fn with_sampled(mut self, sampled: bool) -> Self {
+        self.sampled = sampled;
+        self
+    }
+
+    /// Get the trace ID.
+    pub fn trace_id(&self) -> &TraceId { &self.trace_id }
+
+    /// Get the span ID.
+    pub fn span_id(&self) -> &SpanId { &self.span_id }
+
+    /// Check if this trace is sampled.
+    pub fn is_sampled(&self) -> bool { self.sampled }
+
+    /// Get the trace state (if set).
+    pub fn trace_state(&self) -> Option<&str> {
+        self.trace_state.as_deref()
+    }
+
+    /// Parse from W3C traceparent header format.
+    /// Format: "00-{trace_id}-{span_id}-{flags}"
+    pub fn from_traceparent(header: &str) -> Result<Self, Error> {
+        let parts: Vec<&str> = header.split('-').collect();
+        if parts.len() != 4 {
+            return Err(Error::invalid_argument("invalid traceparent format"));
+        }
+        let trace_id = TraceId::from_hex(parts[1])?;
+        let span_id = SpanId::from_hex(parts[2])?;
+        let flags = u8::from_str_radix(parts[3], 16)
+            .map_err(|_| Error::invalid_argument("invalid flags"))?;
+        Ok(Self {
+            trace_id,
+            span_id,
+            parent_span_id: None,
+            sampled: flags & 0x01 != 0,
+            trace_state: None,
+        })
+    }
+
+    /// Format as W3C traceparent header.
+    pub fn to_traceparent(&self) -> String {
+        let flags = if self.sampled { "01" } else { "00" };
+        format!("00-{}-{}-{}", self.trace_id.to_hex(), self.span_id.to_hex(), flags)
+    }
+}
+
+impl Default for TraceContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 128-bit trace identifier (W3C Trace Context format).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TraceId([u8; 16]);
+
+impl TraceId {
+    /// Generate a random trace ID.
+    pub fn random() -> Self {
+        let mut bytes = [0u8; 16];
+        getrandom::getrandom(&mut bytes).expect("random bytes");
+        Self(bytes)
+    }
+
+    /// Create from raw bytes.
+    pub fn from_bytes(bytes: [u8; 16]) -> Self {
+        Self(bytes)
+    }
+
+    /// Parse from hex string.
+    pub fn from_hex(hex: &str) -> Result<Self, Error> {
+        if hex.len() != 32 {
+            return Err(Error::invalid_argument("trace_id must be 32 hex characters"));
+        }
+        let mut bytes = [0u8; 16];
+        hex::decode_to_slice(hex, &mut bytes)
+            .map_err(|_| Error::invalid_argument("invalid hex"))?;
+        Ok(Self(bytes))
+    }
+
+    /// Get as hex string.
+    pub fn to_hex(&self) -> String {
+        hex::encode(self.0)
+    }
+
+    /// Get raw bytes.
+    pub fn as_bytes(&self) -> &[u8; 16] {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for TraceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_hex())
+    }
+}
+
+/// 64-bit span identifier (W3C Trace Context format).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SpanId([u8; 8]);
+
+impl SpanId {
+    /// Generate a random span ID.
+    pub fn random() -> Self {
+        let mut bytes = [0u8; 8];
+        getrandom::getrandom(&mut bytes).expect("random bytes");
+        Self(bytes)
+    }
+
+    /// Create from raw bytes.
+    pub fn from_bytes(bytes: [u8; 8]) -> Self {
+        Self(bytes)
+    }
+
+    /// Parse from hex string.
+    pub fn from_hex(hex: &str) -> Result<Self, Error> {
+        if hex.len() != 16 {
+            return Err(Error::invalid_argument("span_id must be 16 hex characters"));
+        }
+        let mut bytes = [0u8; 8];
+        hex::decode_to_slice(hex, &mut bytes)
+            .map_err(|_| Error::invalid_argument("invalid hex"))?;
+        Ok(Self(bytes))
+    }
+
+    /// Get as hex string.
+    pub fn to_hex(&self) -> String {
+        hex::encode(self.0)
+    }
+
+    /// Get raw bytes.
+    pub fn as_bytes(&self) -> &[u8; 8] {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for SpanId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_hex())
+    }
+}
+
+/// Trait for propagating trace context across service boundaries.
+/// Compatible with OpenTelemetry's TextMapPropagator.
+pub trait Propagator: Send + Sync {
+    /// Extract trace context from carrier (e.g., HTTP headers).
+    fn extract(&self, carrier: &dyn Carrier) -> Option<TraceContext>;
+
+    /// Inject trace context into carrier (e.g., HTTP headers).
+    fn inject(&self, context: &TraceContext, carrier: &mut dyn CarrierMut);
+}
+
+/// Read-only carrier for trace context extraction.
+pub trait Carrier {
+    fn get(&self, key: &str) -> Option<&str>;
+}
+
+/// Mutable carrier for trace context injection.
+pub trait CarrierMut {
+    fn set(&mut self, key: &str, value: String);
+}
+
+/// W3C Trace Context propagator (default).
+/// Handles `traceparent` and `tracestate` headers.
+pub struct TraceContextPropagator;
+
+impl TraceContextPropagator {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for TraceContextPropagator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Propagator for TraceContextPropagator {
+    fn extract(&self, carrier: &dyn Carrier) -> Option<TraceContext> {
+        let traceparent = carrier.get("traceparent")?;
+        // Parse W3C traceparent format: version-trace_id-span_id-flags
+        // e.g., "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+        TraceContext::from_traceparent(traceparent).ok()
+    }
+
+    fn inject(&self, context: &TraceContext, carrier: &mut dyn CarrierMut) {
+        carrier.set("traceparent", context.to_traceparent());
+        if let Some(state) = context.trace_state() {
+            carrier.set("tracestate", state.to_string());
+        }
+    }
+}
+
+// Implement Carrier for common types
+impl Carrier for http::HeaderMap {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.get(key)?.to_str().ok()
+    }
+}
+
+impl CarrierMut for http::HeaderMap {
+    fn set(&mut self, key: &str, value: String) {
+        if let Ok(name) = http::header::HeaderName::try_from(key) {
+            if let Ok(val) = http::header::HeaderValue::try_from(value) {
+                self.insert(name, val);
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Framework Integration Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Extension trait for trace context propagation across async boundaries.
+///
+/// This trait is automatically implemented for types that carry trace context,
+/// enabling seamless propagation through spawned tasks and streams.
+pub trait TraceContextExt {
+    /// Returns the current trace context, if any.
+    fn trace_context(&self) -> Option<TraceContext>;
+
+    /// Attaches a trace context to be propagated.
+    fn with_trace_context(self, context: TraceContext) -> Self;
+}
+
+// Axum integration (feature = "axum")
+pub mod integrations {
+    pub mod axum {
+        use super::super::*;
+
+        /// Tower layer that extracts W3C trace context from incoming requests
+        /// and makes it available to InferaDB client operations.
+        ///
+        /// # Example
+        ///
+        /// ```rust
+        /// use inferadb::integrations::axum::InferaDbTraceLayer;
+        ///
+        /// let app = Router::new()
+        ///     .route("/api/check", post(check_permission))
+        ///     .layer(InferaDbTraceLayer::new(client.clone()));
+        /// ```
+        #[derive(Clone)]
+        pub struct InferaDbTraceLayer {
+            client: crate::Client,
+        }
+
+        impl InferaDbTraceLayer {
+            /// Creates a new layer that propagates trace context to the given client.
+            pub fn new(client: crate::Client) -> Self {
+                Self { client }
+            }
+        }
+
+        impl<S> tower::Layer<S> for InferaDbTraceLayer {
+            type Service = InferaDbTraceService<S>;
+
+            fn layer(&self, inner: S) -> Self::Service {
+                InferaDbTraceService {
+                    inner,
+                    client: self.client.clone(),
+                }
+            }
+        }
+
+        /// Service that wraps handlers with trace context extraction.
+        #[derive(Clone)]
+        pub struct InferaDbTraceService<S> {
+            inner: S,
+            client: crate::Client,
+        }
+    }
+
+    pub mod actix {
+        use super::super::*;
+
+        /// Actix Web middleware that extracts W3C trace context from incoming requests
+        /// and propagates it to InferaDB client operations.
+        ///
+        /// # Example
+        ///
+        /// ```rust
+        /// use inferadb::integrations::actix::TracingMiddleware;
+        ///
+        /// App::new()
+        ///     .wrap(TracingMiddleware::new(client.clone()))
+        ///     .service(web::resource("/check").to(check_permission))
+        /// ```
+        #[derive(Clone)]
+        pub struct TracingMiddleware {
+            client: crate::Client,
+        }
+
+        impl TracingMiddleware {
+            /// Creates new middleware that propagates trace context to the given client.
+            pub fn new(client: crate::Client) -> Self {
+                Self { client }
+            }
+        }
+
+        // Actix middleware implementation would go here
+        // impl<S, B> actix_web::dev::Transform<S, ServiceRequest> for TracingMiddleware { ... }
+    }
+}
 ```
 
 #### Async Boundary Propagation
@@ -12363,12 +13394,14 @@ async fn test_permission_inheritance() {
 For tests against a real InferaDB instance:
 
 ```rust
-use inferadb::testing::TestVault;
+use inferadb::testing::{TestVault, TestConfig, test_client};
 
 #[tokio::test]
 #[ignore]  // Requires running InferaDB
 async fn integration_test() {
-    let client = test_client().await;
+    let config = TestConfig::new("http://localhost:8080", "test-token")
+        .with_organization_id("org_test...");
+    let client = test_client(config).await.unwrap();
     let org = client.organization("org_test...");
     let vault = TestVault::create(&org).await.unwrap();
 
@@ -12562,6 +13595,62 @@ impl MockClientBuilder {
     pub fn build(self) -> MockClient;
 }
 
+/// Internal state tracking mock expectations and call history.
+/// Used by MockClient to match calls against stubbed responses.
+struct MockExpectations {
+    check_expectations: Vec<CheckExpectation>,
+    check_patterns: Vec<PatternExpectation>,
+    write_expectations: Vec<WriteExpectation>,
+    call_history: Vec<MockCall>,
+}
+
+/// A single check expectation (exact match).
+struct CheckExpectation {
+    subject: String,
+    permission: String,
+    resource: String,
+    result: Result<bool, Error>,
+    times: ExpectedCalls,
+    actual_calls: usize,
+}
+
+/// A pattern-based check expectation (supports wildcards).
+struct PatternExpectation {
+    subject_pattern: String,
+    permission_pattern: String,
+    resource_pattern: String,
+    result: bool,
+}
+
+/// A write operation expectation.
+struct WriteExpectation {
+    relationship: Relationship<'static>,
+    result: Result<(), Error>,
+}
+
+/// Expected number of calls for an expectation.
+enum ExpectedCalls {
+    Exact(usize),
+    AtLeast(usize),
+    AtMost(usize),
+    Any,
+}
+
+/// A recorded call to the mock client.
+#[derive(Debug, Clone)]
+pub struct MockCall {
+    pub operation: MockOperation,
+    pub timestamp: Instant,
+}
+
+/// The type of operation performed on the mock.
+#[derive(Debug, Clone)]
+pub enum MockOperation {
+    Check { subject: String, permission: String, resource: String },
+    Write { relationship: Relationship<'static> },
+    Delete { relationship: Relationship<'static> },
+}
+
 /// In-memory client with full authorization engine.
 /// Provides real permission evaluation without network I/O.
 pub struct InMemoryClient {
@@ -12616,14 +13705,48 @@ impl Drop for TestVault {
     }
 }
 
+/// Configuration for integration test clients.
+#[derive(Debug, Clone)]
+pub struct TestConfig {
+    /// URL of the test server
+    pub url: String,
+    /// Authentication token for test requests
+    pub token: String,
+    /// Optional organization ID to scope tests to
+    pub organization_id: Option<String>,
+    /// Optional vault ID to scope tests to
+    pub vault_id: Option<String>,
+}
+
+impl TestConfig {
+    pub fn new(url: impl Into<String>, token: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            token: token.into(),
+            organization_id: None,
+            vault_id: None,
+        }
+    }
+
+    pub fn organization(mut self, org_id: impl Into<String>) -> Self {
+        self.organization_id = Some(org_id.into());
+        self
+    }
+
+    pub fn vault(mut self, vault_id: impl Into<String>) -> Self {
+        self.vault_id = Some(vault_id.into());
+        self
+    }
+}
+
 /// Create a client configured for integration testing.
 ///
 /// # Example
 /// ```rust
-/// let client = test_client(TestConfig {
-///     url: "http://localhost:8080".into(),
-///     token: "test-token".into(),
-/// }).await?;
+/// let client = test_client(TestConfig::new(
+///     "http://localhost:8080",
+///     "test-token",
+/// )).await?;
 /// ```
 pub async fn test_client(config: TestConfig) -> Result<Client, Error>;
 
@@ -13068,6 +14191,33 @@ pub enum TransportEvent {
 
 For advanced scenarios requiring custom transport configuration, the SDK exposes escape hatches to the underlying HTTP clients:
 
+**Escape Hatch Methods**:
+
+```rust
+impl<Url, Auth> ClientBuilder<Url, Auth> {
+    /// Use a custom reqwest Client for REST transport.
+    /// When set, the SDK will use this client instead of creating its own.
+    /// Note: SDK retry/timeout configuration will not apply to custom clients.
+    #[cfg(feature = "rest")]
+    pub fn with_http_client(self, client: reqwest::Client) -> Self {
+        Self { http_client: Some(client), ..self }
+    }
+
+    /// Use a custom tonic Channel for gRPC transport.
+    /// When set, the SDK will use this channel instead of creating its own.
+    /// Note: SDK retry/timeout configuration will not apply to custom channels.
+    #[cfg(feature = "grpc")]
+    pub fn with_grpc_channel(self, channel: tonic::transport::Channel) -> Self {
+        Self { grpc_channel: Some(channel), ..self }
+    }
+
+    /// Add custom middleware to the request pipeline.
+    pub fn middleware(self, middleware: impl Middleware) -> Self {
+        Self { middlewares: self.middlewares.push(Box::new(middleware)), ..self }
+    }
+}
+```
+
 **Custom reqwest Client (REST)**:
 
 ```rust
@@ -13233,6 +14383,9 @@ opentelemetry = ["opentelemetry", "tracing-opentelemetry"]
 blocking = ["tokio/rt"]
 derive = ["inferadb-macros"]
 serde = ["dep:serde", "chrono/serde", "uuid/serde"]
+
+# Development/testing only - NEVER use in production
+insecure = []  # Enables TlsConfig::insecure() and Client::insecure()
 ```
 
 ### Feature Interaction Matrix
@@ -13349,7 +14502,7 @@ inferadb = { version = "0.1", default-features = false, features = ["rest", "was
 // Browser/WASM client configuration
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .credentials(ClientCredentials::api_key("key_..."))  // Explicit credentials
+    .credentials(Credentials::api_key("key_..."))  // Explicit credentials
     .transport(Transport::Rest)  // REST only in browser
     .build()
     .await?;
@@ -13392,7 +14545,7 @@ inferadb = { version = "0.1", default-features = false, features = ["rest", "was
 // Edge runtime configuration
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .credentials(ClientCredentials::api_key(env.secret("INFERADB_API_KEY")?))
+    .credentials(Credentials::api_key(env.secret("INFERADB_API_KEY")?))
     .build()
     .await?;
 ```
@@ -13769,7 +14922,7 @@ impl ClientBuilder<HasUrl, HasAuth, HasVault> {
             "TLS verification disabled - this is insecure!"
         );
 
-        self.tls_config = TlsConfig::Insecure;
+        self.tls_config = Some(TlsConfig::insecure());
         self
     }
 }
