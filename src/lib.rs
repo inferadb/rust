@@ -94,7 +94,10 @@ pub use auth::{
 };
 
 // Re-export config types
-pub use config::{CacheConfig, DegradationConfig, FailureMode, RetryConfig, TlsConfig};
+pub use config::{
+    CacheConfig, CircuitBreakerConfig, CircuitEvent, CircuitState, CircuitStats,
+    DegradationConfig, FailureMode, FailurePredicate, RetryConfig, TlsConfig,
+};
 
 // Testing support
 pub use testing::{AuthorizationClient, InMemoryClient, MockClient};

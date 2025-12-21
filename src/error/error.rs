@@ -401,7 +401,7 @@ mod tests {
 
     #[test]
     fn test_error_with_source() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::Other, "underlying error");
+        let io_err = std::io::Error::other("underlying error");
         let err = Error::new(ErrorKind::Connection, "connection failed")
             .with_source(io_err);
         assert!(err.source().is_some());

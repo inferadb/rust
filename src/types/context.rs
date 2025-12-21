@@ -384,7 +384,7 @@ mod tests {
         assert!(ContextValue::Null.is_null());
         assert_eq!(ContextValue::Bool(true).as_bool(), Some(true));
         assert_eq!(ContextValue::Integer(42).as_i64(), Some(42));
-        assert_eq!(ContextValue::Float(3.14).as_f64(), Some(3.14));
+        assert_eq!(ContextValue::Float(2.5).as_f64(), Some(2.5));
         assert_eq!(ContextValue::String("test".into()).as_str(), Some("test"));
     }
 
@@ -396,8 +396,8 @@ mod tests {
         let i: ContextValue = 42i32.into();
         assert_eq!(i.as_i64(), Some(42));
 
-        let f: ContextValue = 3.14.into();
-        assert_eq!(f.as_f64(), Some(3.14));
+        let f: ContextValue = 2.5.into();
+        assert_eq!(f.as_f64(), Some(2.5));
 
         let s: ContextValue = "hello".into();
         assert_eq!(s.as_str(), Some("hello"));
