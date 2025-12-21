@@ -6,6 +6,7 @@ Supplementary documentation for the InferaDB Rust SDK. For the main README and q
 
 | Guide                                                  | Description                                            |
 | ------------------------------------------------------ | ------------------------------------------------------ |
+| [Authentication](guides/authentication.md)             | Client credentials, bearer tokens, key management      |
 | [Integration Patterns](guides/integration-patterns.md) | Framework integration (Axum, Actix-web, GraphQL, gRPC) |
 | [Error Handling](guides/errors.md)                     | Error types, retries, graceful degradation             |
 | [Testing](guides/testing.md)                           | MockClient, InMemoryClient, TestVault                  |
@@ -37,6 +38,7 @@ Supplementary documentation for the InferaDB Rust SDK. For the main README and q
 
 | Guide                                                  | Description                          |
 | ------------------------------------------------------ | ------------------------------------ |
+| [Observability](guides/observability.md)               | Tracing, metrics, OpenTelemetry      |
 | [Performance Tuning](guides/performance-tuning.md)     | Connection pools, batching, latency  |
 | [Production Checklist](guides/production-checklist.md) | Pre-deployment verification          |
 | [Debugging Authorization](guides/debugging.md)         | Explain API, traces, troubleshooting |
@@ -49,13 +51,14 @@ Supplementary documentation for the InferaDB Rust SDK. For the main README and q
 
 ## Internal
 
-| Document                                                 | Description                               |
-| -------------------------------------------------------- | ----------------------------------------- |
-| [Competitive Analysis](internal/competitive-analysis.md) | SDK comparison with SpiceDB, OpenFGA, Oso |
+| Document                                                 | Description                                    |
+| -------------------------------------------------------- | ---------------------------------------------- |
+| [SDK Development](internal/SDK_DEVELOPMENT.md)           | Complete API design document (source of truth) |
+| [Agentic Development](internal/AGENTIC_DEVELOPMENT.md)   | Token-efficient AI agent reference             |
+| [Competitive Analysis](internal/competitive-analysis.md) | SDK comparison with SpiceDB, OpenFGA, Oso      |
 
 ## Quick Links
 
 - **[README.md](../README.md)** - Quickstart and installation
-- **[SDK Development.md](../SDK%20Development.md)** - Complete API design document
 - **[CHANGELOG.md](../CHANGELOG.md)** - Version history
 - **[MIGRATION.md](../MIGRATION.md)** - Upgrade guides

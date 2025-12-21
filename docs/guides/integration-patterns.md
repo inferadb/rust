@@ -402,6 +402,69 @@ let accessible_docs = vault
     .await?;
 ```
 
+## Transport Selection
+
+The SDK supports gRPC (default) and REST transports:
+
+```rust
+// gRPC (default) - best performance, streaming support
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(creds)
+    .transport(Transport::Grpc)
+    .build()
+    .await?;
+
+// REST - firewall-friendly, browser-compatible
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(creds)
+    .transport(Transport::Http)
+    .build()
+    .await?;
+```
+
+### When to Use Each
+
+| Scenario                | Transport | Reason                        |
+| ----------------------- | --------- | ----------------------------- |
+| Default                 | gRPC      | Best latency, streaming       |
+| Browser/WASM            | REST      | gRPC requires HTTP/2 trailers |
+| Firewall restrictions   | REST      | HTTP/1.1 compatible           |
+| Binary size sensitive   | REST only | ~4MB smaller                  |
+| Real-time watch streams | gRPC      | Better backpressure handling  |
+
+### Automatic Fallback
+
+By default, the SDK falls back from gRPC to REST on connection issues:
+
+```rust
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(creds)
+    .transport_strategy(TransportStrategy::PreferGrpc {
+        fallback_on: FallbackTrigger::default(),
+    })
+    .build()
+    .await?;
+```
+
+### Feature Flags
+
+```toml
+# Default: both transports
+inferadb = "0.1"
+
+# gRPC only
+inferadb = { version = "0.1", default-features = false, features = ["grpc", "rustls"] }
+
+# REST only (smaller binary)
+inferadb = { version = "0.1", default-features = false, features = ["rest", "rustls"] }
+
+# WASM/browser
+inferadb = { version = "0.1", default-features = false, features = ["rest", "wasm"] }
+```
+
 ## Blocking API
 
 For contexts where async is not available (early initialization, FFI, legacy code):
