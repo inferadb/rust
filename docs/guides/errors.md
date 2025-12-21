@@ -167,11 +167,11 @@ let client = Client::builder()
 
 ### Operation Categories
 
-| Category               | Default Behavior      | Notes                                 |
-| ---------------------- | --------------------- | ------------------------------------- |
-| `reads`                | Retry all errors      | Checks, lookups - always safe         |
-| `idempotent_writes`    | Retry all errors      | Writes with request ID                |
-| `non_idempotent_writes`| Connection errors only| Safe: request didn't reach server     |
+| Category                | Default Behavior       | Notes                             |
+| ----------------------- | ---------------------- | --------------------------------- |
+| `reads`                 | Retry all errors       | Checks, lookups - always safe     |
+| `idempotent_writes`     | Retry all errors       | Writes with request ID            |
+| `non_idempotent_writes` | Connection errors only | Safe: request didn't reach server |
 
 ### Retry Budget
 
@@ -215,12 +215,94 @@ let client = Client::builder()
     .await?;
 ```
 
+## Graceful Degradation
+
+Configure how the SDK handles failures when the service is unavailable.
+
+### Failure Modes
+
+```rust
+use inferadb::FailureMode;
+
+// Per-request override
+let allowed = vault.check("user:alice", "view", "doc:1")
+    .on_error(FailureMode::FailClosed)  // Deny on error (default)
+    .await?;
+
+// Fail-open for non-critical paths (logs WARN)
+let allowed = vault.check("user:alice", "view", "doc:public")
+    .on_error(FailureMode::FailOpen)
+    .await
+    .unwrap_or(true);
+```
+
+| Mode         | Behavior       | Use Case                                  |
+| ------------ | -------------- | ----------------------------------------- |
+| `FailClosed` | Deny on error  | Security-critical paths (default)         |
+| `FailOpen`   | Allow on error | Non-critical paths, availability priority |
+| `Propagate`  | Return error   | Custom fallback logic in application      |
+
+### Degradation Configuration
+
+Configure global fallback strategies for production resilience:
+
+```rust
+use inferadb::{DegradationConfig, FailureMode, CheckFallbackStrategy, WriteFallbackStrategy};
+
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(creds)
+    .degradation(DegradationConfig::new()
+        // Default: deny on check failure
+        .on_check_failure(FailureMode::FailClosed)
+
+        // Use cached decisions when service unavailable
+        .on_check_unavailable(CheckFallbackStrategy::UseCache {
+            max_age: Duration::from_secs(300),
+        })
+
+        // Queue writes for retry when service unavailable
+        .on_write_failure(WriteFallbackStrategy::Queue {
+            max_queue_size: 1000,
+            flush_interval: Duration::from_secs(5),
+        })
+
+        // Alert on degradation
+        .on_degradation_start(|reason| {
+            tracing::warn!("Entering degraded mode: {}", reason);
+        })
+        .on_degradation_end(|| {
+            tracing::info!("Service recovered");
+        }))
+    .build()
+    .await?;
+```
+
+### Fallback Strategies
+
+**Check fallbacks** (when authorization service unavailable):
+
+| Strategy               | Behavior                              |
+| ---------------------- | ------------------------------------- |
+| `Error`                | Return error immediately (default)    |
+| `UseCache { max_age }` | Use cached decision if fresh enough   |
+| `Default(bool)`        | Return fixed value (use with caution) |
+| `Custom(fn)`           | Call custom fallback function         |
+
+**Write fallbacks** (when write operations fail):
+
+| Strategy                                   | Behavior                           |
+| ------------------------------------------ | ---------------------------------- |
+| `Error`                                    | Return error immediately (default) |
+| `Queue { max_queue_size, flush_interval }` | Queue for background retry         |
+
 ## Best Practices
 
 1. **Use `require()` for guards** - Cleaner code, integrates with `?`
 2. **Log request IDs** - Essential for debugging production issues
 3. **Handle rate limits** - Use `retry_after()` for backoff
-4. **Fail closed** - Default to denying access on errors
+4. **Fail closed by default** - Only use fail-open for non-critical paths
 5. **Categorize errors** - Distinguish user errors from system errors
 6. **Use retry budgets** - Prevent retry storms in production
 7. **Use request IDs** - Enable safe retries for writes
+8. **Configure degradation** - Plan for service unavailability in production

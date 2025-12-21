@@ -66,7 +66,7 @@ let vault = client
 - [ ] **Handle all error kinds** appropriately
 - [ ] **Log request IDs** for debugging and support
 - [ ] **Implement circuit breakers** for dependent services
-- [ ] **Define fallback behavior** for authorization failures
+- [ ] **Configure [graceful degradation](errors.md#graceful-degradation)** for service unavailability
 - [ ] **Alert on elevated error rates**
 
 ```rust

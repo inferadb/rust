@@ -402,6 +402,44 @@ let accessible_docs = vault
     .await?;
 ```
 
+## Blocking API
+
+For contexts where async is not available (early initialization, FFI, legacy code):
+
+```toml
+[dependencies]
+inferadb = { version = "0.1", features = ["blocking"] }
+```
+
+```rust
+use inferadb::blocking::Client;
+
+fn main() -> Result<(), Error> {
+    // Synchronous client creation
+    let client = Client::builder()
+        .url("https://api.inferadb.com")
+        .credentials(credentials)
+        .build_sync()?;
+
+    let vault = client.organization("org_...").vault("vlt_...");
+
+    // Blocking check
+    let allowed = vault.check("user:alice", "view", "doc:1").call()?;
+
+    println!("Allowed: {}", allowed);
+    Ok(())
+}
+```
+
+**When to use blocking**:
+
+- Application initialization before async runtime starts
+- FFI boundaries with non-async callers
+- CLI tools with simple execution flow
+- Integration with synchronous libraries
+
+**Avoid blocking** in async contexts - use `tokio::task::spawn_blocking` if you must bridge.
+
 ## Best Practices
 
 1. **Create client once** - Share across requests via application state
@@ -410,3 +448,4 @@ let accessible_docs = vault
 4. **Handle errors gracefully** - Log `request_id` for debugging, return appropriate status
 5. **Use `.require()`** - For guard clauses that should fail fast on denial
 6. **Pass ABAC context** - Include runtime attributes for attribute-based policies
+7. **Prefer async** - Only use blocking API when async is truly unavailable
