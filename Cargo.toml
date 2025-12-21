@@ -1,0 +1,101 @@
+[package]
+name = "inferadb"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+description = "Official Rust SDK for InferaDB"
+repository = "https://github.com/inferadb/inferadb"
+documentation = "https://docs.rs/inferadb"
+keywords = ["authorization", "rbac", "rebac", "zanzibar", "permissions"]
+categories = ["authentication", "api-bindings"]
+readme = "README.md"
+
+[lib]
+name = "inferadb"
+path = "src/lib.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+async-trait = "0.1"
+futures = "0.3"
+pin-project-lite = "0.2"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP
+http = "1"
+url = "2"
+
+# gRPC (optional)
+tonic = { version = "0.12", optional = true }
+prost = { version = "0.13", optional = true }
+prost-types = { version = "0.13", optional = true }
+
+# REST (optional)
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream"], optional = true }
+
+# Cryptography
+ed25519-dalek = { version = "2", features = ["pem", "rand_core", "zeroize"] }
+zeroize = { version = "1", features = ["derive"] }
+secrecy = "0.10"
+
+# Time
+chrono = { version = "0.4", default-features = false, features = ["std", "serde", "clock"] }
+
+# TLS
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12"], optional = true }
+rustls-native-certs = { version = "0.8", optional = true }
+webpki-roots = { version = "0.26", optional = true }
+
+# Error handling
+thiserror = "2"
+
+# Utilities
+uuid = { version = "1", features = ["v4"] }
+parking_lot = "0.12"
+arc-swap = "1"
+
+# Tracing (optional)
+tracing = { version = "0.1", optional = true }
+
+# Hex encoding
+hex = "0.4"
+base64 = "0.22"
+
+# Random
+getrandom = "0.2"
+rand = "0.8"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
+tokio-test = "0.4"
+proptest = "1"
+test-case = "3"
+wiremock = "0.6"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[features]
+default = ["grpc", "rest", "rustls"]
+
+# Transport options
+grpc = ["dep:tonic", "dep:prost", "dep:prost-types"]
+rest = ["dep:reqwest"]
+
+# TLS options (mutually exclusive)
+rustls = ["dep:rustls", "dep:rustls-native-certs", "dep:webpki-roots", "reqwest?/rustls-tls"]
+native-tls = ["reqwest?/native-tls"]
+
+# Optional features
+tracing = ["dep:tracing"]
+blocking = ["tokio/rt"]
+
+# Development only - enables .insecure() for local testing
+insecure = []
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
