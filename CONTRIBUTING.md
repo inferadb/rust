@@ -124,16 +124,19 @@ tests/
 ### Before Submitting
 
 1. **Run the full test suite:**
+
    ```bash
    cargo nextest run --workspace
    ```
 
 2. **Check for clippy warnings:**
+
    ```bash
    cargo clippy --workspace --all-targets -- -D warnings
    ```
 
 3. **Format your code:**
+
    ```bash
    cargo +nightly fmt --all
    ```

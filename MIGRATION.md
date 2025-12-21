@@ -213,8 +213,8 @@ entity Document {
       },
       "metadata": {
         "relations": {
-          "viewer": { "directly_related_user_types": [{"type": "user"}] },
-          "owner": { "directly_related_user_types": [{"type": "user"}] }
+          "viewer": { "directly_related_user_types": [{ "type": "user" }] },
+          "owner": { "directly_related_user_types": [{ "type": "user" }] }
         }
       }
     }

@@ -15,12 +15,12 @@ Before diving into advanced tuning, ensure you've implemented these basics:
 
 ### gRPC vs REST
 
-| Aspect | gRPC | REST |
-|--------|------|------|
-| Latency | ~5-10ms | ~10-20ms |
-| Throughput | Higher | Lower |
-| Streaming | Native | Polling |
-| Binary size | Larger (+2MB) | Smaller |
+| Aspect        | gRPC            | REST      |
+| ------------- | --------------- | --------- |
+| Latency       | ~5-10ms         | ~10-20ms  |
+| Throughput    | Higher          | Lower     |
+| Streaming     | Native          | Polling   |
+| Binary size   | Larger (+2MB)   | Smaller   |
 | Compatibility | HTTP/2 required | Universal |
 
 **Recommendation:** Use gRPC for latency-sensitive paths, REST for broader compatibility.
@@ -42,22 +42,28 @@ The optimal pool size depends on your concurrency needs:
 ```rust
 // Formula: pool_size = expected_concurrent_requests * 1.5
 let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(credentials)
     .pool_size(50)  // For ~30 concurrent requests
     .build()
     .await?;
+
+let vault = client.organization("org_...").vault("vlt_...");
 ```
 
-| Workload | Recommended Pool Size |
-|----------|----------------------|
-| Low (< 10 RPS) | 10 (default) |
-| Medium (10-100 RPS) | 20-50 |
-| High (100-1000 RPS) | 50-100 |
-| Very High (> 1000 RPS) | 100-200 |
+| Workload               | Recommended Pool Size |
+| ---------------------- | --------------------- |
+| Low (< 10 RPS)         | 10 (default)          |
+| Medium (10-100 RPS)    | 20-50                 |
+| High (100-1000 RPS)    | 50-100                |
+| Very High (> 1000 RPS) | 100-200               |
 
 ### Connection Lifecycle
 
 ```rust
 let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(credentials)
     // Eager connection - validates during build
     .eager_connect(true)
 
@@ -80,10 +86,14 @@ Enable caching for read-heavy workloads:
 
 ```rust
 let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(credentials)
     .cache(CacheConfig::default()
-        .max_entries(10_000)           // Adjust based on cardinality
-        .ttl(Duration::from_secs(60))  // Balance freshness vs performance
-        .negative_ttl(Duration::from_secs(10)))  // Cache denials shorter
+        .permission_ttl(Duration::from_secs(30))
+        .relationship_ttl(Duration::from_secs(300))
+        .schema_ttl(Duration::from_secs(3600))
+        .negative_ttl(Duration::from_secs(10))
+        .max_entries(10_000))
     .build()
     .await?;
 ```
@@ -94,39 +104,26 @@ let client = Client::builder()
 cache_size = unique_subjects * unique_resources * avg_permissions_per_check
 ```
 
-| Use Case | Typical Cache Size |
-|----------|-------------------|
-| Single-tenant SaaS | 1,000 - 10,000 |
-| Multi-tenant SaaS | 10,000 - 100,000 |
-| High-cardinality | 100,000 - 1,000,000 |
+| Use Case           | Typical Cache Size  |
+| ------------------ | ------------------- |
+| Single-tenant SaaS | 1,000 - 10,000      |
+| Multi-tenant SaaS  | 10,000 - 100,000    |
+| High-cardinality   | 100,000 - 1,000,000 |
 
 ### Cache Invalidation
 
-For real-time consistency, combine caching with watch streams:
+For real-time consistency, use watch-based invalidation:
 
 ```rust
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use inferadb::CacheInvalidation;
 
-struct CachedAuthz {
-    client: Client,
-    cache: Arc<RwLock<HashMap<CacheKey, bool>>>,
-}
-
-impl CachedAuthz {
-    async fn start_invalidation(&self) {
-        let cache = self.cache.clone();
-        let mut stream = self.client.watch().run().await.unwrap();
-
-        tokio::spawn(async move {
-            while let Some(Ok(change)) = stream.next().await {
-                let mut cache = cache.write().await;
-                // Invalidate affected cache entries
-                cache.retain(|k, _| !k.affected_by(&change));
-            }
-        });
-    }
-}
+let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(credentials)
+    .cache(CacheConfig::default())
+    .cache_invalidation(CacheInvalidation::Watch)
+    .build()
+    .await?;
 ```
 
 ## Batch Operations
@@ -136,13 +133,15 @@ impl CachedAuthz {
 Always batch multiple permission checks:
 
 ```rust
+let vault = client.organization("org_...").vault("vlt_...");
+
 // Slow: 3 round-trips
-let can_read = client.check(user, "read", doc).await?;
-let can_write = client.check(user, "write", doc).await?;
-let can_delete = client.check(user, "delete", doc).await?;
+let can_read = vault.check(user, "read", doc).await?;
+let can_write = vault.check(user, "write", doc).await?;
+let can_delete = vault.check(user, "delete", doc).await?;
 
 // Fast: 1 round-trip
-let results = client
+let results = vault
     .check_batch([
         (user, "read", doc),
         (user, "write", doc),
@@ -159,7 +158,7 @@ Batch relationship writes for bulk operations:
 ```rust
 // Slow: N round-trips
 for member in new_members {
-    client.write(Relationship::new(group, "member", member)).await?;
+    vault.relationships().write(Relationship::new(group, "member", member)).await?;
 }
 
 // Fast: 1 round-trip
@@ -168,27 +167,27 @@ let relationships: Vec<_> = new_members
     .map(|m| Relationship::new(group, "member", m))
     .collect();
 
-client.write_batch(relationships).await?;
+vault.relationships().write_batch(relationships).await?;
 ```
 
 ### Batch Size Limits
 
-| Operation | Max Batch Size | Recommendation |
-|-----------|---------------|----------------|
-| check_batch | 1,000 | 100-500 |
-| write_batch | 10,000 | 1,000-5,000 |
-| delete_batch | 10,000 | 1,000-5,000 |
+| Operation    | Max Batch Size | Recommendation |
+| ------------ | -------------- | -------------- |
+| check_batch  | 1,000          | 100-500        |
+| write_batch  | 10,000         | 1,000-5,000    |
+| delete_batch | 10,000         | 1,000-5,000    |
 
 For larger batches, chunk your requests:
 
 ```rust
 use futures::stream::{self, StreamExt};
 
-async fn bulk_write(client: &Client, relationships: Vec<Relationship>) -> Result<(), Error> {
+async fn bulk_write(vault: &VaultClient, relationships: Vec<Relationship>) -> Result<(), Error> {
     let chunks: Vec<_> = relationships.chunks(1000).collect();
 
     stream::iter(chunks)
-        .map(|chunk| client.write_batch(chunk.to_vec()))
+        .map(|chunk| vault.relationships().write_batch(chunk.to_vec()))
         .buffer_unordered(4)  // 4 concurrent batches
         .try_collect()
         .await
@@ -201,6 +200,8 @@ For high-frequency identical checks, enable request coalescing:
 
 ```rust
 let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(credentials)
     .coalesce_requests(true)  // Deduplicate in-flight requests
     .coalesce_window(Duration::from_millis(5))
     .build()
@@ -219,6 +220,8 @@ This is useful when:
 
 ```rust
 let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(credentials)
     // Connection establishment
     .connect_timeout(Duration::from_secs(5))
 
@@ -235,14 +238,14 @@ let client = Client::builder()
 
 ### Timeout by Operation Type
 
-| Operation | Typical Latency | Recommended Timeout |
-|-----------|-----------------|---------------------|
-| check | 5-20ms | 100ms |
-| check_batch | 10-50ms | 200ms |
-| write | 10-30ms | 1s |
-| write_batch | 50-200ms | 5s |
-| list_resources | 20-100ms | 500ms |
-| expand | 10-50ms | 200ms |
+| Operation      | Typical Latency | Recommended Timeout |
+| -------------- | --------------- | ------------------- |
+| check          | 5-20ms          | 100ms               |
+| check_batch    | 10-50ms         | 200ms               |
+| write          | 10-30ms         | 1s                  |
+| write_batch    | 50-200ms        | 5s                  |
+| list_resources | 20-100ms        | 500ms               |
+| expand         | 10-50ms         | 200ms               |
 
 ## Retry Configuration
 
@@ -250,6 +253,8 @@ let client = Client::builder()
 
 ```rust
 let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(credentials)
     .retry_config(RetryConfig::default()
         .max_retries(3)
         .initial_backoff(Duration::from_millis(50))
@@ -266,6 +271,8 @@ For high-throughput systems, use a retry budget:
 
 ```rust
 let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(credentials)
     .retry_config(RetryConfig::default()
         .retry_budget(RetryBudget::new()
             .ttl(Duration::from_secs(10))
@@ -282,9 +289,13 @@ let client = Client::builder()
 For large list operations, use streaming to avoid memory spikes:
 
 ```rust
+let vault = client.organization("org_...").vault("vlt_...");
+
 // Memory-efficient: Stream processing
-let mut stream = client
-    .list_resources(user, "view")
+let mut stream = vault
+    .resources()
+    .accessible_by(user)
+    .with_permission("view")
     .resource_type("document")
     .stream();
 
@@ -294,8 +305,10 @@ while let Some(resource) = stream.next().await {
 }
 
 // Memory-heavy: Collect all
-let resources: Vec<_> = client
-    .list_resources(user, "view")
+let resources: Vec<_> = vault
+    .resources()
+    .accessible_by(user)
+    .with_permission("view")
     .resource_type("document")
     .collect()
     .await?;  // All in memory at once
@@ -308,12 +321,14 @@ For repeated entity references:
 ```rust
 use std::sync::Arc;
 
+let vault = client.organization("org_...").vault("vlt_...");
+
 // Instead of cloning strings repeatedly
 let subject = Arc::from("user:alice");
 let permission = Arc::from("view");
 
 for resource in resources {
-    client.check(&subject, &permission, resource).await?;
+    vault.check(&subject, &permission, resource).await?;
 }
 ```
 
@@ -337,11 +352,15 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 fn benchmark_check(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let client = rt.block_on(test_client());
+    let (client, vault) = rt.block_on(async {
+        let client = test_client().await;
+        let vault = client.organization("org_...").vault("vlt_...");
+        (client, vault)
+    });
 
     c.bench_function("check", |b| {
         b.to_async(&rt).iter(|| {
-            client.check("user:alice", "view", "document:readme")
+            vault.check("user:alice", "view", "document:readme")
         });
     });
 }
@@ -359,6 +378,8 @@ Enable detailed tracing for performance analysis:
 ```rust
 // Enable tracing
 let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(credentials)
     .with_tracing()
     .build()
     .await?;
@@ -372,14 +393,14 @@ let client = Client::builder()
 ```rust
 use tracing::{instrument, info_span};
 
-#[instrument(skip(client))]
-async fn authorize_request(client: &Client, req: &Request) -> Result<bool, Error> {
+#[instrument(skip(vault))]
+async fn authorize_request(vault: &VaultClient, req: &Request) -> Result<bool, Error> {
     let span = info_span!("permission_check",
         subject = %req.user_id,
         resource = %req.resource_id,
     );
 
-    client
+    vault
         .check(&req.user_id, "access", &req.resource_id)
         .instrument(span)
         .await
@@ -404,11 +425,11 @@ Before optimizing, verify:
 
 With proper tuning on modern hardware:
 
-| Metric | Target |
-|--------|--------|
-| Single check latency (p50) | < 10ms |
-| Single check latency (p99) | < 50ms |
-| Batch check throughput | 10,000+ checks/sec |
-| Write throughput | 5,000+ writes/sec |
-| Memory per connection | ~50KB |
-| Cache memory (10K entries) | ~5MB |
+| Metric                     | Target             |
+| -------------------------- | ------------------ |
+| Single check latency (p50) | < 10ms             |
+| Single check latency (p99) | < 50ms             |
+| Batch check throughput     | 10,000+ checks/sec |
+| Write throughput           | 5,000+ writes/sec  |
+| Memory per connection      | ~50KB              |
+| Cache memory (10K entries) | ~5MB               |

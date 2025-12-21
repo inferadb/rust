@@ -6,334 +6,316 @@ This guide covers testing patterns and utilities for verifying authorization log
 
 The InferaDB SDK provides multiple testing approaches:
 
-| Approach | Use Case | Speed | Fidelity |
-|----------|----------|-------|----------|
-| `MockClient` | Unit tests with predetermined responses | Fastest | Low |
-| `InMemoryClient` | Integration tests with real policy evaluation | Fast | High |
-| `TestVault` | E2E tests against running InferaDB | Slow | Highest |
-| `AuthzTest` DSL | Comprehensive permission testing | Fast | High |
+| Approach         | Use Case                                      | Speed   | Fidelity            |
+| ---------------- | --------------------------------------------- | ------- | ------------------- |
+| `MockClient`     | Unit tests with predetermined responses       | Fastest | Stub responses      |
+| `InMemoryClient` | Integration tests with real policy evaluation | Fast    | Full engine, no I/O |
+| `TestVault`      | E2E tests against running InferaDB            | Slower  | Production behavior |
 
-## Mock Client for Unit Tests
+## MockClient for Unit Tests
 
-Use `MockClient` when you need predetermined responses without policy evaluation:
+**Start here.** `MockClient` mirrors the production API, so your tests look like production code with only the client swapped:
 
 ```rust
 use inferadb::testing::MockClient;
+use inferadb::AuthorizationClient;
 
+// Your production code - accepts any AuthorizationClient
+async fn get_document(
+    authz: &impl AuthorizationClient,
+    user: &str,
+    doc_id: &str,
+) -> Result<Document, AppError> {
+    authz.check(user, "view", &format!("document:{}", doc_id))
+        .require()
+        .await?;
+    fetch_document(doc_id).await
+}
+
+// Your test - swap MockClient for VaultClient
 #[tokio::test]
-async fn test_document_access() {
+async fn test_get_document_authorized() {
     let mock = MockClient::builder()
-        .check("user:alice", "view", "doc:1", true)
-        .check("user:alice", "edit", "doc:1", false)
-        .check("user:bob", "view", "doc:1", false)
+        .check("user:alice", "view", "document:1", true)
         .build();
 
-    // Test your code
-    assert!(mock.check("user:alice", "view", "doc:1").await.unwrap());
-    assert!(!mock.check("user:alice", "edit", "doc:1").await.unwrap());
+    let result = get_document(&mock, "user:alice", "1").await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_get_document_denied() {
+    let mock = MockClient::builder()
+        .check("user:bob", "view", "document:1", false)
+        .build();
+
+    let result = get_document(&mock, "user:bob", "1").await;
+    assert!(matches!(result, Err(AppError::AccessDenied(_))));
 }
 ```
 
-### Matching Patterns
+### MockClient Features
 
 ```rust
 let mock = MockClient::builder()
-    // Exact match
+    // Explicit check results
     .check("user:alice", "view", "doc:1", true)
+    .check("user:alice", "edit", "doc:1", false)
 
-    // Wildcard subject
-    .check_any_subject("view", "doc:public", true)
-
-    // Wildcard resource
-    .check_any_resource("user:admin", "delete", true)
+    // Wildcard patterns
+    .check_any_subject("view", "doc:public", true)    // Anyone can view
+    .check_any_resource("user:admin", "delete", true) // Admin can delete anything
 
     // Default behavior for unmatched
     .default_deny()
+
+    // Verify all expectations were used
+    .verify_on_drop(true)
+
     .build();
 ```
 
-## In-Memory Client for Integration Tests
-
-Use `InMemoryClient` when you need real policy evaluation without a running server:
+### Expectation Verification
 
 ```rust
-use inferadb::testing::InMemoryClient;
-
 #[tokio::test]
-async fn test_permission_inheritance() {
-    let client = InMemoryClient::with_schema(include_str!("schema.ipl"));
+async fn test_authorization_flow() {
+    // Create mock with stubbed results
+    let mock = MockClient::builder()
+        .check("user:alice", "view", "doc:1", true)
+        .check("user:bob", "view", "doc:1", false)
+        .verify_on_drop(true)  // Verify all expectations were consumed
+        .build();
 
-    // Seed data
-    client.write_batch([
-        Relationship::new("folder:docs", "owner", "user:alice"),
-        Relationship::new("doc:readme", "parent", "folder:docs"),
-    ]).await.unwrap();
+    // ... run test ...
 
-    // Test inheritance
-    assert!(client.check("user:alice", "view", "doc:readme").await.unwrap());
-    assert!(client.check("user:alice", "delete", "doc:readme").await.unwrap());
+    // Mock verifies expectations on drop when verify_on_drop(true)
 }
 ```
 
-## Test Vault for E2E Tests
+## InMemoryClient for Integration Tests
 
-Use `TestVault` for isolated tests against a running InferaDB instance:
+When you need real permission evaluation logic (inheritance, unions, ABAC):
 
 ```rust
-use inferadb::testing::TestVault;
+use inferadb::testing::InMemoryClient;
+use inferadb::Relationship;
+
+#[tokio::test]
+async fn test_permission_inheritance() {
+    // Real schema, real evaluation engine
+    let vault = InMemoryClient::with_schema(r#"
+        entity User {}
+        entity Folder {
+            relations { owner: User }
+            permissions { view: owner, delete: owner }
+        }
+        entity Document {
+            relations { parent: Folder, viewer: User }
+            permissions { view: viewer | parent.view, delete: parent.delete }
+        }
+    "#);
+
+    // Seed data
+    vault.relationships().write(Relationship::new("folder:docs", "owner", "user:alice")).await.unwrap();
+    vault.relationships().write(Relationship::new("doc:readme", "parent", "folder:docs")).await.unwrap();
+
+    // Test inheritance: alice owns folder, so can view/delete docs in it
+    assert!(vault.check("user:alice", "view", "doc:readme").await.unwrap());
+    assert!(vault.check("user:alice", "delete", "doc:readme").await.unwrap());
+    assert!(!vault.check("user:bob", "view", "doc:readme").await.unwrap());
+}
+```
+
+### InMemoryClient with Initial Data
+
+```rust
+use inferadb::testing::InMemoryClient;
+use inferadb::Relationship;
+
+let vault = InMemoryClient::with_schema_and_data(
+    include_str!("schema.ipl"),
+    vec![
+        Relationship::new("folder:docs", "owner", "user:alice"),
+        Relationship::new("doc:readme", "parent", "folder:docs"),
+    ],
+);
+```
+
+## TestVault for E2E Tests
+
+For tests against a real InferaDB instance:
+
+```rust
+use inferadb::testing::{TestVault, TestConfig, test_client};
+use inferadb::Relationship;
 
 #[tokio::test]
 #[ignore]  // Requires running InferaDB
 async fn integration_test() {
-    let client = test_client().await;
-    let vault = TestVault::create(&client).await.unwrap();
+    let config = TestConfig::new("http://localhost:8080", "test-token")
+        .with_organization_id("org_test...");
+    let client = test_client(config).await.unwrap();
+    let org = client.organization("org_test...");
+    let vault = TestVault::create(&org).await.unwrap();
 
     // Tests run in isolated vault
-    vault.write(Relationship::new("doc:1", "viewer", "user:alice")).await.unwrap();
+    vault.relationships().write(Relationship::new("doc:1", "viewer", "user:alice")).await.unwrap();
     assert!(vault.check("user:alice", "view", "doc:1").await.unwrap());
 
     // Vault cleaned up on drop
 }
 ```
 
-## Authorization Testing DSL
+### Preserving Test Vaults
 
-For comprehensive permission testing, the SDK provides a fluent testing DSL:
+For debugging failed tests:
 
 ```rust
-use inferadb::testing::{AuthzTest, path};
+#[tokio::test]
+#[ignore]
+async fn debug_failing_test() {
+    let org = client.organization("org_test...");
+    let vault = TestVault::create(&org)
+        .await
+        .unwrap()
+        .preserve();  // Don't clean up on drop
 
-#[test]
-fn test_document_permissions() {
-    let authz = AuthzTest::new()
-        .with_schema(include_str!("../schema.ipl"))
-        // Set up relationships
-        .with_relationship("folder:docs", "owner", "user:alice")
-        .with_relationship("doc:readme", "parent", "folder:docs")
-        .with_relationship("group:engineering", "member", "user:bob")
-        .with_relationship("folder:docs", "viewer", "group:engineering#member");
-
-    // Simple assertions
-    authz.assert_allowed("user:alice", "view", "doc:readme");
-    authz.assert_allowed("user:alice", "edit", "doc:readme");
-    authz.assert_allowed("user:alice", "delete", "doc:readme");
-
-    authz.assert_denied("user:bob", "edit", "doc:readme");
-    authz.assert_denied("user:charlie", "view", "doc:readme");
-
-    // Assert with explanation
-    authz.assert_allowed_because(
-        "user:alice",
-        "delete",
-        "doc:readme",
-        path!["owner" -> "parent"],  // Expected access path
-    );
-
-    // Assert via specific relation
-    authz.assert_allowed_via(
-        "user:bob",
-        "view",
-        "doc:readme",
-        "group:engineering#member",  // Via group membership
-    );
-}
-
-#[test]
-fn test_bulk_permissions() {
-    let authz = AuthzTest::new()
-        .with_schema(include_str!("../schema.ipl"))
-        .with_relationships([
-            ("doc:1", "viewer", "user:alice"),
-            ("doc:2", "viewer", "user:alice"),
-            ("doc:3", "editor", "user:alice"),
-        ]);
-
-    // Batch assertions
-    authz.assert_all_allowed("user:alice", "view", ["doc:1", "doc:2", "doc:3"]);
-    authz.assert_none_allowed("user:bob", "view", ["doc:1", "doc:2", "doc:3"]);
-
-    // Table-driven tests
-    authz.assert_permissions([
-        ("user:alice", "view", "doc:1", true),
-        ("user:alice", "edit", "doc:1", false),
-        ("user:alice", "view", "doc:3", true),
-        ("user:alice", "edit", "doc:3", true),
-        ("user:bob", "view", "doc:1", false),
-    ]);
+    // ... test code ...
+    // Vault persists for inspection
 }
 ```
 
-### Snapshot Testing
+### TestVault with Schema
 
 ```rust
-use inferadb::testing::AuthzTest;
+let vault = TestVault::create_with_schema(
+    &org,
+    include_str!("schema.ipl"),
+).await.unwrap();
+```
 
-#[test]
-fn test_permission_snapshot() {
-    let authz = AuthzTest::new()
-        .with_schema(include_str!("../schema.ipl"))
-        .with_fixture("fixtures/production-sample.json");
+## Decision Trace Snapshot Testing
 
-    // Generate permission matrix and compare to snapshot
-    authz.assert_permission_matrix_snapshot(
-        &["user:alice", "user:bob", "user:charlie"],
-        &["view", "edit", "delete"],
-        &["doc:1", "doc:2", "folder:root"],
+Use `assert_decision_trace!` to catch regressions in permission evaluation logic:
+
+```rust
+use inferadb::testing::{InMemoryClient, assert_decision_trace};
+
+#[tokio::test]
+async fn test_view_permission_trace() {
+    let vault = InMemoryClient::with_schema(include_str!("schema.ipl"));
+    seed_test_data(&vault).await;
+
+    // Snapshot the decision trace - fails if logic changes
+    assert_decision_trace!(
+        vault,
+        "user:alice", "view", "doc:readme",
+        @r#"
+        {
+          "allowed": true,
+          "path": ["viewer", "parent.view"],
+          "matched_rule": "view: viewer | parent.view"
+        }
+        "#
     );
-    // Creates/compares: snapshots/test_permission_snapshot.snap
 }
 ```
 
-### Scenario Testing
+## Simulation + Snapshot for What-If Testing
 
-Test state changes and their permission effects:
+Combine `simulate()` with snapshots to test schema changes:
 
 ```rust
-use inferadb::testing::{AuthzTest, Scenario};
+use inferadb::testing::{InMemoryClient, SimulationSnapshot};
 
-#[test]
-fn test_access_revocation_scenario() {
-    let authz = AuthzTest::new()
-        .with_schema(include_str!("../schema.ipl"));
+#[tokio::test]
+async fn test_schema_migration_preserves_access() {
+    let vault = InMemoryClient::with_schema(include_str!("schema_v1.ipl"));
+    seed_production_data(&vault).await;
 
-    authz.scenario("user gains then loses access")
-        // Initial state: no access
-        .assert_denied("user:alice", "view", "doc:secret")
+    // Capture current behavior as baseline
+    let baseline = SimulationSnapshot::capture(&vault, &[
+        ("user:alice", "view", "doc:1"),
+        ("user:bob", "edit", "doc:2"),
+        ("user:charlie", "delete", "folder:root"),
+    ]).await;
 
-        // Grant access
-        .write("doc:secret", "viewer", "user:alice")
-        .assert_allowed("user:alice", "view", "doc:secret")
+    // Simulate with new schema
+    let new_schema = include_str!("schema_v2.ipl");
+    let simulation = vault.simulate()
+        .with_schema(new_schema)
+        .build();
 
-        // Revoke access
-        .delete("doc:secret", "viewer", "user:alice")
-        .assert_denied("user:alice", "view", "doc:secret")
+    let after_migration = SimulationSnapshot::capture(&simulation, &[
+        ("user:alice", "view", "doc:1"),
+        ("user:bob", "edit", "doc:2"),
+        ("user:charlie", "delete", "folder:root"),
+    ]).await;
 
-        .run();
-}
-
-#[test]
-fn test_hierarchical_access() {
-    let authz = AuthzTest::new()
-        .with_schema(include_str!("../schema.ipl"));
-
-    authz.scenario("folder access propagates to documents")
-        .write("folder:root", "viewer", "user:alice")
-        .write("doc:readme", "parent", "folder:root")
-
-        // Alice can view doc via folder
-        .assert_allowed("user:alice", "view", "doc:readme")
-
-        // Remove from folder, lose access to doc
-        .delete("folder:root", "viewer", "user:alice")
-        .assert_denied("user:alice", "view", "doc:readme")
-
-        .run();
+    // Compare - fail if any permissions changed unexpectedly
+    baseline.assert_unchanged(&after_migration);
 }
 ```
 
-## Testing Trait Abstraction
+## AuthorizationClient Trait
 
 All client types implement a common trait for testability:
 
 ```rust
-/// Trait for authorization operations, implemented by all client types
+/// Object-safe authorization trait for dependency injection.
+/// Implemented by VaultClient, MockClient, InMemoryClient.
 #[async_trait]
 pub trait AuthorizationClient: Send + Sync {
+    // Core authorization
     async fn check(&self, subject: &str, permission: &str, resource: &str) -> Result<bool, Error>;
     async fn check_batch(&self, checks: Vec<(&str, &str, &str)>) -> Result<Vec<bool>, Error>;
-    async fn write(&self, relationship: Relationship) -> Result<(), Error>;
-    async fn delete(&self, relationship: Relationship) -> Result<(), Error>;
-    // ... other methods
-}
 
-// Implemented by:
-impl AuthorizationClient for Client { /* real client */ }
-impl AuthorizationClient for MockClient { /* mock client */ }
-impl AuthorizationClient for InMemoryClient { /* in-memory client */ }
+    // Relationship management
+    async fn write(&self, relationship: Relationship) -> Result<(), Error>;
+    async fn write_batch(&self, relationships: Vec<Relationship>) -> Result<(), Error>;
+    async fn delete(&self, relationship: Relationship) -> Result<(), Error>;
+    async fn delete_batch(&self, relationships: Vec<Relationship>) -> Result<(), Error>;
+}
 ```
 
 This allows dependency injection in your application:
 
 ```rust
-struct DocumentService<C: AuthorizationClient> {
-    authz: C,
-    // ...
+use std::sync::Arc;
+use inferadb::AuthorizationClient;
+
+struct DocumentService {
+    authz: Arc<dyn AuthorizationClient>,
 }
 
-impl<C: AuthorizationClient> DocumentService<C> {
+impl DocumentService {
     async fn get_document(&self, user: &str, doc_id: &str) -> Result<Document, Error> {
         let resource = format!("document:{}", doc_id);
         if !self.authz.check(user, "view", &resource).await? {
             return Err(Error::Forbidden);
         }
-        // ... fetch document
+        fetch_document(doc_id).await
     }
 }
 
 // In production
-let service = DocumentService { authz: real_client };
+let vault = client.organization("org_...").vault("vlt_...");
+let service = DocumentService { authz: Arc::new(vault) };
 
 // In tests
-let service = DocumentService { authz: mock_client };
-```
-
-## Testing Types Reference
-
-```rust
-/// Builder for authorization test scenarios
-pub struct AuthzTest {
-    client: InMemoryClient,
-}
-
-impl AuthzTest {
-    pub fn new() -> Self;
-    pub fn with_schema(self, schema: &str) -> Self;
-    pub fn with_fixture(self, path: &str) -> Self;
-    pub fn with_relationship(self, resource: &str, relation: &str, subject: &str) -> Self;
-    pub fn with_relationships<I>(self, relationships: I) -> Self
-    where
-        I: IntoIterator<Item = (&str, &str, &str)>;
-
-    // Assertions
-    pub fn assert_allowed(&self, subject: &str, permission: &str, resource: &str);
-    pub fn assert_denied(&self, subject: &str, permission: &str, resource: &str);
-    pub fn assert_allowed_because(&self, subject: &str, permission: &str, resource: &str, path: AccessPath);
-    pub fn assert_allowed_via(&self, subject: &str, permission: &str, resource: &str, via: &str);
-
-    // Batch assertions
-    pub fn assert_all_allowed<I>(&self, subject: &str, permission: &str, resources: I)
-    where
-        I: IntoIterator<Item = &str>;
-    pub fn assert_none_allowed<I>(&self, subject: &str, permission: &str, resources: I)
-    where
-        I: IntoIterator<Item = &str>;
-    pub fn assert_permissions<I>(&self, checks: I)
-    where
-        I: IntoIterator<Item = (&str, &str, &str, bool)>;
-
-    // Scenarios
-    pub fn scenario(&self, name: &str) -> ScenarioBuilder;
-}
-
-/// Macro for defining access paths
-#[macro_export]
-macro_rules! path {
-    [$($relation:literal -> $target:literal),+ $(,)?] => {
-        AccessPath::new(&[$(($relation, $target)),+])
-    };
-}
+let mock = MockClient::builder()
+    .check("user:alice", "view", "document:1", true)
+    .build();
+let service = DocumentService { authz: Arc::new(mock) };
 ```
 
 ## Best Practices
 
-1. **Use the right tool for the job**: MockClient for unit tests, InMemoryClient for integration tests, TestVault for E2E tests
-
-2. **Test permission boundaries**: Always test both allowed and denied cases
-
-3. **Test inheritance paths**: Verify that permissions flow correctly through hierarchies
-
-4. **Use scenario tests for state changes**: Test grant/revoke flows and their effects
-
-5. **Snapshot test complex permission matrices**: Catch regressions in permission configurations
-
-6. **Keep test data minimal**: Only set up the relationships needed for each test
+1. **Use MockClient for unit tests**: Fast, no I/O, predetermined responses
+2. **Use InMemoryClient for integration tests**: Real policy evaluation without network
+3. **Use TestVault for E2E tests**: Production behavior with isolated data
+4. **Test both allowed and denied cases**: Verify permission boundaries
+5. **Test inheritance paths**: Verify permissions flow correctly through hierarchies
+6. **Snapshot test decision traces**: Catch regressions in permission logic
+7. **Use simulation for schema changes**: Verify migrations preserve expected access

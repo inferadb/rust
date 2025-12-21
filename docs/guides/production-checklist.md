@@ -13,19 +13,25 @@ Use this checklist before deploying applications using the InferaDB Rust SDK to 
 - [ ] **Audit service permissions** - principle of least privilege
 
 ```rust
+use inferadb::prelude::*;
+
 // Production client configuration
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .client_credentials(ClientCredentials {
+    .credentials(ClientCredentialsConfig {
         client_id: std::env::var("INFERADB_CLIENT_ID")?,
         private_key: Ed25519PrivateKey::from_pem(
             &std::env::var("INFERADB_PRIVATE_KEY")?
         )?,
         certificate_id: None,
     })
-    .default_vault(&std::env::var("INFERADB_VAULT_ID")?)
     .build()
     .await?;
+
+// Get vault context for authorization operations
+let vault = client
+    .organization(&std::env::var("INFERADB_ORG_ID")?)
+    .vault(&std::env::var("INFERADB_VAULT_ID")?);
 ```
 
 ## Connection Management
@@ -39,6 +45,7 @@ let client = Client::builder()
 ```rust
 let client = Client::builder()
     .url("https://api.inferadb.com")
+    .credentials(credentials)
     .pool_size(50)  // Size for expected concurrency
     .connect_timeout(Duration::from_secs(5))
     .request_timeout(Duration::from_secs(30))
@@ -48,6 +55,10 @@ let client = Client::builder()
         .max_backoff(Duration::from_secs(10)))
     .build()
     .await?;
+
+let vault = client
+    .organization("org_...")
+    .vault("vlt_...");
 ```
 
 ## Error Handling
@@ -59,7 +70,7 @@ let client = Client::builder()
 - [ ] **Alert on elevated error rates**
 
 ```rust
-match client.check(subject, permission, resource).await {
+match vault.check(subject, permission, resource).await {
     Ok(allowed) => Ok(allowed),
     Err(e) => {
         // Log with request ID for debugging
@@ -99,7 +110,7 @@ match client.check(subject, permission, resource).await {
 
 ```rust
 // Batch checks instead of sequential
-let results = client
+let results = vault
     .check_batch([
         (subject, "read", resource),
         (subject, "write", resource),
@@ -110,9 +121,14 @@ let results = client
 
 // Enable caching for repeated checks
 let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(credentials)
     .cache(CacheConfig::default()
-        .max_entries(10_000)
-        .ttl(Duration::from_secs(60)))
+        .permission_ttl(Duration::from_secs(30))
+        .relationship_ttl(Duration::from_secs(300))
+        .schema_ttl(Duration::from_secs(3600))
+        .negative_ttl(Duration::from_secs(10))
+        .max_entries(10_000))
     .build()
     .await?;
 ```
@@ -128,6 +144,8 @@ let client = Client::builder()
 ```rust
 // Enable OpenTelemetry integration
 let client = Client::builder()
+    .url("https://api.inferadb.com")
+    .credentials(credentials)
     .with_tracing()
     .with_metrics()
     .build()
@@ -136,13 +154,13 @@ let client = Client::builder()
 
 ### Key Metrics to Monitor
 
-| Metric | Alert Threshold | Description |
-|--------|-----------------|-------------|
-| `inferadb.check.latency_p99` | > 100ms | Authorization check latency |
-| `inferadb.check.error_rate` | > 1% | Check error rate |
-| `inferadb.connection.pool_exhausted` | > 0 | Connection pool saturation |
-| `inferadb.token.refresh_failures` | > 0 | Authentication issues |
-| `inferadb.cache.hit_rate` | < 50% | Cache effectiveness |
+| Metric                               | Alert Threshold | Description                 |
+| ------------------------------------ | --------------- | --------------------------- |
+| `inferadb.check.latency_p99`         | > 100ms         | Authorization check latency |
+| `inferadb.check.error_rate`          | > 1%            | Check error rate            |
+| `inferadb.connection.pool_exhausted` | > 0             | Connection pool saturation  |
+| `inferadb.token.refresh_failures`    | > 0             | Authentication issues       |
+| `inferadb.cache.hit_rate`            | < 50%           | Cache effectiveness         |
 
 ## Testing
 
@@ -153,6 +171,8 @@ let client = Client::builder()
 - [ ] **Test key rotation** procedure
 
 ```rust
+use inferadb::testing::{MockClient, TestVault};
+
 // Unit tests with mocks
 #[tokio::test]
 async fn test_authorization_logic() {
@@ -170,10 +190,11 @@ async fn test_authorization_logic() {
 #[ignore]  // Run with --ignored
 async fn integration_test() {
     let client = test_client().await;
-    let vault = TestVault::create(&client).await?;
+    let org = client.organization("org_test...");
+    let vault = TestVault::create(&org).await?;
 
     // Test with real service, isolated data
-    vault.write(Relationship::new("doc:1", "owner", "user:alice")).await?;
+    vault.relationships().write(Relationship::new("doc:1", "owner", "user:alice")).await?;
     assert!(vault.check("user:alice", "delete", "doc:1").await?);
 }
 ```
@@ -188,9 +209,9 @@ async fn integration_test() {
 
 ```rust
 // Health check endpoint
-async fn health_check(client: &Client) -> Result<(), Error> {
+async fn health_check(vault: &VaultClient) -> Result<(), Error> {
     // Lightweight check that verifies connectivity
-    client.health().await
+    vault.health().await
 }
 
 // Graceful shutdown

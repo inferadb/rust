@@ -62,11 +62,14 @@ let allowed = client
 **InferaDB:**
 
 ```rust
+// Get vault context (once at startup)
+let vault = client.organization("org_...").vault("vlt_...");
+
 // Simple, fluent API
-let allowed = client.check("user:alice", "view", "document:readme").await?;
+let allowed = vault.check("user:alice", "view", "document:readme").await?;
 
 // With context when needed
-let allowed = client
+let allowed = vault
     .check("user:alice", "view", "document:readme")
     .with_context(Context::new().insert("ip", "10.0.0.1"))
     .await?;
@@ -91,8 +94,10 @@ for check in checks {
 **InferaDB:**
 
 ```rust
+let vault = client.organization("org_...").vault("vlt_...");
+
 // Native batch support
-let results = client
+let results = vault
     .check_batch([
         ("user:alice", "view", "doc:1"),
         ("user:alice", "edit", "doc:1"),
@@ -131,15 +136,23 @@ loop {
 **InferaDB:**
 
 ```rust
+let vault = client.organization("org_...").vault("vlt_...");
+
 // Automatic pagination via streams
-let objects: Vec<String> = client
-    .list_resources("user:alice", "viewer")
+let objects: Vec<String> = vault
+    .resources()
+    .accessible_by("user:alice")
+    .with_permission("viewer")
     .resource_type("document")
     .collect()
     .await?;
 
 // Or stream for memory efficiency
-let mut stream = client.list_resources("user:alice", "viewer").stream();
+let mut stream = vault
+    .resources()
+    .accessible_by("user:alice")
+    .with_permission("viewer")
+    .stream();
 while let Some(obj) = stream.next().await {
     process(obj?);
 }
@@ -335,8 +348,10 @@ match client.check(request).await {
 ### InferaDB
 
 ```rust
+let vault = client.organization("org_...").vault("vlt_...");
+
 // Rich error types with context
-match client.check("user:alice", "view", "doc:1").await {
+match vault.check("user:alice", "view", "doc:1").await {
     Ok(allowed) => println!("Allowed: {}", allowed),
     Err(e) => {
         match e.kind() {
@@ -427,25 +442,21 @@ Legend: ✅ Full support, ⚠️ Partial/workaround, ❌ Not supported
 ### InferaDB Strengths
 
 1. **Developer Experience**
-
    - Minimal boilerplate for common operations
    - Fluent builder APIs
    - Excellent error messages with request IDs
 
 2. **Performance**
-
    - Native batch operations
    - Built-in caching
    - Optimized connection pooling
 
 3. **Type Safety**
-
    - Compile-time schema validation (with derive feature)
    - Rich error types
    - IDE autocomplete support
 
 4. **Observability**
-
    - First-class OpenTelemetry integration
    - Built-in metrics
    - Request tracing

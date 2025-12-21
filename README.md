@@ -19,25 +19,24 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ### Minimum Viable Example
 
 ```rust
-use inferadb::Client;
-use std::error::Error;
+use inferadb::prelude::*;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Error> {
     // Create client from environment variables
     let client = Client::from_env().await?;
 
+    // Get vault context (organization-first hierarchy)
+    let vault = client
+        .organization("org_...")
+        .vault("vlt_...");
+
     // Check if user has permission
-    let allowed = client
+    let allowed = vault
         .check("user:alice", "view", "document:readme")
         .await?;
 
-    if allowed {
-        println!("Access granted!");
-    } else {
-        println!("Access denied.");
-    }
-
+    println!("Allowed: {}", allowed);
     Ok(())
 }
 ```
@@ -84,30 +83,53 @@ inferadb = { version = "0.1", default-features = false, features = ["rest", "rus
 | `derive`        | Proc macros for type-safe schemas      | No      |
 | `serde`         | Serialization support                  | No      |
 
+### Prelude Options
+
+```rust
+// Standard prelude - most applications
+use inferadb::prelude::*;
+
+// Minimal prelude - libraries, minimal footprint
+use inferadb::prelude::core::*;
+
+// Extended prelude - includes testing utilities
+use inferadb::prelude::extended::*;
+```
+
+| Prelude    | Use Case                 | Includes                            |
+| ---------- | ------------------------ | ----------------------------------- |
+| `core`     | Libraries, minimal deps  | Client, VaultClient, Error, traits  |
+| Default    | Most applications        | Core + config types, credentials    |
+| `extended` | Tests, feature-rich apps | Full + MockClient, derive macros    |
+
 ## Usage
 
 ### Authorization Checks
 
 ```rust
-// Simple check
-let allowed = client
-    .check("user:alice", "view", "document:readme")
+let vault = client.organization("org_...").vault("vlt_...");
+
+// Simple check - returns bool
+let allowed = vault.check("user:alice", "view", "doc:1").await?;
+
+// require() pattern - recommended for HTTP handlers
+// Returns Err(AccessDenied) on denial, integrates with ?
+vault.check("user:alice", "view", "doc:1")
+    .require()
     .await?;
 
 // Check with ABAC context
-let allowed = client
-    .check("user:alice", "view", "document:confidential")
+vault.check("user:alice", "view", "doc:confidential")
     .with_context(Context::new()
         .insert("ip_address", "10.0.0.50")
         .insert("mfa_verified", true))
     .await?;
 
-// Batch checks (more efficient)
-let results = client
+// Batch checks - single round-trip
+let results = vault
     .check_batch([
         ("user:alice", "view", "doc:1"),
         ("user:alice", "edit", "doc:1"),
-        ("user:bob", "view", "doc:1"),
     ])
     .collect()
     .await?;
@@ -116,13 +138,15 @@ let results = client
 ### Relationship Management
 
 ```rust
+let vault = client.organization("org_...").vault("vlt_...");
+
 // Write a relationship
-client
+vault.relationships()
     .write(Relationship::new("document:readme", "viewer", "user:alice"))
     .await?;
 
 // Write multiple relationships
-client
+vault.relationships()
     .write_batch([
         Relationship::new("folder:docs", "viewer", "group:engineering#member"),
         Relationship::new("document:readme", "parent", "folder:docs"),
@@ -130,7 +154,7 @@ client
     .await?;
 
 // Delete a relationship
-client
+vault.relationships()
     .delete(Relationship::new("document:readme", "viewer", "user:alice"))
     .await?;
 ```
@@ -138,16 +162,22 @@ client
 ### Lookup Operations
 
 ```rust
+let vault = client.organization("org_...").vault("vlt_...");
+
 // List resources a user can access
-let resources = client
-    .list_resources("user:alice", "view")
+let resources = vault
+    .resources()
+    .accessible_by("user:alice")
+    .with_permission("view")
     .resource_type("document")
     .collect()
     .await?;
 
 // List users who can access a resource
-let subjects = client
-    .list_subjects("view", "document:readme")
+let subjects = vault
+    .subjects()
+    .with_permission("view")
+    .on_resource("document:readme")
     .collect()
     .await?;
 ```
@@ -157,7 +187,9 @@ let subjects = client
 ```rust
 use futures::StreamExt;
 
-let mut stream = client
+let vault = client.organization("org_...").vault("vlt_...");
+
+let mut stream = vault
     .watch()
     .filter(WatchFilter::resource_type("document"))
     .run()
@@ -261,6 +293,17 @@ services:
       INFERADB__AUTH__SKIP_VERIFICATION: true # Dev only!
 ```
 
+## Design Guarantees
+
+| Guarantee | Description |
+|-----------|-------------|
+| **Denial is not an error** | `check()` returns `Ok(false)` for denied access; only `require()` converts denial to error |
+| **Fail-closed by default** | Errors default to denying access; fail-open must be explicit |
+| **Results preserve order** | Batch operations return results in the same order as inputs |
+| **Writes are acknowledged** | Write operations return only after server confirmation |
+| **Cache never changes semantics** | Cached results are identical to fresh results |
+| **Errors include request IDs** | All server errors include a `request_id()` for debugging |
+
 ## Error Handling
 
 ```rust
@@ -286,9 +329,16 @@ match client.check("user:alice", "view", "doc:1").await {
 ## Documentation
 
 - [API Documentation](https://docs.rs/inferadb) - Full API reference
-- [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
+- [Integration Patterns](docs/guides/integration-patterns.md) - Axum, Actix-web, GraphQL, gRPC
+- [Testing Guide](docs/guides/testing.md) - MockClient, InMemoryClient, TestVault
+- [Error Handling](docs/guides/errors.md) - Error types and retry strategies
+- [Consistency & Watch](docs/guides/consistency.md) - Consistency tokens, real-time streams
+- [Control API](docs/guides/control-api.md) - Organizations, schemas, members, audit
+- [Advanced Features](docs/guides/advanced.md) - Simulation, explain, export/import
+- [Caching](docs/guides/caching.md) - Cache configuration and invalidation
 - [Performance Tuning](docs/guides/performance-tuning.md) - Optimization guide
 - [Production Checklist](docs/guides/production-checklist.md) - Deployment readiness
+- [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
 
 ## Examples
 

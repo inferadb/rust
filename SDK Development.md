@@ -18,8 +18,6 @@ Internal design document for SDK implementers. For user-facing documentation, se
 | [docs/guides/integration-patterns.md](docs/guides/integration-patterns.md)     | SDK Users    | Framework integration examples                 |
 | [docs/guides/testing.md](docs/guides/testing.md)                               | SDK Users    | Testing patterns and utilities                 |
 | [docs/guides/caching.md](docs/guides/caching.md)                               | SDK Users    | Caching strategies and invalidation            |
-| [docs/guides/multi-tenant.md](docs/guides/multi-tenant.md)                     | SDK Users    | Multi-organization SaaS patterns               |
-| [docs/guides/temporal-permissions.md](docs/guides/temporal-permissions.md)     | SDK Users    | Time-based permission constraints              |
 | [docs/internal/competitive-analysis.md](docs/internal/competitive-analysis.md) | Internal     | Competitive positioning                        |
 
 ---
@@ -125,6 +123,7 @@ Internal design document for SDK implementers. For user-facing documentation, se
 - [Protocol Support](#protocol-support)
 - [Feature Flags](#feature-flags)
 - [WASM / Browser Usage](#wasm--browser-usage)
+- [Stability Policy](#stability-policy)
 - [Safety Guarantees](#safety-guarantees)
 - [Security Considerations](#security-considerations)
 - [Release Strategy](#release-strategy)
@@ -217,6 +216,21 @@ async fn main() -> Result<(), Error> {
 7. **Observability built-in**: First-class tracing, metrics, and structured logging without configuration.
 
 8. **Testing as a feature**: Mock clients, simulation mode, and test utilities are first-class SDK features.
+
+### Design Invariants
+
+These invariants are **guaranteed behaviors** that users can rely on. They inform implementation decisions and should be verified by tests:
+
+| Invariant                             | Description                                                                                                                                                                |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Denial is not an error**            | `check()` returns `Ok(false)` for denied access. Only `require()` converts denial to `Err(AccessDenied)`. This keeps authorization decisions separate from error handling. |
+| **Fail-closed by default**            | All error handling defaults to `FailureMode::FailClosed`. Fail-open (`FailOpen`) must be explicitly requested and always logs at WARN level.                               |
+| **Transport fallback is transparent** | Falling back from gRPC to REST never changes authorization semantics—only availability characteristics. Both protocols return identical results.                           |
+| **Results preserve input order**      | Batch operations (`check_batch`, `write_batch`) return results in the same order as input items, even when parallelized internally.                                        |
+| **Streams are lazy**                  | Query streams don't fetch data until consumed. Creating a stream has no side effects.                                                                                      |
+| **Writes are acknowledged**           | Write operations return only after server acknowledgment. `WriteResult.consistency_token()` is always valid for read-after-write.                                          |
+| **Cache never changes semantics**     | Cached results are identical to fresh results. Stale cache entries may reduce availability but never change authorization outcomes.                                        |
+| **Errors include request IDs**        | All errors that reach the server include a `request_id()` for debugging and support escalation.                                                                            |
 
 ### Competitive Differentiation
 
@@ -396,13 +410,13 @@ The SDK automatically routes requests to the correct backend based on the operat
 
 ```text
 inferadb-sdk/
-├── Cargo.toml                    # Workspace manifest
-├── inferadb/                     # Main SDK crate (re-exports everything)
+├── Cargo.toml                   # Workspace manifest
+├── inferadb/                    # Main SDK crate (re-exports everything)
 │   ├── src/
 │   │   ├── lib.rs               # Public API surface
 │   │   └── prelude.rs           # Common imports
 │   └── Cargo.toml
-├── inferadb-client/              # Core client implementation
+├── inferadb-client/             # Core client implementation
 │   ├── src/
 │   │   ├── lib.rs
 │   │   ├── client.rs            # Client
@@ -421,7 +435,7 @@ inferadb-sdk/
 │   │   │   └── mock.rs          # Test transport
 │   │   └── config.rs            # ClientConfig, Builder
 │   └── Cargo.toml
-├── inferadb-types/               # Shared types
+├── inferadb-types/              # Shared types
 │   ├── src/
 │   │   ├── lib.rs
 │   │   ├── relationship.rs      # Relationship, Subject, Resource
@@ -430,13 +444,13 @@ inferadb-sdk/
 │   │   ├── organization.rs      # Organization, Member
 │   │   └── error.rs             # Error types
 │   └── Cargo.toml
-├── inferadb-macros/              # Procedural macros
+├── inferadb-macros/             # Procedural macros
 │   ├── src/
 │   │   ├── lib.rs
 │   │   ├── resource.rs          # #[derive(Resource)]
 │   │   └── relation.rs          # #[derive(Relation)]
 │   └── Cargo.toml
-└── inferadb-test/                # Testing utilities
+└── inferadb-test/               # Testing utilities
     ├── src/
     │   ├── lib.rs
     │   ├── mock.rs              # MockClient
@@ -2035,7 +2049,7 @@ let client = Client::builder()
 
 **TLS Configuration Types**:
 
-```rust
+````rust
 /// TLS configuration for secure connections
 #[derive(Debug, Clone)]
 pub struct TlsConfig {
@@ -2159,13 +2173,21 @@ impl Identity {
     }
 
     /// Load identity from a PKCS#12/PFX bundle.
-    /// Note: Planned for v0.2 release.
-    pub fn from_pkcs12(pkcs12: &[u8], password: &str) -> Result<Self, Error> {
-        // TODO(v0.2): Implement PKCS#12 parsing using rustls-pemfile or similar
-        Err(Error::new(ErrorKind::ConfigurationError, "PKCS#12 support not yet available"))
+    ///
+    /// **Note**: PKCS#12 support is planned for a future release.
+    /// For now, convert PKCS#12 to PEM format using OpenSSL:
+    /// ```bash
+    /// openssl pkcs12 -in cert.p12 -out cert.pem -nodes
+    /// ```
+    pub fn from_pkcs12(_pkcs12: &[u8], _password: &str) -> Result<Self, Error> {
+        Err(Error::new(
+            ErrorKind::ConfigurationError,
+            "PKCS#12 support not yet available. Convert to PEM format using: \
+             openssl pkcs12 -in cert.p12 -out cert.pem -nodes"
+        ))
     }
 }
-```
+````
 
 ### Proxy Configuration
 
@@ -2641,10 +2663,17 @@ impl VaultClient {
     pub fn vault_id(&self) -> &str { &self.vault_id }
 
     // Authorization operations
-    pub async fn check(&self, subject: &str, permission: &str, resource: &str) -> Result<bool, Error>;
-    /// Owned version of check() for use when you need 'static lifetime (e.g., storing futures)
+    /// Standard check - returns 'static builder (Arc clone internally)
+    pub fn check(&self, subject: &str, permission: &str, resource: &str) -> CheckRequest<'static>;
+
+    /// Borrowed check - zero allocation, requires lifetime management (expert API)
+    pub fn check_borrowed<'a>(&'a self, subject: &'a str, permission: &'a str, resource: &'a str) -> CheckRequest<'a>;
+
+    /// Owned check - takes ownership of strings for 'static lifetime
     pub async fn check_owned(&self, subject: String, permission: String, resource: String) -> Result<bool, Error>;
-    pub async fn check_batch(&self, checks: impl IntoIterator<Item = Check>) -> CheckBatchStream;
+
+    /// Batch check - returns stream of results
+    pub fn check_batch(&self, checks: impl IntoIterator<Item = Check>) -> CheckBatchStream;
     pub fn expand(&self, resource: &str, relation: &str) -> ExpandBuilder;
     pub fn watch(&self) -> WatchBuilder;
     pub fn simulate(&self) -> SimulateBuilder;
@@ -4309,6 +4338,29 @@ println!("{}", rel.as_tuple());  // "(document:readme, viewer, user:alice)"
 
 Support borrowed data for high-volume paths where allocation matters.
 
+### Design Decision: `'static` Builders by Default
+
+**Goal**: Minimize lifetime friction for the common case while preserving zero-copy performance for hot paths.
+
+**Approach**: The primary builder APIs (`check()`, `relationships()`, etc.) return `'static` builders that internally clone an `Arc<ClientInner>`. This means:
+
+- ✅ Builders can be stored in structs, moved across tasks, and composed freely
+- ✅ No lifetime parameters needed on handler functions
+- ✅ Ergonomic async/await with no borrow-checker friction
+- ⚠️ One `Arc::clone()` per operation (typically <10ns)
+
+**For hot paths** where even `Arc::clone()` overhead matters, use the `_borrowed` variants documented below. These are "expert mode" APIs for maximum performance:
+
+```rust
+// Standard API - 'static, easy to use
+let allowed = vault.check("user:alice", "view", "doc:1").await?;
+
+// Expert API - borrowed, zero allocation, requires lifetime management
+let allowed = vault.check_borrowed(&subject, &permission, &resource).await?;
+```
+
+**Rationale**: Most authorization checks are not in tight loops. The common case should "just work" without lifetime annotations. Developers who profile and identify authorization as a bottleneck can opt into the borrowed APIs.
+
 ### Borrowed Relationships
 
 ```rust
@@ -4327,7 +4379,7 @@ let rel = Relationship::from_refs(resource, relation, subject);
 
 ### Relationship Type with Cow
 
-```rust
+````rust
 use std::borrow::Cow;
 
 #[derive(Debug, Clone)]
@@ -4469,7 +4521,7 @@ impl RelationshipBuilder {
         })
     }
 }
-```
+````
 
 ### Parameter Order: Why Relationship and check() Differ
 
@@ -4726,80 +4778,48 @@ async fn process(vault: &VaultClient) -> Result<(), Error> {
 
 Enable dependency injection and testing with trait objects.
 
-### Dual Trait Design
+### API Design: Concrete Types + Trait Abstraction
 
-The SDK provides two trait variants optimized for different use cases:
+The SDK provides two patterns for authorization:
 
-1. **Generic trait** (`Authorize`) - Maximum performance, no allocation overhead
-2. **Object-safe trait** (`AuthorizationClient`) - Enables `dyn` usage and dependency injection
+1. **Concrete types** (`VaultClient`) - Full builder API with all options
+2. **Trait abstraction** (`AuthorizationClient`) - Simplified API for DI and testing
 
-**Why Two Traits?**
+**When to Use Each**:
 
-| Consideration        | Generic Trait                | Object-Safe Trait         |
-| -------------------- | ---------------------------- | ------------------------- |
-| Performance          | Monomorphized, zero overhead | vtable dispatch           |
-| Allocation           | Borrows possible             | May require owned data    |
-| `dyn` compatible     | No (uses generics)           | Yes                       |
-| Dependency injection | Generics only                | Works with `Arc<dyn ...>` |
-| Testing mocks        | Direct                       | Via trait object          |
+| Situation                         | Recommendation                 | Why                                |
+| --------------------------------- | ------------------------------ | ---------------------------------- |
+| Application code with VaultClient | Use `VaultClient` directly     | Full access to builder methods     |
+| Application code needing DI       | Use `&dyn AuthorizationClient` | Swap implementations at runtime    |
+| Library code accepting authz      | Use `impl AuthorizationClient` | Monomorphized, works with any impl |
+| Testing with mocks                | Use `MockClient` via trait     | Same interface as production       |
 
-### The Authorize Trait (Generic, High-Performance)
+**Performance Note**: The `AuthorizationClient` trait uses `async_trait` for object safety. For hot paths where vtable dispatch overhead matters (rare), use `VaultClient` directly and pass via generics:
 
 ```rust
-/// High-performance authorization trait.
-/// Uses generics and associated types for zero-cost abstractions.
-/// NOT object-safe - use AuthorizationClient for dyn.
-pub trait Authorize {
-    type CheckFuture<'a>: Future<Output = Result<bool, Error>> + Send + 'a
-    where
-        Self: 'a;
-
-    type WriteFuture<'a>: Future<Output = Result<(), Error>> + Send + 'a
-    where
-        Self: 'a;
-
-    /// Check authorization with borrowed parameters (zero allocation)
-    fn check<'a>(
-        &'a self,
-        subject: &'a str,
-        permission: &'a str,
-        resource: &'a str,
-    ) -> Self::CheckFuture<'a>;
-
-    /// Check with context
-    fn check_with_context<'a>(
-        &'a self,
-        subject: &'a str,
-        permission: &'a str,
-        resource: &'a str,
-        context: &'a Context,
-    ) -> Self::CheckFuture<'a>;
-
-    /// Write relationship
-    fn write<'a>(&'a self, relationship: &'a Relationship<'_>) -> Self::WriteFuture<'a>;
+// Hot path - direct VaultClient, no vtable
+async fn authorize_hot_path(vault: &VaultClient, check: &AuthzCheck) -> Result<bool, Error> {
+    vault.check(&check.subject, &check.permission, &check.resource).await
 }
 
-// VaultClient implements the generic trait with concrete future types
-impl Authorize for VaultClient {
-    type CheckFuture<'a> = impl Future<Output = Result<bool, Error>> + Send + 'a;
-    type WriteFuture<'a> = impl Future<Output = Result<(), Error>> + Send + 'a;
-
-    fn check<'a>(
-        &'a self,
-        subject: &'a str,
-        permission: &'a str,
-        resource: &'a str,
-    ) -> Self::CheckFuture<'a> {
-        async move {
-            // Direct implementation, no boxing
-            self.inner_check(subject, permission, resource).await
-        }
-    }
-    // ...
+// Normal path - trait object, flexible
+async fn authorize_normal(authz: &dyn AuthorizationClient, check: &AuthzCheck) -> Result<bool, Error> {
+    authz.check(&check.subject, &check.permission, &check.resource).await
 }
 ```
 
 ### The AuthorizationClient Trait (Object-Safe)
+
+The SDK provides two API styles for the same operations:
+
+| API Style   | Method                       | Returns                | Use Case                |
+| ----------- | ---------------------------- | ---------------------- | ----------------------- |
+| **Builder** | `vault.check(s, p, r)`       | `CheckRequest` builder | Fluent API with options |
+| **Trait**   | `authz.check(s, p, r).await` | `Result<bool, Error>`  | DI and testing          |
+
+The builder API (`VaultClient::check()`) returns a `CheckRequest` that supports `.with_context()`, `.timeout()`, `.trace()`, etc. The trait API (`AuthorizationClient::check()`) provides a simple async method for dependency injection.
+
+**VaultClient implements both**: The builder methods are the primary API, but VaultClient also implements `AuthorizationClient` which internally awaits the builder with default options.
 
 ```rust
 use async_trait::async_trait;
@@ -4812,7 +4832,7 @@ use async_trait::async_trait;
 /// including all methods (check, write, delete, list, expand, simulate, watch).
 #[async_trait]
 pub trait AuthorizationClient: Send + Sync {
-    // Core authorization
+    // Core authorization (simplified signatures for object safety)
     async fn check(&self, subject: &str, permission: &str, resource: &str) -> Result<bool, Error>;
     async fn check_batch(&self, checks: Vec<(&str, &str, &str)>) -> Result<Vec<bool>, Error>;
 
@@ -4826,25 +4846,29 @@ pub trait AuthorizationClient: Send + Sync {
     // See Testing Support section for complete definition
 }
 
-// Auto-implement object-safe trait for anything implementing generic trait
-impl<T: Authorize + Send + Sync> AuthorizationClient for T {
+// VaultClient bridges builder API to trait API
+impl AuthorizationClient for VaultClient {
     async fn check(&self, subject: &str, permission: &str, resource: &str) -> Result<bool, Error> {
-        Authorize::check(self, subject, permission, resource).await
+        // Delegate to builder API with default options
+        VaultClient::check(self, subject, permission, resource).await
     }
-    // ... delegate other methods
+    // ... other methods delegate similarly
 }
 ```
 
-### Choosing Between Traits
+### Choosing Between API Styles
 
 ```rust
-// For maximum performance: Use generic bounds
-async fn process_request<A: Authorize>(
-    authz: &A,
+// For maximum features: Use VaultClient directly
+// Access to builder methods, streaming, context, etc.
+async fn process_request(
+    vault: &VaultClient,
     request: Request,
 ) -> Result<Response, Error> {
-    // Monomorphized - no vtable, inlinable
-    authz.check(&request.user, "access", &request.resource).await?;
+    vault.check(&request.user, "access", &request.resource)
+        .with_context(Context::from_request(&request))
+        .trace(true)
+        .await?;
     // ...
 }
 
@@ -4856,6 +4880,7 @@ async fn authorize_request(
     resource: &str,
 ) -> Result<bool, Error> {
     // vtable dispatch - slight overhead, but enables runtime polymorphism
+    // Trait API uses default options (no context, no trace, default timeout)
     authz.check(user, action, resource).await
 }
 
@@ -4938,12 +4963,11 @@ impl<A: AuthorizationClient> RequestHandler<A> {
 ```rust
 #[tokio::test]
 async fn test_authorization_flow() {
-    // Create mock with expected calls
+    // Create mock with stubbed results (see Testing Support section for full API)
     let mock = MockClient::builder()
-        .expect_check("user:alice", "view", "doc:1")
-        .returning(true)
-        .expect_check("user:bob", "view", "doc:1")
-        .returning(false)
+        .check("user:alice", "view", "doc:1", true)
+        .check("user:bob", "view", "doc:1", false)
+        .verify_on_drop(true)  // Verify all expectations were consumed
         .build();
 
     // Test through trait object
@@ -4952,8 +4976,7 @@ async fn test_authorization_flow() {
     assert!(authz.check("user:alice", "view", "doc:1").await.unwrap());
     assert!(!authz.check("user:bob", "view", "doc:1").await.unwrap());
 
-    // Verify all expected calls were made
-    mock.verify();
+    // Verification happens automatically on drop when verify_on_drop(true)
 }
 ```
 
@@ -5036,7 +5059,7 @@ for step in &decision.trace {
 
 The `check()` method returns a builder that implements `IntoFuture`, enabling both simple one-liner usage and optional configuration:
 
-```rust
+````rust
 /// ABAC context for attribute-based authorization checks.
 ///
 /// Provides additional attributes that can be evaluated by policy conditions,
@@ -5287,7 +5310,7 @@ impl<'a> IntoFuture for RequireCheckRequest<'a> {
         }
     }
 }
-```
+````
 
 **Usage patterns enabled by IntoFuture**:
 
@@ -5623,6 +5646,38 @@ Understanding the difference between atomic and streaming batch behavior:
 | `relationships().write_batch()`           | **Atomic**    | All or nothing - partial failure rolls back      |
 | `relationships().delete_batch()`          | **Atomic**    | All or nothing - partial failure rolls back      |
 | `relationships().write_batch_streaming()` | **Streaming** | Each write independent, partial success possible |
+
+**Batch Ordering and Parallelization Guarantees**:
+
+| Property                | Guarantee                                                            |
+| ----------------------- | -------------------------------------------------------------------- |
+| **Result ordering**     | Results are returned in the same order as input items                |
+| **SDK parallelization** | SDK may execute checks in parallel (up to `batch_parallelism` limit) |
+| **Partial failure**     | Streaming: per-item `Result`; Atomic: all-or-nothing `Result`        |
+| **Short-circuit**       | Streaming batches never short-circuit; all items are evaluated       |
+
+```rust
+// Results preserve input order even with parallel execution
+let checks = [
+    ("user:alice", "view", "doc:1"),
+    ("user:bob", "view", "doc:2"),
+    ("user:charlie", "view", "doc:3"),
+];
+
+let results = vault
+    .check_batch(checks)
+    .collect()
+    .await?;
+
+// Results preserve input order - each tuple contains the original check and result
+// results[0] = (Check { subject: "user:alice", ... }, allowed)
+// results[1] = (Check { subject: "user:bob", ... }, allowed)
+// results[2] = (Check { subject: "user:charlie", ... }, allowed)
+assert_eq!(results.len(), checks.len());
+
+// Access just the booleans if needed
+let allowed: Vec<bool> = results.iter().map(|(_, allowed)| *allowed).collect();
+```
 
 **Atomic Batches (write_batch, delete_batch)**:
 
@@ -7494,9 +7549,9 @@ let mut stream = vault.resources().accessible_by("user:alice").with_permission("
 while let Some(result) = stream.next().await {
     match result {
         Ok(resource) => process(resource),
-        Err(e) if e.is_transient() => {
+        Err(e) if e.is_retriable() => {
             // Network hiccup - stream may continue
-            tracing::warn!("Transient error: {}", e);
+            tracing::warn!("Retriable error: {}", e);
         }
         Err(e) => {
             // Fatal error - stream is terminated
@@ -11018,88 +11073,97 @@ enum MyAppError {
 // Error output: "authorization check failed: rate limited: Too many requests"
 ```
 
-/// gRPC status information (when using gRPC transport) #[derive(Debug, Clone)]
+**Protocol-Specific Error Details**:
+
+```rust
+/// gRPC status information (when using gRPC transport)
+#[derive(Debug, Clone)]
 pub struct GrpcStatus {
-pub code: i32, // tonic::Code as i32
-pub message: String,
-pub details: Vec<u8>, // Serialized google.rpc.Status details
+    /// gRPC status code (tonic::Code as i32)
+    pub code: i32,
+    /// Error message from server
+    pub message: String,
+    /// Serialized google.rpc.Status details
+    pub details: Vec<u8>,
 }
 
-/// Extended error details for authorization failures #[derive(Debug, Clone)]
+/// Extended error details for authorization failures
+#[derive(Debug, Clone)]
 pub enum ErrorDetails {
-/// Schema validation failure
-Schema(SchemaError),
-
+    /// Schema validation failure
+    Schema(SchemaError),
     /// Authorization check details (why denied)
     Authorization(AuthorizationError),
-
     /// Precondition failure details
     Precondition(PreconditionError),
-
 }
 
 #[derive(Debug, Clone)]
 pub struct SchemaError {
-pub entity_type: Option<String>,
-pub relation: Option<String>,
-pub violation: SchemaViolation,
+    pub entity_type: Option<String>,
+    pub relation: Option<String>,
+    pub violation: SchemaViolation,
 }
 
 #[derive(Debug, Clone)]
 pub enum SchemaViolation {
-UnknownEntityType,
-UnknownRelation,
-InvalidSubjectType { expected: Vec<String>, got: String },
-CyclicRelationship { path: Vec<String> },
+    UnknownEntityType,
+    UnknownRelation,
+    InvalidSubjectType { expected: Vec<String>, got: String },
+    CyclicRelationship { path: Vec<String> },
 }
 
 #[derive(Debug, Clone)]
 pub struct AuthorizationError {
-pub subject: String,
-pub permission: String,
-pub resource: String,
-pub reason: DenialReason,
+    pub subject: String,
+    pub permission: String,
+    pub resource: String,
+    pub reason: DenialReason,
 }
 
 #[derive(Debug, Clone)]
 pub enum DenialReason {
-NoPath, // No relationship path exists
-ConditionFailed(String), // ABAC condition failed
-Explicit, // Explicit deny rule
+    /// No relationship path exists between subject and resource
+    NoPath,
+    /// ABAC condition evaluated to false
+    ConditionFailed(String),
+    /// Explicit deny rule matched
+    Explicit,
 }
 
-/// Error details when a precondition fails #[derive(Debug, Clone)]
+/// Error details when a precondition fails
+#[derive(Debug, Clone)]
 pub struct PreconditionError {
-/// The precondition that failed
-pub precondition: PreconditionSummary,
-/// Human-readable description of why it failed
-pub message: String,
-/// Current state that caused the failure (if available)
-pub current_state: Option<String>,
+    /// The precondition that failed
+    pub precondition: PreconditionSummary,
+    /// Human-readable description of why it failed
+    pub message: String,
+    /// Current state that caused the failure (if available)
+    pub current_state: Option<String>,
 }
 
-/// Summary of a failed precondition for error reporting #[derive(Debug, Clone)]
+/// Summary of a failed precondition for error reporting
+#[derive(Debug, Clone)]
 pub enum PreconditionSummary {
-/// Expected relationship to not exist, but it did
-UnexpectedExists {
-resource: String,
-relation: String,
-subject: String,
-},
-/// Expected relationship to exist, but it didn't
-ExpectedExists {
-resource: String,
-relation: String,
-subject: String,
-},
-/// Consistency token didn't match
-TokenMismatch {
-expected: String,
-actual: Option<String>,
-},
+    /// Expected relationship to not exist, but it did
+    UnexpectedExists {
+        resource: String,
+        relation: String,
+        subject: String,
+    },
+    /// Expected relationship to exist, but it didn't
+    ExpectedExists {
+        resource: String,
+        relation: String,
+        subject: String,
+    },
+    /// Consistency token didn't match
+    TokenMismatch {
+        expected: String,
+        actual: Option<String>,
+    },
 }
-
-````
+```
 
 **Using Protocol Details**:
 
@@ -11133,7 +11197,7 @@ match vault.relationships().write(relationship).await {
         }
     }
 }
-````
+```
 
 ### Error Handling Patterns
 
@@ -11926,14 +11990,14 @@ let service = ServiceBuilder::new()
 // Fail-closed (default, more secure)
 let allowed = vault
     .check("user:alice", "view", "document:readme")
-    .on_error(OnError::Deny)  // Default
+    .on_error(OnError::FailClosed)  // Default
     .await
     .unwrap_or(false);
 
-// Fail-open (for non-critical paths)
+// Fail-open (for non-critical paths only - use with extreme caution)
 let allowed = vault
     .check("user:alice", "view", "document:readme")
-    .on_error(OnError::Allow)
+    .on_error(OnError::FailOpen)  // Logs WARN when triggered
     .await
     .unwrap_or(true);
 ```
@@ -11943,22 +12007,25 @@ let allowed = vault
 Configure global degradation behavior for production resilience:
 
 ```rust
-use inferadb::{DegradationConfig, FallbackStrategy, FailureMode};
+use inferadb::{
+    DegradationConfig, FailureMode,
+    CheckFallbackStrategy, WriteFallbackStrategy,
+};
 
 let client = Client::builder()
     .url("https://api.inferadb.com")
     .credentials(creds)
     .degradation(DegradationConfig::new()
         // Default failure mode for authorization checks
-        .on_check_failure(FailureMode::Deny)
+        .on_check_failure(FailureMode::FailClosed)
 
-        // Use cached decisions when service is unavailable
-        .on_unavailable(FallbackStrategy::UseCache {
+        // Use cached decisions when service is unavailable for checks
+        .on_check_unavailable(CheckFallbackStrategy::UseCache {
             max_age: Duration::from_secs(300),  // Accept cache entries up to 5 min old
         })
 
         // For write failures, queue for later retry
-        .on_write_failure(FallbackStrategy::Queue {
+        .on_write_failure(WriteFallbackStrategy::Queue {
             max_queue_size: 1000,
             flush_interval: Duration::from_secs(5),
         })
@@ -11980,17 +12047,22 @@ let client = Client::builder()
 **Degradation Configuration Types**:
 
 ```rust
-/// Global degradation behavior configuration
+/// Global degradation behavior configuration.
+///
+/// Uses operation-specific fallback strategies to ensure type safety:
+/// - Check operations use `CheckFallbackStrategy` (returns bool)
+/// - Write operations use `WriteFallbackStrategy` (may queue)
+/// - Read operations use `ReadFallbackStrategy` (returns cached data)
 #[derive(Debug, Clone)]
 pub struct DegradationConfig {
     /// Default behavior when authorization checks fail
     on_check_failure: FailureMode,
-    /// Strategy when service is completely unavailable
-    on_unavailable: FallbackStrategy,
+    /// Strategy when service is unavailable for checks
+    on_check_unavailable: CheckFallbackStrategy,
     /// Strategy when write operations fail
-    on_write_failure: FallbackStrategy,
+    on_write_failure: WriteFallbackStrategy,
     /// Strategy when read operations fail
-    on_read_failure: FallbackStrategy,
+    on_read_failure: ReadFallbackStrategy,
     /// Callback when degradation mode activates
     on_degradation_start: Option<Arc<dyn Fn(String) + Send + Sync>>,
     /// Callback when service recovers
@@ -12001,10 +12073,10 @@ impl DegradationConfig {
     /// Create a new degradation configuration with secure defaults.
     pub fn new() -> Self {
         Self {
-            on_check_failure: FailureMode::Deny,
-            on_unavailable: FallbackStrategy::Error,
-            on_write_failure: FallbackStrategy::Error,
-            on_read_failure: FallbackStrategy::Error,
+            on_check_failure: FailureMode::FailClosed,
+            on_check_unavailable: CheckFallbackStrategy::Error,
+            on_write_failure: WriteFallbackStrategy::Error,
+            on_read_failure: ReadFallbackStrategy::Error,
             on_degradation_start: None,
             on_degradation_end: None,
         }
@@ -12016,20 +12088,20 @@ impl DegradationConfig {
         self
     }
 
-    /// Set strategy when service is completely unavailable.
-    pub fn on_unavailable(mut self, strategy: FallbackStrategy) -> Self {
-        self.on_unavailable = strategy;
+    /// Set strategy when service is unavailable for checks.
+    pub fn on_check_unavailable(mut self, strategy: CheckFallbackStrategy) -> Self {
+        self.on_check_unavailable = strategy;
         self
     }
 
     /// Set strategy when write operations fail.
-    pub fn on_write_failure(mut self, strategy: FallbackStrategy) -> Self {
+    pub fn on_write_failure(mut self, strategy: WriteFallbackStrategy) -> Self {
         self.on_write_failure = strategy;
         self
     }
 
     /// Set strategy when read operations fail.
-    pub fn on_read_failure(mut self, strategy: FallbackStrategy) -> Self {
+    pub fn on_read_failure(mut self, strategy: ReadFallbackStrategy) -> Self {
         self.on_read_failure = strategy;
         self
     }
@@ -12059,15 +12131,24 @@ impl Default for DegradationConfig {
     }
 }
 
-/// How to handle authorization check failures
+/// How to handle authorization check failures.
+///
+/// Naming uses industry-standard "fail-open" / "fail-closed" terminology
+/// to clearly distinguish error-handling behavior from authorization outcomes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FailureMode {
-    /// Deny access on failure (fail-closed, secure default)
+    /// Deny access on failure (fail-closed, secure default).
+    /// Use for security-critical paths where false positives are acceptable.
     #[default]
-    Deny,
-    /// Allow access on failure (fail-open, use with caution)
-    Allow,
-    /// Return error to caller (let application decide)
+    FailClosed,
+
+    /// Allow access on failure (fail-open, use with extreme caution).
+    /// Only use for non-critical paths where availability trumps security.
+    /// Always logs at WARN level when triggered.
+    FailOpen,
+
+    /// Return error to caller (let application decide).
+    /// Use when the calling code needs to implement custom fallback logic.
     Propagate,
 }
 
@@ -12075,10 +12156,65 @@ pub enum FailureMode {
 /// Same as `FailureMode` but semantically describes request-level behavior.
 pub type OnError = FailureMode;
 
-/// Fallback strategy when primary service is unavailable
+// -----------------------------------------------------------------------------
+// Operation-Specific Fallback Strategies
+// -----------------------------------------------------------------------------
+// Fallback strategies are split by operation type to ensure type safety.
+// A check fallback returns bool, a write fallback may queue, a read fallback
+// returns cached data. Mixing these would be a type error.
+
+/// Fallback strategy for authorization checks when service is unavailable
 #[derive(Debug, Clone)]
-pub enum FallbackStrategy {
-    /// Return error immediately (default for writes)
+pub enum CheckFallbackStrategy {
+    /// Return error immediately
+    Error,
+
+    /// Use cached decision if available and not too old
+    UseCache {
+        /// Maximum age of cached decision to accept
+        max_age: Duration,
+    },
+
+    /// Return a default decision (use with caution)
+    Default(bool),
+
+    /// Call a custom fallback function
+    Custom(Arc<dyn Fn(&CheckRequest) -> Result<bool, Error> + Send + Sync>),
+}
+
+/// Fallback strategy for write operations when service is unavailable
+#[derive(Debug, Clone)]
+pub enum WriteFallbackStrategy {
+    /// Return error immediately (default, safest)
+    Error,
+
+    /// Queue operation for later retry
+    Queue {
+        /// Maximum number of operations to queue
+        max_queue_size: usize,
+        /// How often to attempt flushing the queue
+        flush_interval: Duration,
+    },
+
+    /// Call a custom fallback function
+    Custom(Arc<dyn Fn(&WriteRequest) -> Result<WriteAction, Error> + Send + Sync>),
+}
+
+/// Action to take for queued writes
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteAction {
+    /// Queue the write for later retry
+    Queue,
+    /// Drop the write silently (use with caution)
+    Drop,
+    /// Return error to caller
+    Error,
+}
+
+/// Fallback strategy for read operations when service is unavailable
+#[derive(Debug, Clone)]
+pub enum ReadFallbackStrategy {
+    /// Return error immediately
     Error,
 
     /// Use cached value if available and not too old
@@ -12087,19 +12223,22 @@ pub enum FallbackStrategy {
         max_age: Duration,
     },
 
-    /// Queue operation for later retry (for writes)
-    Queue {
-        /// Maximum number of operations to queue
-        max_queue_size: usize,
-        /// How often to attempt flushing the queue
-        flush_interval: Duration,
-    },
-
-    /// Return a default value
-    Default(Box<dyn Fn() -> bool + Send + Sync>),
+    /// Return empty result set
+    Empty,
 
     /// Call a custom fallback function
-    Custom(Arc<dyn Fn(&CheckRequest) -> Result<bool, Error> + Send + Sync>),
+    Custom(Arc<dyn Fn(&ReadRequest) -> Result<ReadAction, Error> + Send + Sync>),
+}
+
+/// Action to take for degraded reads
+#[derive(Debug, Clone)]
+pub enum ReadAction {
+    /// Use cached data
+    UseCached,
+    /// Return empty result
+    Empty,
+    /// Return error
+    Error,
 }
 ```
 
@@ -12109,15 +12248,15 @@ pub enum FallbackStrategy {
 // Override global degradation for specific operations
 let allowed = vault
     .check("user:alice", "view", "public-doc:readme")
-    .on_error(OnError::Allow)  // This specific check can fail-open
-    .fallback(FallbackStrategy::Default(Box::new(|| true)))
+    .on_error(OnError::FailOpen)  // This specific check can fail-open (logs WARN)
+    .fallback(CheckFallbackStrategy::Default(true))
     .await?;
 
 // Critical operation - never use fallback
 let allowed = vault
     .check("user:alice", "delete", "doc:sensitive")
     .on_error(OnError::Propagate)  // Always return errors
-    .fallback(FallbackStrategy::Error)  // No fallback allowed
+    .fallback(CheckFallbackStrategy::Error)  // No fallback allowed
     .await?;
 ```
 
@@ -12151,8 +12290,9 @@ match vault.check("user:alice", "view", "doc:1").await {
 ```
 
 The circuit breaker works in conjunction with:
-- **`on_unavailable(FallbackStrategy::UseCache { ... })`** - Use cached decisions when circuit is open
-- **`on_check_failure(FailureMode::Deny)`** - Fail-closed when no cache available
+
+- **`on_check_unavailable(CheckFallbackStrategy::UseCache { ... })`** - Use cached decisions when circuit is open
+- **`on_check_failure(FailureMode::FailClosed)`** - Fail-closed when no cache available
 - **Circuit events** - Alert when entering/exiting degraded mode
 
 ---
@@ -12833,7 +12973,7 @@ let trace_context = TraceContext::new()
 
 **Tracing Types**:
 
-```rust
+````rust
 /// W3C Trace Context representation for distributed tracing.
 #[derive(Debug, Clone)]
 pub struct TraceContext {
@@ -13210,7 +13350,7 @@ pub mod integrations {
         // impl<S, B> actix_web::dev::Transform<S, ServiceRequest> for TracingMiddleware { ... }
     }
 }
-```
+````
 
 #### Async Boundary Propagation
 
@@ -13855,28 +13995,6 @@ let client = Client::builder()
     .build()
     .await?;
 ```
-
----
-
-## Multi-Organization Support
-
-For multi-organization SaaS applications, see [Multi-Organization Guide](docs/guides/multi-tenant.md), which covers:
-
-- Organization-scoped clients
-- Framework middleware for organization extraction
-- Cross-organization operations
-- Organization isolation testing
-
----
-
-## Time-Based Permissions
-
-For temporal permission constraints, see [Temporal Permissions Guide](docs/guides/temporal-permissions.md), which covers:
-
-- Expiring permissions
-- Scheduled permissions
-- Time-windowed access
-- Time-aware queries
 
 ---
 
@@ -14559,6 +14677,92 @@ let client = Client::builder()
 | Full default (native only) | N/A              |
 
 Use `wasm-opt` and `wasm-pack` for production builds to minimize size.
+
+---
+
+## Stability Policy
+
+This section defines API stability guarantees for SDK consumers.
+
+### Stability Tiers
+
+| Tier         | Description            | Guarantees                                                |
+| ------------ | ---------------------- | --------------------------------------------------------- |
+| **Stable**   | Core public API        | Semver-protected; breaking changes only in major versions |
+| **Unstable** | Experimental features  | May change in minor versions; behind feature flags        |
+| **Internal** | Implementation details | No stability guarantees; `#[doc(hidden)]`                 |
+
+### Stable API Surface
+
+The following are considered **stable** and follow semantic versioning:
+
+| Category            | Examples                                                      |
+| ------------------- | ------------------------------------------------------------- |
+| **Public types**    | `Client`, `VaultClient`, `Error`, `ErrorKind`, `Relationship` |
+| **Public traits**   | `AuthorizationClient`, `Resource`, `Subject`                  |
+| **Builder methods** | `.check()`, `.require()`, `.with_context()`, `.timeout()`     |
+| **Error variants**  | All `ErrorKind` variants and their semantics                  |
+| **Feature flags**   | `grpc`, `rest`, `rustls`, `native-tls`, `tracing`, `metrics`  |
+
+### Unstable API Surface
+
+The following are behind feature flags and may change in minor versions:
+
+| Feature Flag         | API Surface                                 | Notes                            |
+| -------------------- | ------------------------------------------- | -------------------------------- |
+| `derive`             | `#[derive(Resource)]`, `#[derive(Subject)]` | Schema codegen macros            |
+| `experimental-cache` | `CacheConfig::adaptive()`                   | Experimental cache strategies    |
+| `internal-testing`   | `InMemoryClient` internals                  | Test utilities subject to change |
+
+### What Constitutes a Breaking Change
+
+**Breaking (requires major version bump):**
+
+- Removing or renaming public types, traits, or methods
+- Changing method signatures (parameters, return types)
+- Adding required parameters to existing methods
+- Changing the behavior of `ErrorKind` variants
+- Removing or renaming feature flags
+
+**Non-breaking (allowed in minor versions):**
+
+- Adding new public types, traits, or methods
+- Adding new `ErrorKind` variants
+- Adding optional parameters with defaults
+- Adding new feature flags
+- Performance improvements
+- Bug fixes that don't change documented behavior
+
+### Deprecation Policy
+
+1. **Deprecation notice**: At least one minor version before removal
+2. **Compile-time warning**: `#[deprecated]` attribute with migration guidance
+3. **Documentation**: Migration path documented in MIGRATION.md
+4. **Removal**: Only in next major version
+
+````rust
+/// **Deprecated since 0.3.0**: Use `on_check_failure()` instead.
+///
+/// # Migration
+/// ```rust
+/// // Before (0.2.x):
+/// .failure_mode(FailureMode::Deny)
+///
+/// // After (0.3.0+):
+/// .on_check_failure(FailureMode::FailClosed)
+/// ```
+#[deprecated(since = "0.3.0", note = "Use on_check_failure() instead")]
+pub fn failure_mode(self, mode: FailureMode) -> Self { ... }
+````
+
+### MSRV (Minimum Supported Rust Version)
+
+| SDK Version | MSRV | Notes                     |
+| ----------- | ---- | ------------------------- |
+| 0.1.x       | 1.70 | Initial release           |
+| 0.2.x       | 1.75 | Async trait stabilization |
+
+MSRV bumps are considered **non-breaking** but will be documented in CHANGELOG.md.
 
 ---
 

@@ -7,6 +7,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 ### Cannot Connect to Server
 
 **Symptoms:**
+
 - `ConnectionRefused` error
 - Timeout errors during client creation
 
@@ -25,6 +26,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
    ```rust
    let client = Client::builder()
        .url("http://localhost:8080")  // Not https for local
+       .credentials(credentials)
        .insecure()                     // Required for non-TLS
        .build()
        .await?;
@@ -33,6 +35,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 ### TLS Certificate Errors
 
 **Symptoms:**
+
 - `InvalidCertificate` error
 - `CertificateRequired` error
 
@@ -53,6 +56,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
    ```rust
    let client = Client::builder()
        .url("https://dev.internal")
+       .credentials(credentials)
        .add_root_certificate(Certificate::from_pem(include_bytes!("ca.pem"))?)
        .build()
        .await?;
@@ -63,6 +67,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 ### Connection Pool Exhaustion
 
 **Symptoms:**
+
 - Requests hang indefinitely
 - `PoolTimeout` error
 
@@ -73,6 +78,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
    ```rust
    let client = Client::builder()
        .url("https://api.inferadb.com")
+       .credentials(credentials)
        .pool_size(50)  // Default is 20
        .build()
        .await?;
@@ -87,6 +93,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 ### Token Refresh Failures
 
 **Symptoms:**
+
 - `Unauthorized` errors after initial success
 - Errors mentioning "token expired"
 
@@ -112,6 +119,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 ### Invalid Client Credentials
 
 **Symptoms:**
+
 - `Unauthorized` error on first request
 - "Invalid client assertion" message
 
@@ -120,7 +128,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 1. Verify client ID matches the registered service:
 
    ```rust
-   let creds = ClientCredentials {
+   let creds = ClientCredentialsConfig {
        client_id: "my_service".into(),  // Must match registration
        private_key: Ed25519PrivateKey::from_pem_file("private_key.pem")?,
        certificate_id: None,
@@ -141,30 +149,31 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 ### Forbidden Errors
 
 **Symptoms:**
+
 - `Forbidden` error (403)
 - "Insufficient permissions" message
 
 **Solutions:**
 
-1. Verify the service has access to the vault:
+1. Verify the service has access to the organization and vault:
 
    ```rust
    // List accessible vaults
-   let vaults = client.control().list_vaults().await?;
+   let org = client.organization("org_...");
+   let vaults = org.vaults().list().collect().await?;
    for vault in vaults {
-       println!("{}: {:?}", vault.id, vault.permissions);
+       println!("{}: {:?}", vault.id, vault.name);
    }
    ```
 
 2. Check vault-level permissions in the control plane
 
-3. Ensure you're using the correct vault ID:
+3. Ensure you're using the correct organization and vault IDs:
 
    ```rust
-   let client = Client::builder()
-       .default_vault("correct-vault-id")  // Verify this
-       .build()
-       .await?;
+   let vault = client
+       .organization("org_...")  // Verify this
+       .vault("vlt_...");        // Verify this
    ```
 
 ## Authorization Check Issues
@@ -172,6 +181,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 ### Unexpected Denied Results
 
 **Symptoms:**
+
 - `check()` returns `false` when you expect `true`
 - Permissions work for some users but not others
 
@@ -180,7 +190,9 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 1. Use `expand()` to see the permission resolution path:
 
    ```rust
-   let expansion = client
+   let vault = client.organization("org_...").vault("vlt_...");
+
+   let expansion = vault
        .expand("user:alice", "view", "document:readme")
        .await?;
 
@@ -199,8 +211,10 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 2. Verify relationships exist:
 
    ```rust
-   let relations = client
-       .read("document:readme")
+   let relations = vault
+       .relationships()
+       .list()
+       .resource("document:readme")
        .collect()
        .await?;
 
@@ -220,6 +234,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 ### Check Latency Issues
 
 **Symptoms:**
+
 - Authorization checks taking >100ms
 - Latency spikes during peak traffic
 
@@ -228,13 +243,15 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 1. Use batch checks for multiple permissions:
 
    ```rust
+   let vault = client.organization("org_...").vault("vlt_...");
+
    // Slow: Sequential checks
    for (subject, permission, resource) in checks {
-       client.check(subject, permission, resource).await?;
+       vault.check(subject, permission, resource).await?;
    }
 
    // Fast: Batch check
-   let results = client
+   let results = vault
        .check_batch(checks)
        .collect()
        .await?;
@@ -244,9 +261,12 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 
    ```rust
    let client = Client::builder()
+       .url("https://api.inferadb.com")
+       .credentials(credentials)
        .cache(CacheConfig::default()
-           .max_entries(10_000)
-           .ttl(Duration::from_secs(60)))
+           .permission_ttl(Duration::from_secs(30))
+           .relationship_ttl(Duration::from_secs(300))
+           .max_entries(10_000))
        .build()
        .await?;
    ```
@@ -260,6 +280,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 ### Schema Mismatch Errors
 
 **Symptoms:**
+
 - `SchemaViolation` error
 - "Unknown relation" or "Unknown permission" errors
 
@@ -268,7 +289,8 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 1. Verify your schema is deployed:
 
    ```rust
-   let schema = client.control().get_schema(vault_id).await?;
+   let vault = client.organization("org_...").vault("vlt_...");
+   let schema = vault.schemas().get_active().await?;
    println!("{}", schema.ipl);
    ```
 
@@ -286,11 +308,13 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 3. Ensure you're checking permissions, not relations:
 
    ```rust
+   let vault = client.organization("org_...").vault("vlt_...");
+
    // Wrong: "viewer" is a relation, not a permission
-   client.check("user:alice", "viewer", "doc:1").await?;
+   vault.check("user:alice", "viewer", "doc:1").await?;
 
    // Correct: "view" is the permission
-   client.check("user:alice", "view", "doc:1").await?;
+   vault.check("user:alice", "view", "doc:1").await?;
    ```
 
 ## Streaming Issues
@@ -298,6 +322,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 ### Watch Stream Disconnects
 
 **Symptoms:**
+
 - Watch stream stops receiving events
 - `StreamReset` or `ConnectionClosed` errors
 
@@ -308,8 +333,11 @@ This guide covers common issues and their solutions when using the InferaDB Rust
    ```rust
    use futures::StreamExt;
 
+   let vault = client.organization("org_...").vault("vlt_...");
+   let mut last_revision = None;
+
    loop {
-       let mut stream = client
+       let mut stream = vault
            .watch()
            .from_revision(last_revision)
            .run()
@@ -318,7 +346,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
        while let Some(result) = stream.next().await {
            match result {
                Ok(change) => {
-                   last_revision = change.revision;
+                   last_revision = Some(change.revision);
                    process_change(change);
                }
                Err(e) if e.is_retriable() => {
@@ -336,7 +364,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 2. Use the resumable stream helper:
 
    ```rust
-   let stream = client
+   let stream = vault
        .watch()
        .resumable()  // Automatically handles reconnection
        .run()
@@ -346,6 +374,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 ### Backpressure and Slow Consumers
 
 **Symptoms:**
+
 - Memory usage grows unbounded
 - `BufferFull` errors
 
@@ -354,11 +383,12 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 1. Process events promptly or use bounded channels:
 
    ```rust
+   let vault = client.organization("org_...").vault("vlt_...");
    let (tx, mut rx) = tokio::sync::mpsc::channel(1000);
 
    // Producer task
    tokio::spawn(async move {
-       let mut stream = client.watch().run().await?;
+       let mut stream = vault.watch().run().await?;
        while let Some(change) = stream.next().await {
            if tx.send(change?).await.is_err() {
                break;  // Consumer dropped
@@ -376,7 +406,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 2. Apply server-side filtering:
 
    ```rust
-   let stream = client
+   let stream = vault
        .watch()
        .filter(WatchFilter::resource_type("document"))
        .filter(WatchFilter::relation("viewer"))
@@ -392,7 +422,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
 use inferadb::{Error, ErrorKind};
 
 async fn check_with_retry(
-    client: &Client,
+    vault: &VaultClient,
     subject: &str,
     permission: &str,
     resource: &str,
@@ -401,7 +431,7 @@ async fn check_with_retry(
     let max_attempts = 3;
 
     loop {
-        match client.check(subject, permission, resource).await {
+        match vault.check(subject, permission, resource).await {
             Ok(allowed) => return Ok(allowed),
             Err(e) if e.is_retriable() && attempts < max_attempts => {
                 attempts += 1;
@@ -475,7 +505,9 @@ tracing_subscriber::registry()
 Every error includes a request ID for support:
 
 ```rust
-match client.check("user:alice", "view", "doc:1").await {
+let vault = client.organization("org_...").vault("vlt_...");
+
+match vault.check("user:alice", "view", "doc:1").await {
     Err(e) => {
         eprintln!("Error: {}", e);
         if let Some(request_id) = e.request_id() {
@@ -488,12 +520,12 @@ match client.check("user:alice", "view", "doc:1").await {
 
 ### Common Environment Issues
 
-| Issue | Check | Fix |
-|-------|-------|-----|
-| Missing env vars | `echo $INFERADB_URL` | Set required environment variables |
-| Wrong key format | `file private_key.pem` | Ensure PEM format, Ed25519 algorithm |
-| DNS resolution | `nslookup api.inferadb.com` | Check DNS settings |
-| Firewall | `nc -zv api.inferadb.com 443` | Open outbound port 443 |
+| Issue            | Check                         | Fix                                  |
+| ---------------- | ----------------------------- | ------------------------------------ |
+| Missing env vars | `echo $INFERADB_URL`          | Set required environment variables   |
+| Wrong key format | `file private_key.pem`        | Ensure PEM format, Ed25519 algorithm |
+| DNS resolution   | `nslookup api.inferadb.com`   | Check DNS settings                   |
+| Firewall         | `nc -zv api.inferadb.com 443` | Open outbound port 443               |
 
 ## Getting Help
 
