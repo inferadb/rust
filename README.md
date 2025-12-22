@@ -83,24 +83,22 @@ inferadb = { version = "0.1", default-features = false, features = ["rest", "rus
 | `test-utils`    | Testing utilities (MockClient, etc.)   | No      |
 | `wasm`          | Browser/WASM support (REST only)       | No      |
 
-### Prelude Options
+### Prelude
+
+The prelude provides convenient access to commonly used types:
 
 ```rust
-// Standard prelude - most applications
 use inferadb::prelude::*;
-
-// Minimal prelude - libraries, minimal footprint
-use inferadb::prelude::core::*;
-
-// Extended prelude - includes testing utilities
-use inferadb::prelude::extended::*;
 ```
 
-| Prelude    | Use Case                 | Includes                           |
-| ---------- | ------------------------ | ---------------------------------- |
-| `core`     | Libraries, minimal deps  | Client, VaultClient, Error, traits |
-| Default    | Most applications        | Core + config types, credentials   |
-| `extended` | Tests, feature-rich apps | Full + MockClient, derive macros   |
+This exports:
+
+- **Client types**: `Client`, `ClientBuilder`, `VaultClient`
+- **Error types**: `Error`, `ErrorKind`, `AccessDenied`, `Result`
+- **Auth types**: `ClientCredentialsConfig`, `BearerCredentialsConfig`, `Ed25519PrivateKey`
+- **Data types**: `Relationship`, `Context`, `Decision`, `ConsistencyToken`
+- **Config types**: `CacheConfig`, `RetryConfig`, `TlsConfig`
+- **Testing**: `MockClient`, `InMemoryClient`, `AuthorizationClient`
 
 ## Usage
 
@@ -327,14 +325,25 @@ match vault.check("user:alice", "view", "doc:1").await {
 ## Documentation
 
 - [API Documentation](https://docs.rs/inferadb) - Full API reference
+- [Documentation Index](docs/README.md) - Complete guide to all documentation
+
+**Getting Started**
+
 - [Integration Patterns](docs/guides/integration-patterns.md) - Axum, Actix-web, GraphQL, gRPC
 - [Testing Guide](docs/guides/testing.md) - MockClient, InMemoryClient, TestVault
 - [Error Handling](docs/guides/errors.md) - Error types and retry strategies
-- [Consistency & Watch](docs/guides/consistency.md) - Consistency tokens, real-time streams
-- [Control API](docs/guides/control-api.md) - Organizations, schemas, members, audit
-- [Caching](docs/guides/caching.md) - Cache configuration and invalidation
+- [Migration Guide](docs/guides/migration.md) - From SpiceDB, OpenFGA, Oso, custom RBAC
+
+**Schema & Design**
+
+- [Schema Design](docs/guides/schema-design.md) - ReBAC patterns, role hierarchy, anti-patterns
+- [Authorization Scenarios](docs/guides/authorization-scenarios.md) - Multi-tenant SaaS, document sharing, API keys
+
+**Production**
+
 - [Performance Tuning](docs/guides/performance-tuning.md) - Optimization guide
 - [Production Checklist](docs/guides/production-checklist.md) - Deployment readiness
+- [Debugging](docs/guides/debugging.md) - Diagnosis, explain API, common issues
 - [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
 
 ## Examples
