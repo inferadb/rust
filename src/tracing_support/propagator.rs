@@ -30,7 +30,8 @@ impl HeaderInjector for std::collections::HashMap<String, String> {
 /// A propagator for trace context.
 pub trait Propagator {
     /// Extracts a trace context from headers.
-    fn extract<E: HeaderExtractor>(&self, extractor: &E) -> Result<TraceContext, TraceContextError>;
+    fn extract<E: HeaderExtractor>(&self, extractor: &E)
+        -> Result<TraceContext, TraceContextError>;
 
     /// Injects a trace context into headers.
     fn inject<I: HeaderInjector>(&self, context: &TraceContext, injector: &mut I);
@@ -66,7 +67,10 @@ impl W3CTraceContext {
 }
 
 impl Propagator for W3CTraceContext {
-    fn extract<E: HeaderExtractor>(&self, extractor: &E) -> Result<TraceContext, TraceContextError> {
+    fn extract<E: HeaderExtractor>(
+        &self,
+        extractor: &E,
+    ) -> Result<TraceContext, TraceContextError> {
         let traceparent = extractor
             .get(Self::TRACEPARENT)
             .ok_or(TraceContextError::InvalidFormat)?;
@@ -129,12 +133,16 @@ impl B3Propagator {
 
     /// Creates a new B3 propagator using the single header format.
     pub fn single() -> Self {
-        Self { single_header: true }
+        Self {
+            single_header: true,
+        }
     }
 
     /// Creates a new B3 propagator using multiple headers.
     pub fn multi() -> Self {
-        Self { single_header: false }
+        Self {
+            single_header: false,
+        }
     }
 }
 
@@ -145,7 +153,10 @@ impl Default for B3Propagator {
 }
 
 impl Propagator for B3Propagator {
-    fn extract<E: HeaderExtractor>(&self, extractor: &E) -> Result<TraceContext, TraceContextError> {
+    fn extract<E: HeaderExtractor>(
+        &self,
+        extractor: &E,
+    ) -> Result<TraceContext, TraceContextError> {
         // Try single header first
         if let Some(b3) = extractor.get(Self::B3) {
             return parse_b3_single(b3);
@@ -344,7 +355,10 @@ mod tests {
     fn test_b3_multi_extract_with_sampled_true() {
         let propagator = B3Propagator::multi();
         let mut headers = HashMap::new();
-        headers.insert("x-b3-traceid".to_string(), "4bf92f3577b34da6a3ce929d0e0e4736".to_string());
+        headers.insert(
+            "x-b3-traceid".to_string(),
+            "4bf92f3577b34da6a3ce929d0e0e4736".to_string(),
+        );
         headers.insert("x-b3-spanid".to_string(), "00f067aa0ba902b7".to_string());
         headers.insert("x-b3-sampled".to_string(), "true".to_string());
 
@@ -356,7 +370,10 @@ mod tests {
     fn test_b3_multi_extract_without_sampled() {
         let propagator = B3Propagator::multi();
         let mut headers = HashMap::new();
-        headers.insert("x-b3-traceid".to_string(), "4bf92f3577b34da6a3ce929d0e0e4736".to_string());
+        headers.insert(
+            "x-b3-traceid".to_string(),
+            "4bf92f3577b34da6a3ce929d0e0e4736".to_string(),
+        );
         headers.insert("x-b3-spanid".to_string(), "00f067aa0ba902b7".to_string());
 
         let ctx = propagator.extract(&headers).unwrap();
@@ -369,7 +386,10 @@ mod tests {
         let propagator = B3Propagator::single();
         let mut headers = HashMap::new();
         // "d" means debug (force sampling)
-        headers.insert("b3".to_string(), "4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-d".to_string());
+        headers.insert(
+            "b3".to_string(),
+            "4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-d".to_string(),
+        );
 
         let ctx = propagator.extract(&headers).unwrap();
         assert!(ctx.is_sampled());
@@ -379,7 +399,10 @@ mod tests {
     fn test_b3_single_without_sampling_state() {
         let propagator = B3Propagator::single();
         let mut headers = HashMap::new();
-        headers.insert("b3".to_string(), "4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7".to_string());
+        headers.insert(
+            "b3".to_string(),
+            "4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7".to_string(),
+        );
 
         let ctx = propagator.extract(&headers).unwrap();
         // Default to sampled when not specified
@@ -431,7 +454,7 @@ mod tests {
 
     #[test]
     fn test_w3c_propagator_default() {
-        let _propagator = W3CTraceContext::default();
+        let _propagator = W3CTraceContext;
     }
 
     #[test]
@@ -462,7 +485,10 @@ mod tests {
     fn test_b3_multi_missing_span_id() {
         let propagator = B3Propagator::multi();
         let mut headers = HashMap::new();
-        headers.insert("x-b3-traceid".to_string(), "4bf92f3577b34da6a3ce929d0e0e4736".to_string());
+        headers.insert(
+            "x-b3-traceid".to_string(),
+            "4bf92f3577b34da6a3ce929d0e0e4736".to_string(),
+        );
 
         let result = propagator.extract(&headers);
         assert!(result.is_err());

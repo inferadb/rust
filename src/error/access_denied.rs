@@ -246,8 +246,8 @@ mod tests {
 
     #[test]
     fn test_access_denied_with_request_id() {
-        let denied = AccessDenied::new("user:charlie", "edit", "doc:1")
-            .with_request_id("req_abc123");
+        let denied =
+            AccessDenied::new("user:charlie", "edit", "doc:1").with_request_id("req_abc123");
         assert_eq!(denied.request_id(), Some("req_abc123"));
     }
 

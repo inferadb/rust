@@ -131,10 +131,7 @@ impl TraceContext {
     /// assert!(header.starts_with("00-"));
     /// ```
     pub fn to_traceparent(&self) -> String {
-        format!(
-            "00-{}-{}-{:02x}",
-            self.trace_id, self.span_id, self.flags.0
-        )
+        format!("00-{}-{}-{:02x}", self.trace_id, self.span_id, self.flags.0)
     }
 
     /// Returns the trace ID.
@@ -219,8 +216,7 @@ impl TraceId {
             return Err(TraceContextError::InvalidTraceId);
         }
         let mut bytes = [0u8; 16];
-        hex::decode_to_slice(hex, &mut bytes)
-            .map_err(|_| TraceContextError::InvalidTraceId)?;
+        hex::decode_to_slice(hex, &mut bytes).map_err(|_| TraceContextError::InvalidTraceId)?;
 
         // Check for invalid all-zero trace ID
         if bytes == [0u8; 16] {
@@ -271,8 +267,7 @@ impl SpanId {
             return Err(TraceContextError::InvalidSpanId);
         }
         let mut bytes = [0u8; 8];
-        hex::decode_to_slice(hex, &mut bytes)
-            .map_err(|_| TraceContextError::InvalidSpanId)?;
+        hex::decode_to_slice(hex, &mut bytes).map_err(|_| TraceContextError::InvalidSpanId)?;
 
         // Check for invalid all-zero span ID
         if bytes == [0u8; 8] {
@@ -315,8 +310,7 @@ impl TraceFlags {
         if hex.len() != 2 {
             return Err(TraceContextError::InvalidFlags);
         }
-        let value = u8::from_str_radix(hex, 16)
-            .map_err(|_| TraceContextError::InvalidFlags)?;
+        let value = u8::from_str_radix(hex, 16).map_err(|_| TraceContextError::InvalidFlags)?;
         Ok(Self(value))
     }
 
@@ -392,10 +386,14 @@ mod tests {
     #[test]
     fn test_trace_context_from_traceparent() {
         let ctx = TraceContext::from_traceparent(
-            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-        ).unwrap();
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        )
+        .unwrap();
 
-        assert_eq!(ctx.trace_id().to_string(), "4bf92f3577b34da6a3ce929d0e0e4736");
+        assert_eq!(
+            ctx.trace_id().to_string(),
+            "4bf92f3577b34da6a3ce929d0e0e4736"
+        );
         assert_eq!(ctx.span_id().to_string(), "00f067aa0ba902b7");
         assert!(ctx.is_sampled());
     }
@@ -403,8 +401,9 @@ mod tests {
     #[test]
     fn test_trace_context_to_traceparent() {
         let ctx = TraceContext::from_traceparent(
-            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-        ).unwrap();
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        )
+        .unwrap();
 
         assert_eq!(
             ctx.to_traceparent(),
@@ -415,8 +414,9 @@ mod tests {
     #[test]
     fn test_trace_context_not_sampled() {
         let ctx = TraceContext::from_traceparent(
-            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00"
-        ).unwrap();
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00",
+        )
+        .unwrap();
 
         assert!(!ctx.is_sampled());
     }
@@ -429,8 +429,7 @@ mod tests {
 
     #[test]
     fn test_trace_context_with_tracestate() {
-        let ctx = TraceContext::new_root()
-            .with_tracestate("vendor=value");
+        let ctx = TraceContext::new_root().with_tracestate("vendor=value");
 
         assert_eq!(ctx.tracestate(), Some("vendor=value"));
     }
@@ -495,25 +494,31 @@ mod tests {
     #[test]
     fn test_trace_context_display() {
         let ctx = TraceContext::from_traceparent(
-            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-        ).unwrap();
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        )
+        .unwrap();
         let display = format!("{}", ctx);
-        assert_eq!(display, "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
+        assert_eq!(
+            display,
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+        );
     }
 
     #[test]
     fn test_trace_context_flags_accessor() {
         let ctx = TraceContext::from_traceparent(
-            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-        ).unwrap();
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        )
+        .unwrap();
         assert_eq!(ctx.flags(), TraceFlags::SAMPLED);
     }
 
     #[test]
     fn test_trace_context_unsupported_version() {
         let err = TraceContext::from_traceparent(
-            "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-        ).unwrap_err();
+            "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        )
+        .unwrap_err();
         assert_eq!(err, TraceContextError::UnsupportedVersion);
     }
 
@@ -651,8 +656,7 @@ mod tests {
 
     #[test]
     fn test_trace_context_child_inherits_tracestate() {
-        let parent = TraceContext::new_root()
-            .with_tracestate("vendor=value");
+        let parent = TraceContext::new_root().with_tracestate("vendor=value");
         let child = parent.child();
         assert_eq!(child.tracestate(), Some("vendor=value"));
     }
@@ -667,11 +671,13 @@ mod tests {
     #[test]
     fn test_trace_context_eq() {
         let ctx1 = TraceContext::from_traceparent(
-            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-        ).unwrap();
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        )
+        .unwrap();
         let ctx2 = TraceContext::from_traceparent(
-            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-        ).unwrap();
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        )
+        .unwrap();
         assert_eq!(ctx1, ctx2);
     }
 

@@ -552,13 +552,34 @@ mod tests {
     #[test]
     fn test_schema_change_type() {
         assert_eq!(SchemaChangeType::EntityAdded.to_string(), "entity_added");
-        assert_eq!(SchemaChangeType::EntityRemoved.to_string(), "entity_removed");
-        assert_eq!(SchemaChangeType::RelationAdded.to_string(), "relation_added");
-        assert_eq!(SchemaChangeType::RelationRemoved.to_string(), "relation_removed");
-        assert_eq!(SchemaChangeType::RelationModified.to_string(), "relation_modified");
-        assert_eq!(SchemaChangeType::PermissionAdded.to_string(), "permission_added");
-        assert_eq!(SchemaChangeType::PermissionRemoved.to_string(), "permission_removed");
-        assert_eq!(SchemaChangeType::PermissionModified.to_string(), "permission_modified");
+        assert_eq!(
+            SchemaChangeType::EntityRemoved.to_string(),
+            "entity_removed"
+        );
+        assert_eq!(
+            SchemaChangeType::RelationAdded.to_string(),
+            "relation_added"
+        );
+        assert_eq!(
+            SchemaChangeType::RelationRemoved.to_string(),
+            "relation_removed"
+        );
+        assert_eq!(
+            SchemaChangeType::RelationModified.to_string(),
+            "relation_modified"
+        );
+        assert_eq!(
+            SchemaChangeType::PermissionAdded.to_string(),
+            "permission_added"
+        );
+        assert_eq!(
+            SchemaChangeType::PermissionRemoved.to_string(),
+            "permission_removed"
+        );
+        assert_eq!(
+            SchemaChangeType::PermissionModified.to_string(),
+            "permission_modified"
+        );
     }
 
     #[tokio::test]

@@ -261,8 +261,8 @@ mod tests {
     #[test]
     fn test_client_credentials_with_certificate() {
         let key = Ed25519PrivateKey::generate();
-        let config = ClientCredentialsConfig::new("test_client", key)
-            .with_certificate_id("cert_123");
+        let config =
+            ClientCredentialsConfig::new("test_client", key).with_certificate_id("cert_123");
         assert_eq!(config.certificate_id, Some("cert_123".to_string()));
     }
 

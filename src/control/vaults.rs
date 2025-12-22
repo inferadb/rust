@@ -524,7 +524,10 @@ mod tests {
     async fn test_vaults_delete_with_confirmation() {
         let client = create_test_client().await;
         let vaults = VaultsClient::new(client, "org_test");
-        let result = vaults.delete("vlt_abc123").confirm("DELETE vlt_abc123").await;
+        let result = vaults
+            .delete("vlt_abc123")
+            .confirm("DELETE vlt_abc123")
+            .await;
         assert!(result.is_ok());
     }
 
@@ -532,7 +535,10 @@ mod tests {
     async fn test_vaults_delete_wrong_confirmation() {
         let client = create_test_client().await;
         let vaults = VaultsClient::new(client, "org_test");
-        let result = vaults.delete("vlt_abc123").confirm("DELETE wrong_vault").await;
+        let result = vaults
+            .delete("vlt_abc123")
+            .confirm("DELETE wrong_vault")
+            .await;
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert!(error.to_string().contains("Invalid confirmation"));

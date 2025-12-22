@@ -63,7 +63,6 @@ impl fmt::Display for DecisionReason {
     }
 }
 
-
 /// Metadata about an authorization decision.
 ///
 /// This provides observability into the authorization check process,
@@ -257,9 +256,7 @@ impl Decision {
 
     /// Returns the request ID, if available.
     pub fn request_id(&self) -> Option<&str> {
-        self.metadata
-            .as_ref()
-            .and_then(|m| m.request_id.as_deref())
+        self.metadata.as_ref().and_then(|m| m.request_id.as_deref())
     }
 
     /// Sets the metadata for this decision.
@@ -415,16 +412,21 @@ mod tests {
         assert_eq!(Decision::allowed().to_string(), "allowed");
         assert_eq!(Decision::denied().to_string(), "denied");
 
-        let with_reason = Decision::allowed().with_metadata(
-            DecisionMetadata::new().with_reason(DecisionReason::DirectRelationship),
-        );
+        let with_reason = Decision::allowed()
+            .with_metadata(DecisionMetadata::new().with_reason(DecisionReason::DirectRelationship));
         assert_eq!(with_reason.to_string(), "allowed (direct relationship)");
     }
 
     #[test]
     fn test_decision_reason_display() {
-        assert_eq!(DecisionReason::DirectRelationship.to_string(), "direct relationship");
-        assert_eq!(DecisionReason::NoRelationship.to_string(), "no relationship");
+        assert_eq!(
+            DecisionReason::DirectRelationship.to_string(),
+            "direct relationship"
+        );
+        assert_eq!(
+            DecisionReason::NoRelationship.to_string(),
+            "no relationship"
+        );
         assert_eq!(DecisionReason::ConditionMet.to_string(), "condition met");
     }
 

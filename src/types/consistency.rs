@@ -157,7 +157,6 @@ pub enum ConsistencyRequirement {
     Full,
 }
 
-
 impl ConsistencyRequirement {
     /// Returns the token if this is an `AtLeastAsFresh` requirement.
     pub fn token(&self) -> Option<&ConsistencyToken> {

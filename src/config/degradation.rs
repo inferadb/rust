@@ -191,10 +191,14 @@ mod tests {
 
     #[test]
     fn test_use_cached() {
-        let mode = FailureMode::UseCached { default_allow: true };
+        let mode = FailureMode::UseCached {
+            default_allow: true,
+        };
         assert!(mode.allows_on_failure());
 
-        let mode = FailureMode::UseCached { default_allow: false };
+        let mode = FailureMode::UseCached {
+            default_allow: false,
+        };
         assert!(!mode.allows_on_failure());
     }
 
@@ -207,7 +211,10 @@ mod tests {
 
         assert!(config.circuit_breaker_enabled);
         assert_eq!(config.circuit_breaker_threshold, 10);
-        assert_eq!(config.circuit_breaker_reset_timeout, Duration::from_secs(60));
+        assert_eq!(
+            config.circuit_breaker_reset_timeout,
+            Duration::from_secs(60)
+        );
     }
 
     #[test]

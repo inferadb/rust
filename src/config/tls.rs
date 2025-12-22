@@ -122,10 +122,7 @@ mod tests {
     fn test_ca_cert_file() {
         let config = TlsConfig::new().with_ca_cert_file("/path/to/ca.crt");
         assert!(config.has_custom_ca());
-        assert_eq!(
-            config.ca_cert_file,
-            Some(PathBuf::from("/path/to/ca.crt"))
-        );
+        assert_eq!(config.ca_cert_file, Some(PathBuf::from("/path/to/ca.crt")));
     }
 
     #[test]

@@ -3,11 +3,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::client::Client;
-use crate::control::{Page, SortOrder};
 use crate::control::audit::AuditLogsClient;
 use crate::control::members::{InvitationsClient, MembersClient};
 use crate::control::teams::TeamsClient;
 use crate::control::vaults::VaultsClient;
+use crate::control::{Page, SortOrder};
 use crate::Error;
 
 /// Client for organization-level control plane operations.
@@ -162,7 +162,10 @@ impl OrganizationControlClient {
     ///     ..Default::default()
     /// }).await?;
     /// ```
-    pub async fn update(&self, request: UpdateOrganizationRequest) -> Result<OrganizationInfo, Error> {
+    pub async fn update(
+        &self,
+        request: UpdateOrganizationRequest,
+    ) -> Result<OrganizationInfo, Error> {
         // TODO: Implement actual API call
         let _ = request;
         self.get().await
@@ -238,7 +241,10 @@ impl OrganizationsClient {
     ///     display_name: Some("My Organization".into()),
     /// }).await?;
     /// ```
-    pub async fn create(&self, request: CreateOrganizationRequest) -> Result<OrganizationInfo, Error> {
+    pub async fn create(
+        &self,
+        request: CreateOrganizationRequest,
+    ) -> Result<OrganizationInfo, Error> {
         // TODO: Implement actual API call
         Ok(OrganizationInfo {
             id: format!("org_{}", uuid::Uuid::new_v4()),
@@ -252,7 +258,8 @@ impl OrganizationsClient {
 
 impl std::fmt::Debug for OrganizationsClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OrganizationsClient").finish_non_exhaustive()
+        f.debug_struct("OrganizationsClient")
+            .finish_non_exhaustive()
     }
 }
 
@@ -423,8 +430,7 @@ mod tests {
 
     #[test]
     fn test_create_organization_request() {
-        let req = CreateOrganizationRequest::new("my-org")
-            .with_display_name("My Organization");
+        let req = CreateOrganizationRequest::new("my-org").with_display_name("My Organization");
 
         assert_eq!(req.name, "my-org");
         assert_eq!(req.display_name, Some("My Organization".to_string()));
@@ -432,8 +438,7 @@ mod tests {
 
     #[test]
     fn test_update_organization_request() {
-        let req = UpdateOrganizationRequest::new()
-            .with_display_name("New Name");
+        let req = UpdateOrganizationRequest::new().with_display_name("New Name");
 
         assert_eq!(req.display_name, Some("New Name".to_string()));
     }
@@ -540,8 +545,7 @@ mod tests {
     async fn test_organizations_create() {
         let client = create_test_client().await;
         let orgs = OrganizationsClient::new(client);
-        let request = CreateOrganizationRequest::new("my-org")
-            .with_display_name("My Organization");
+        let request = CreateOrganizationRequest::new("my-org").with_display_name("My Organization");
         let info = orgs.create(request).await.unwrap();
         assert_eq!(info.name, "my-org");
         assert_eq!(info.display_name, Some("My Organization".to_string()));

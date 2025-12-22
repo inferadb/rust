@@ -523,11 +523,16 @@ impl ExportAuditLogsRequest {
     }
 
     /// Returns a stream of events.
-    pub fn stream(
-        self,
-    ) -> impl futures::Stream<Item = Result<AuditEvent, Error>> + Send + 'static {
+    pub fn stream(self) -> impl futures::Stream<Item = Result<AuditEvent, Error>> + Send + 'static {
         // TODO: Implement actual streaming
-        let _ = (&self.client, &self.organization_id, self.vault_id, self.after, self.before, self.format);
+        let _ = (
+            &self.client,
+            &self.organization_id,
+            self.vault_id,
+            self.after,
+            self.before,
+            self.format,
+        );
         futures::stream::empty()
     }
 }
@@ -558,9 +563,15 @@ mod tests {
     fn test_audit_action() {
         assert_eq!(AuditAction::default(), AuditAction::Check);
         assert_eq!(AuditAction::Check.to_string(), "check");
-        assert_eq!(AuditAction::RelationshipWrite.to_string(), "relationship.write");
+        assert_eq!(
+            AuditAction::RelationshipWrite.to_string(),
+            "relationship.write"
+        );
         assert_eq!(AuditAction::SchemaPush.to_string(), "schema.push");
-        assert_eq!(AuditAction::RelationshipDelete.to_string(), "relationship.delete");
+        assert_eq!(
+            AuditAction::RelationshipDelete.to_string(),
+            "relationship.delete"
+        );
         assert_eq!(AuditAction::SchemaActivate.to_string(), "schema.activate");
         assert_eq!(AuditAction::VaultCreate.to_string(), "vault.create");
         assert_eq!(AuditAction::VaultUpdate.to_string(), "vault.update");
@@ -660,10 +671,7 @@ mod tests {
     async fn test_audit_logs_export_to_file() {
         let client = create_test_client().await;
         let audit = AuditLogsClient::new(client, "org_test");
-        let result = audit
-            .export()
-            .write_to_file("/tmp/audit.json")
-            .await;
+        let result = audit.export().write_to_file("/tmp/audit.json").await;
         assert!(result.is_ok());
     }
 }

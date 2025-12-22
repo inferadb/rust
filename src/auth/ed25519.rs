@@ -161,9 +161,8 @@ impl Ed25519PrivateKey {
     pub fn from_pem(pem: &str) -> Result<Self, Error> {
         use ed25519_dalek::pkcs8::DecodePrivateKey;
 
-        let key = SigningKey::from_pkcs8_pem(pem).map_err(|e| {
-            Error::configuration(format!("failed to parse Ed25519 PEM: {}", e))
-        })?;
+        let key = SigningKey::from_pkcs8_pem(pem)
+            .map_err(|e| Error::configuration(format!("failed to parse Ed25519 PEM: {}", e)))?;
 
         Ok(Self { key })
     }

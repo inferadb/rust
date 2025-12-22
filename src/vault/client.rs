@@ -370,7 +370,8 @@ impl<'a> CheckRequest<'a> {
 
 impl<'a> std::future::IntoFuture for CheckRequest<'a> {
     type Output = Result<bool, Error>;
-    type IntoFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
+    type IntoFuture =
+        std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.execute())
@@ -419,7 +420,8 @@ impl<'a> RequireCheckRequest<'a> {
 
 impl<'a> std::future::IntoFuture for RequireCheckRequest<'a> {
     type Output = Result<(), AccessDenied>;
-    type IntoFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
+    type IntoFuture =
+        std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.execute())
@@ -512,7 +514,8 @@ impl<'a> BatchCheckRequest<'a> {
 
 impl<'a> std::future::IntoFuture for BatchCheckRequest<'a> {
     type Output = Result<Vec<bool>, Error>;
-    type IntoFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
+    type IntoFuture =
+        std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.execute())
@@ -713,7 +716,8 @@ impl<'a> WriteRelationshipRequest<'a> {
 
 impl<'a> std::future::IntoFuture for WriteRelationshipRequest<'a> {
     type Output = Result<ConsistencyToken, Error>;
-    type IntoFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
+    type IntoFuture =
+        std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.execute())
@@ -748,7 +752,8 @@ impl<'a> WriteBatchRequest<'a> {
 
 impl<'a> std::future::IntoFuture for WriteBatchRequest<'a> {
     type Output = Result<ConsistencyToken, Error>;
-    type IntoFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
+    type IntoFuture =
+        std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.execute())
@@ -770,7 +775,8 @@ impl<'a> DeleteRelationshipRequest<'a> {
 
 impl<'a> std::future::IntoFuture for DeleteRelationshipRequest<'a> {
     type Output = Result<(), Error>;
-    type IntoFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
+    type IntoFuture =
+        std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.execute())
@@ -834,7 +840,8 @@ impl ListRelationshipsRequest {
 
 impl std::future::IntoFuture for ListRelationshipsRequest {
     type Output = Result<ListRelationshipsResponse, Error>;
-    type IntoFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'static>>;
+    type IntoFuture =
+        std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'static>>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.execute())
@@ -1026,7 +1033,10 @@ impl<'a> ResourcesListBuilder<'a> {
     /// ```
     #[must_use]
     pub fn take(self, n: usize) -> ResourcesListTake<'a> {
-        ResourcesListTake { inner: self, limit: n }
+        ResourcesListTake {
+            inner: self,
+            limit: n,
+        }
     }
 
     /// Collect all results into a Vec.
@@ -1044,7 +1054,14 @@ impl<'a> ResourcesListBuilder<'a> {
     /// ```
     pub async fn collect(self) -> Result<Vec<String>, Error> {
         // TODO: Implement actual API call via transport layer
-        let _ = (self.vault, self.subject, self.permission, self.resource_type, self.consistency, self.page_size);
+        let _ = (
+            self.vault,
+            self.subject,
+            self.permission,
+            self.resource_type,
+            self.consistency,
+            self.page_size,
+        );
         Ok(Vec::new())
     }
 
@@ -1068,7 +1085,14 @@ impl<'a> ResourcesListBuilder<'a> {
     /// ```
     pub async fn cursor(self, _cursor: Option<&str>) -> Result<ResourcesPage, Error> {
         // TODO: Implement actual API call via transport layer
-        let _ = (self.vault, self.subject, self.permission, self.resource_type, self.consistency, self.page_size);
+        let _ = (
+            self.vault,
+            self.subject,
+            self.permission,
+            self.resource_type,
+            self.consistency,
+            self.page_size,
+        );
         Ok(ResourcesPage {
             resources: Vec::new(),
             next_cursor: None,
@@ -1277,7 +1301,10 @@ impl<'a> SubjectsListBuilder<'a> {
     /// ```
     #[must_use]
     pub fn take(self, n: usize) -> SubjectsListTake<'a> {
-        SubjectsListTake { inner: self, limit: n }
+        SubjectsListTake {
+            inner: self,
+            limit: n,
+        }
     }
 
     /// Collect all results into a Vec.
@@ -1295,7 +1322,14 @@ impl<'a> SubjectsListBuilder<'a> {
     /// ```
     pub async fn collect(self) -> Result<Vec<String>, Error> {
         // TODO: Implement actual API call via transport layer
-        let _ = (self.vault, self.permission, self.resource, self.subject_type, self.consistency, self.page_size);
+        let _ = (
+            self.vault,
+            self.permission,
+            self.resource,
+            self.subject_type,
+            self.consistency,
+            self.page_size,
+        );
         Ok(Vec::new())
     }
 
@@ -1319,7 +1353,14 @@ impl<'a> SubjectsListBuilder<'a> {
     /// ```
     pub async fn cursor(self, _cursor: Option<&str>) -> Result<SubjectsPage, Error> {
         // TODO: Implement actual API call via transport layer
-        let _ = (self.vault, self.permission, self.resource, self.subject_type, self.consistency, self.page_size);
+        let _ = (
+            self.vault,
+            self.permission,
+            self.resource,
+            self.subject_type,
+            self.consistency,
+            self.page_size,
+        );
         Ok(SubjectsPage {
             subjects: Vec::new(),
             next_cursor: None,
@@ -1420,10 +1461,7 @@ mod tests {
     #[tokio::test]
     async fn test_require() {
         let vault = create_test_vault().await;
-        let result = vault
-            .check("user:alice", "view", "doc:1")
-            .require()
-            .await;
+        let result = vault.check("user:alice", "view", "doc:1").require().await;
         assert!(result.is_ok());
     }
 
@@ -1633,7 +1671,9 @@ mod tests {
     #[tokio::test]
     async fn test_relationships_write_batch_empty() {
         let vault = create_test_vault().await;
-        let batch = vault.relationships().write_batch(Vec::<Relationship>::new());
+        let batch = vault
+            .relationships()
+            .write_batch(Vec::<Relationship>::new());
         assert!(batch.is_empty());
     }
 
@@ -1672,9 +1712,7 @@ mod tests {
     #[test]
     fn test_list_relationships_response() {
         let response = ListRelationshipsResponse {
-            relationships: vec![
-                Relationship::new("doc:1", "viewer", "user:alice").into_owned(),
-            ],
+            relationships: vec![Relationship::new("doc:1", "viewer", "user:alice").into_owned()],
             next_cursor: Some("cursor123".to_string()),
         };
 

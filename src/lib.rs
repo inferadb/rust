@@ -95,14 +95,14 @@ pub use auth::{
 
 // Re-export config types
 pub use config::{
-    CacheConfig, CircuitBreakerConfig, CircuitEvent, CircuitState, CircuitStats,
-    DegradationConfig, FailureMode, FailurePredicate, RetryConfig, TlsConfig,
+    CacheConfig, CircuitBreakerConfig, CircuitEvent, CircuitState, CircuitStats, DegradationConfig,
+    FailureMode, FailurePredicate, RetryConfig, TlsConfig,
 };
 
 // Re-export transport types
 pub use transport::{
-    FallbackReason, FallbackTrigger, GrpcStats, PoolConfig, RestStats, Transport,
-    TransportEvent, TransportStats, TransportStrategy,
+    FallbackReason, FallbackTrigger, GrpcStats, PoolConfig, RestStats, Transport, TransportEvent,
+    TransportStats, TransportStrategy,
 };
 
 // Testing support

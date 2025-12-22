@@ -377,8 +377,7 @@ mod tests {
 
     #[test]
     fn test_error_with_request_id() {
-        let err = Error::new(ErrorKind::Internal, "server error")
-            .with_request_id("req_abc123");
+        let err = Error::new(ErrorKind::Internal, "server error").with_request_id("req_abc123");
         assert_eq!(err.request_id(), Some("req_abc123"));
         assert!(err.to_string().contains("req_abc123"));
     }
@@ -402,8 +401,7 @@ mod tests {
     #[test]
     fn test_error_with_source() {
         let io_err = std::io::Error::other("underlying error");
-        let err = Error::new(ErrorKind::Connection, "connection failed")
-            .with_source(io_err);
+        let err = Error::new(ErrorKind::Connection, "connection failed").with_source(io_err);
         assert!(err.source().is_some());
     }
 
@@ -412,8 +410,14 @@ mod tests {
         assert_eq!(Error::unauthorized("test").kind(), ErrorKind::Unauthorized);
         assert_eq!(Error::forbidden("test").kind(), ErrorKind::Forbidden);
         assert_eq!(Error::not_found("test").kind(), ErrorKind::NotFound);
-        assert_eq!(Error::invalid_argument("test").kind(), ErrorKind::InvalidArgument);
-        assert_eq!(Error::schema_violation("test").kind(), ErrorKind::SchemaViolation);
+        assert_eq!(
+            Error::invalid_argument("test").kind(),
+            ErrorKind::InvalidArgument
+        );
+        assert_eq!(
+            Error::schema_violation("test").kind(),
+            ErrorKind::SchemaViolation
+        );
         assert_eq!(Error::unavailable("test").kind(), ErrorKind::Unavailable);
         assert_eq!(Error::timeout("test").kind(), ErrorKind::Timeout);
         assert_eq!(Error::internal("test").kind(), ErrorKind::Internal);
@@ -421,7 +425,10 @@ mod tests {
         assert_eq!(Error::circuit_open().kind(), ErrorKind::CircuitOpen);
         assert_eq!(Error::connection("test").kind(), ErrorKind::Connection);
         assert_eq!(Error::protocol("test").kind(), ErrorKind::Protocol);
-        assert_eq!(Error::configuration("test").kind(), ErrorKind::Configuration);
+        assert_eq!(
+            Error::configuration("test").kind(),
+            ErrorKind::Configuration
+        );
     }
 
     #[test]
@@ -439,8 +446,7 @@ mod tests {
 
     #[test]
     fn test_display_format() {
-        let err = Error::new(ErrorKind::NotFound, "vault not found")
-            .with_request_id("req_xyz789");
+        let err = Error::new(ErrorKind::NotFound, "vault not found").with_request_id("req_xyz789");
         let display = err.to_string();
         assert!(display.contains("not found"));
         assert!(display.contains("vault not found"));
@@ -482,7 +488,8 @@ mod tests {
 
     #[test]
     fn test_from_io_error_connection_refused() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "connection refused");
+        let io_err =
+            std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "connection refused");
         let err: Error = io_err.into();
         assert_eq!(err.kind(), ErrorKind::Connection);
     }
@@ -496,7 +503,8 @@ mod tests {
 
     #[test]
     fn test_from_io_error_connection_aborted() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::ConnectionAborted, "connection aborted");
+        let io_err =
+            std::io::Error::new(std::io::ErrorKind::ConnectionAborted, "connection aborted");
         let err: Error = io_err.into();
         assert_eq!(err.kind(), ErrorKind::Connection);
     }
@@ -510,7 +518,7 @@ mod tests {
 
     #[test]
     fn test_from_io_error_other() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::Other, "other error");
+        let io_err = std::io::Error::other("other error");
         let err: Error = io_err.into();
         assert_eq!(err.kind(), ErrorKind::Internal);
     }
@@ -525,7 +533,8 @@ mod tests {
 
     #[test]
     fn test_from_serde_json_error() {
-        let json_err: serde_json::Error = serde_json::from_str::<serde_json::Value>("{invalid}").unwrap_err();
+        let json_err: serde_json::Error =
+            serde_json::from_str::<serde_json::Value>("{invalid}").unwrap_err();
         let err: Error = json_err.into();
         assert_eq!(err.kind(), ErrorKind::Protocol);
         assert!(err.to_string().contains("JSON error"));
@@ -550,5 +559,4 @@ mod tests {
         let debug = format!("{:?}", err);
         assert!(debug.contains("Error"));
     }
-
 }

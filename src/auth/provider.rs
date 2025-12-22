@@ -7,8 +7,7 @@ use std::sync::Arc;
 use crate::Error;
 
 /// A type alias for the boxed future returned by credentials providers.
-pub type CredentialsFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<String, Error>> + Send + 'a>>;
+pub type CredentialsFuture<'a> = Pin<Box<dyn Future<Output = Result<String, Error>> + Send + 'a>>;
 
 /// Trait for providing authentication credentials dynamically.
 ///

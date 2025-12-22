@@ -135,7 +135,8 @@ impl RetryConfig {
             return Duration::ZERO;
         }
 
-        let base_delay = self.initial_delay.as_secs_f64() * self.multiplier.powi(attempt as i32 - 1);
+        let base_delay =
+            self.initial_delay.as_secs_f64() * self.multiplier.powi(attempt as i32 - 1);
         let capped_delay = base_delay.min(self.max_delay.as_secs_f64());
 
         // Add jitter

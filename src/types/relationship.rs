@@ -299,13 +299,19 @@ impl FromStr for Relationship<'static> {
         })?;
 
         if resource.is_empty() {
-            return Err(Error::invalid_argument("relationship resource cannot be empty"));
+            return Err(Error::invalid_argument(
+                "relationship resource cannot be empty",
+            ));
         }
         if relation.is_empty() {
-            return Err(Error::invalid_argument("relationship relation cannot be empty"));
+            return Err(Error::invalid_argument(
+                "relationship relation cannot be empty",
+            ));
         }
         if subject.is_empty() {
-            return Err(Error::invalid_argument("relationship subject cannot be empty"));
+            return Err(Error::invalid_argument(
+                "relationship subject cannot be empty",
+            ));
         }
 
         Ok(Relationship::new(

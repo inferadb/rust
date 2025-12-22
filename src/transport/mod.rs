@@ -40,8 +40,8 @@ pub(crate) mod mock;
 
 // Re-export public types
 pub use traits::{
-    FallbackReason, FallbackTrigger, GrpcStats, PoolConfig, RestStats, Transport,
-    TransportEvent, TransportStats, TransportStrategy,
+    FallbackReason, FallbackTrigger, GrpcStats, PoolConfig, RestStats, Transport, TransportEvent,
+    TransportStats, TransportStrategy,
 };
 
 // Internal re-exports (will be used when transport is integrated with client)

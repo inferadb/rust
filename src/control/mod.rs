@@ -74,9 +74,7 @@ pub use organizations::{
 };
 
 // Re-export vault types
-pub use vaults::{
-    CreateVaultRequest, UpdateVaultRequest, VaultInfo, VaultStatus, VaultsClient,
-};
+pub use vaults::{CreateVaultRequest, UpdateVaultRequest, VaultInfo, VaultStatus, VaultsClient};
 
 // Re-export team types
 pub use teams::{

@@ -348,7 +348,13 @@ impl ListTeamsRequest {
 
     async fn execute(self) -> Result<Page<TeamInfo>, Error> {
         // TODO: Implement actual API call
-        let _ = (&self.client, &self.organization_id, self.limit, self.cursor, self.sort);
+        let _ = (
+            &self.client,
+            &self.organization_id,
+            self.limit,
+            self.cursor,
+            self.sort,
+        );
         Ok(Page::default())
     }
 }
@@ -388,7 +394,13 @@ impl ListTeamMembersRequest {
 
     async fn execute(self) -> Result<Page<TeamMemberInfo>, Error> {
         // TODO: Implement actual API call
-        let _ = (&self.client, &self.organization_id, &self.team_id, self.limit, self.cursor);
+        let _ = (
+            &self.client,
+            &self.organization_id,
+            &self.team_id,
+            self.limit,
+            self.cursor,
+        );
         Ok(Page::default())
     }
 }
@@ -426,8 +438,7 @@ mod tests {
 
     #[test]
     fn test_create_team_request() {
-        let req = CreateTeamRequest::new("Engineering")
-            .with_description("Backend team");
+        let req = CreateTeamRequest::new("Engineering").with_description("Backend team");
 
         assert_eq!(req.name, "Engineering");
         assert_eq!(req.description, Some("Backend team".to_string()));
@@ -485,8 +496,7 @@ mod tests {
     async fn test_teams_create() {
         let client = create_test_client().await;
         let teams = TeamsClient::new(client, "org_test");
-        let request = CreateTeamRequest::new("Engineering")
-            .with_description("Backend team");
+        let request = CreateTeamRequest::new("Engineering").with_description("Backend team");
         let info = teams.create(request).await.unwrap();
         assert_eq!(info.name, "Engineering");
         assert_eq!(info.description, Some("Backend team".to_string()));

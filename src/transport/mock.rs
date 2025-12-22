@@ -104,10 +104,7 @@ impl TransportClient for MockTransport {
         })
     }
 
-    async fn check_batch(
-        &self,
-        requests: Vec<CheckRequest>,
-    ) -> Result<Vec<CheckResponse>, Error> {
+    async fn check_batch(&self, requests: Vec<CheckRequest>) -> Result<Vec<CheckResponse>, Error> {
         self.increment_requests();
         self.check_failure()?;
 
@@ -214,7 +211,8 @@ impl TransportClient for MockTransport {
             .filter(|rel| {
                 rel.subject() == subject
                     && rel.relation() == permission
-                    && resource_type.map_or(true, |rt| rel.resource().starts_with(&format!("{}:", rt)))
+                    && resource_type
+                        .map_or(true, |rt| rel.resource().starts_with(&format!("{}:", rt)))
             })
             .take(limit.unwrap_or(100) as usize)
             .map(|rel| rel.resource().to_string())
@@ -243,7 +241,8 @@ impl TransportClient for MockTransport {
             .filter(|rel| {
                 rel.resource() == resource
                     && rel.relation() == permission
-                    && subject_type.map_or(true, |st| rel.subject().starts_with(&format!("{}:", st)))
+                    && subject_type
+                        .map_or(true, |st| rel.subject().starts_with(&format!("{}:", st)))
             })
             .take(limit.unwrap_or(100) as usize)
             .map(|rel| rel.subject().to_string())

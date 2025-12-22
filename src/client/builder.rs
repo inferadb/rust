@@ -138,7 +138,10 @@ impl<U> ClientBuilder<U, NoCredentials> {
     ///         certificate_id: None,
     ///     });
     /// ```
-    pub fn credentials(self, credentials: impl Into<Credentials>) -> ClientBuilder<U, HasCredentials> {
+    pub fn credentials(
+        self,
+        credentials: impl Into<Credentials>,
+    ) -> ClientBuilder<U, HasCredentials> {
         ClientBuilder {
             url: self.url,
             credentials: Some(credentials.into()),
@@ -264,18 +267,17 @@ impl ClientBuilder<HasUrl, HasCredentials> {
     ///     .await?;
     /// ```
     pub async fn build(self) -> Result<Client, Error> {
-        let url = self.url.ok_or_else(|| {
-            Error::configuration("URL is required")
-        })?;
+        let url = self
+            .url
+            .ok_or_else(|| Error::configuration("URL is required"))?;
 
-        let credentials = self.credentials.ok_or_else(|| {
-            Error::configuration("credentials are required")
-        })?;
+        let credentials = self
+            .credentials
+            .ok_or_else(|| Error::configuration("credentials are required"))?;
 
         // Validate URL
-        let parsed_url = url::Url::parse(&url).map_err(|e| {
-            Error::configuration(format!("invalid URL: {}", e))
-        })?;
+        let parsed_url = url::Url::parse(&url)
+            .map_err(|e| Error::configuration(format!("invalid URL: {}", e)))?;
 
         // Ensure HTTPS (unless insecure feature is enabled)
         #[cfg(not(feature = "insecure"))]

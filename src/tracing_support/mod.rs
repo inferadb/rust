@@ -34,14 +34,14 @@
 #![allow(dead_code)]
 
 mod context;
-mod propagator;
 mod metrics;
+mod propagator;
 mod span;
 
-pub use context::{TraceContext, TraceId, SpanId, TraceFlags};
-pub use propagator::{Propagator, W3CTraceContext, B3Propagator, HeaderExtractor, HeaderInjector};
-pub use metrics::{Metrics, MetricsConfig, Counter, Histogram, Gauge};
-pub use span::{SpanKind, SpanStatus, InferaDbSpan};
+pub use context::{SpanId, TraceContext, TraceFlags, TraceId};
+pub use metrics::{Counter, Gauge, Histogram, Metrics, MetricsConfig};
+pub use propagator::{B3Propagator, HeaderExtractor, HeaderInjector, Propagator, W3CTraceContext};
+pub use span::{InferaDbSpan, SpanKind, SpanStatus};
 
 #[cfg(test)]
 mod tests {

@@ -339,17 +339,29 @@ mod tests {
         assert_eq!(format!("{}", ErrorKind::Unauthorized), "unauthorized");
         assert_eq!(format!("{}", ErrorKind::Forbidden), "forbidden");
         assert_eq!(format!("{}", ErrorKind::NotFound), "not found");
-        assert_eq!(format!("{}", ErrorKind::InvalidArgument), "invalid argument");
-        assert_eq!(format!("{}", ErrorKind::SchemaViolation), "schema violation");
+        assert_eq!(
+            format!("{}", ErrorKind::InvalidArgument),
+            "invalid argument"
+        );
+        assert_eq!(
+            format!("{}", ErrorKind::SchemaViolation),
+            "schema violation"
+        );
         assert_eq!(format!("{}", ErrorKind::RateLimited), "rate limited");
         assert_eq!(format!("{}", ErrorKind::Unavailable), "service unavailable");
         assert_eq!(format!("{}", ErrorKind::Timeout), "timeout");
         assert_eq!(format!("{}", ErrorKind::Internal), "internal error");
         assert_eq!(format!("{}", ErrorKind::Cancelled), "cancelled");
-        assert_eq!(format!("{}", ErrorKind::CircuitOpen), "circuit breaker open");
+        assert_eq!(
+            format!("{}", ErrorKind::CircuitOpen),
+            "circuit breaker open"
+        );
         assert_eq!(format!("{}", ErrorKind::Connection), "connection error");
         assert_eq!(format!("{}", ErrorKind::Protocol), "protocol error");
-        assert_eq!(format!("{}", ErrorKind::Configuration), "configuration error");
+        assert_eq!(
+            format!("{}", ErrorKind::Configuration),
+            "configuration error"
+        );
         assert_eq!(format!("{}", ErrorKind::Unknown), "unknown error");
     }
 

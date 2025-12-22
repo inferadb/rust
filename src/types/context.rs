@@ -109,7 +109,6 @@ impl ContextValue {
     }
 }
 
-
 impl From<bool> for ContextValue {
     fn from(value: bool) -> Self {
         ContextValue::Bool(value)
@@ -484,11 +483,13 @@ mod tests {
         let mut inner = HashMap::new();
         inner.insert("nested_key".to_string(), ContextValue::from("nested_value"));
 
-        let ctx = Context::new()
-            .with("outer", ContextValue::Object(inner));
+        let ctx = Context::new().with("outer", ContextValue::Object(inner));
 
         let obj = ctx.get("outer").and_then(|v| v.as_object()).unwrap();
-        assert_eq!(obj.get("nested_key").and_then(|v| v.as_str()), Some("nested_value"));
+        assert_eq!(
+            obj.get("nested_key").and_then(|v| v.as_str()),
+            Some("nested_value")
+        );
     }
 
     #[test]
@@ -566,8 +567,8 @@ mod tests {
 
     #[test]
     fn test_context_value_display_float() {
-        let val = ContextValue::Float(3.14);
-        assert_eq!(val.to_string(), "3.14");
+        let val = ContextValue::Float(1.23);
+        assert_eq!(val.to_string(), "1.23");
     }
 
     #[test]
@@ -605,9 +606,7 @@ mod tests {
 
     #[test]
     fn test_context_into_iterator() {
-        let ctx = Context::new()
-            .with("a", 1)
-            .with("b", 2);
+        let ctx = Context::new().with("a", 1).with("b", 2);
 
         let mut count = 0;
         for (key, _) in ctx {
@@ -619,9 +618,7 @@ mod tests {
 
     #[test]
     fn test_context_ref_into_iterator() {
-        let ctx = Context::new()
-            .with("a", 1)
-            .with("b", 2);
+        let ctx = Context::new().with("a", 1).with("b", 2);
 
         let mut count = 0;
         for (key, _) in &ctx {

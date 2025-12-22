@@ -470,8 +470,7 @@ mod tests {
 
     #[test]
     fn test_span_finish() {
-        let span = InferaDbSpan::new("test.operation")
-            .with_attribute("test", true);
+        let span = InferaDbSpan::new("test.operation").with_attribute("test", true);
 
         std::thread::sleep(std::time::Duration::from_millis(1));
 
@@ -496,21 +495,17 @@ mod tests {
     fn test_span_value_conversions() {
         assert_eq!(SpanValue::from("test").as_str(), Some("test"));
         assert_eq!(SpanValue::from(42i64).as_int(), Some(42));
-        assert_eq!(SpanValue::from(3.14f64).as_float(), Some(3.14));
+        assert_eq!(SpanValue::from(1.23f64).as_float(), Some(1.23));
         assert_eq!(SpanValue::from(true).as_bool(), Some(true));
     }
 
     #[test]
     fn test_span_with_trace_context() {
         let ctx = TraceContext::new_root();
-        let span = InferaDbSpan::new("test.operation")
-            .with_trace_context(ctx.clone());
+        let span = InferaDbSpan::new("test.operation").with_trace_context(ctx.clone());
 
         assert!(span.trace_context().is_some());
-        assert_eq!(
-            span.trace_context().unwrap().trace_id(),
-            ctx.trace_id()
-        );
+        assert_eq!(span.trace_context().unwrap().trace_id(), ctx.trace_id());
     }
 
     #[test]
@@ -562,7 +557,10 @@ mod tests {
     #[test]
     fn test_span_status_display() {
         assert_eq!(SpanStatus::Ok.to_string(), "ok");
-        assert_eq!(SpanStatus::Error("test".to_string()).to_string(), "error: test");
+        assert_eq!(
+            SpanStatus::Error("test".to_string()).to_string(),
+            "error: test"
+        );
         assert_eq!(SpanStatus::Unset.to_string(), "unset");
     }
 
@@ -583,9 +581,11 @@ mod tests {
     fn test_span_value_display() {
         assert_eq!(SpanValue::String("test".to_string()).to_string(), "test");
         assert_eq!(SpanValue::Int(42).to_string(), "42");
-        assert_eq!(SpanValue::Float(3.14).to_string(), "3.14");
+        assert_eq!(SpanValue::Float(1.23).to_string(), "1.23");
         assert_eq!(SpanValue::Bool(true).to_string(), "true");
-        assert!(SpanValue::StringArray(vec!["a".to_string()]).to_string().contains("a"));
+        assert!(SpanValue::StringArray(vec!["a".to_string()])
+            .to_string()
+            .contains("a"));
         assert!(SpanValue::IntArray(vec![1, 2]).to_string().contains("1"));
     }
 
@@ -601,7 +601,7 @@ mod tests {
         assert!(int_val.as_float().is_none());
         assert!(int_val.as_bool().is_none());
 
-        let float_val = SpanValue::Float(3.14);
+        let float_val = SpanValue::Float(1.23);
         assert!(float_val.as_str().is_none());
         assert!(float_val.as_int().is_none());
         assert!(float_val.as_bool().is_none());
@@ -725,8 +725,7 @@ mod tests {
 
     #[test]
     fn test_span_clone() {
-        let span = InferaDbSpan::new("test")
-            .with_attribute("key", "value");
+        let span = InferaDbSpan::new("test").with_attribute("key", "value");
         let cloned = span.clone();
         assert_eq!(span.name(), cloned.name());
     }
@@ -735,8 +734,14 @@ mod tests {
     fn test_span_names_constants() {
         assert_eq!(span_names::CHECK, "inferadb.check");
         assert_eq!(span_names::CHECK_BATCH, "inferadb.check_batch");
-        assert_eq!(span_names::RELATIONSHIP_WRITE, "inferadb.relationship.write");
-        assert_eq!(span_names::RELATIONSHIP_DELETE, "inferadb.relationship.delete");
+        assert_eq!(
+            span_names::RELATIONSHIP_WRITE,
+            "inferadb.relationship.write"
+        );
+        assert_eq!(
+            span_names::RELATIONSHIP_DELETE,
+            "inferadb.relationship.delete"
+        );
         assert_eq!(span_names::RELATIONSHIP_LIST, "inferadb.relationship.list");
         assert_eq!(span_names::SCHEMA_PUSH, "inferadb.schema.push");
         assert_eq!(span_names::SCHEMA_ACTIVATE, "inferadb.schema.activate");

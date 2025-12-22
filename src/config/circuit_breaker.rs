@@ -366,8 +366,15 @@ pub enum CircuitEvent {
 impl std::fmt::Display for CircuitEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CircuitEvent::Opened { failure_count, last_error } => {
-                write!(f, "circuit opened after {} failures: {}", failure_count, last_error)
+            CircuitEvent::Opened {
+                failure_count,
+                last_error,
+            } => {
+                write!(
+                    f,
+                    "circuit opened after {} failures: {}",
+                    failure_count, last_error
+                )
             }
             CircuitEvent::HalfOpened => write!(f, "circuit half-opened (testing recovery)"),
             CircuitEvent::Closed { success_count } => {
@@ -409,12 +416,10 @@ mod tests {
 
     #[test]
     fn test_failure_rate_threshold_clamped() {
-        let config = CircuitBreakerConfig::new()
-            .failure_rate_threshold(1.5);
+        let config = CircuitBreakerConfig::new().failure_rate_threshold(1.5);
         assert_eq!(config.get_failure_rate_threshold(), 1.0);
 
-        let config = CircuitBreakerConfig::new()
-            .failure_rate_threshold(-0.5);
+        let config = CircuitBreakerConfig::new().failure_rate_threshold(-0.5);
         assert_eq!(config.get_failure_rate_threshold(), 0.0);
     }
 
@@ -438,8 +443,7 @@ mod tests {
 
     #[test]
     fn test_failure_predicate_exclude() {
-        let predicate = FailurePredicate::default()
-            .exclude(ErrorKind::Timeout);
+        let predicate = FailurePredicate::default().exclude(ErrorKind::Timeout);
         assert!(!predicate.is_failure(ErrorKind::Timeout));
         assert!(predicate.is_failure(ErrorKind::Connection));
     }

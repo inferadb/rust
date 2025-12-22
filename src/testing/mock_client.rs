@@ -108,11 +108,14 @@ impl MockClient {
         let calls = self.calls.lock().unwrap();
 
         for expectation in expectations.iter() {
-            let matching_calls = calls.iter().filter(|c| {
-                c.subject == expectation.subject
-                    && c.permission == expectation.permission
-                    && c.resource == expectation.resource
-            }).count();
+            let matching_calls = calls
+                .iter()
+                .filter(|c| {
+                    c.subject == expectation.subject
+                        && c.permission == expectation.permission
+                        && c.resource == expectation.resource
+                })
+                .count();
 
             if matching_calls == 0 {
                 panic!(
@@ -244,8 +247,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Expected check")]
     fn test_mock_client_verify_fails() {
-        let mock = MockClient::new()
-            .expect_check("user:alice", "view", "doc:1", true);
+        let mock = MockClient::new().expect_check("user:alice", "view", "doc:1", true);
 
         // Never call check, so verify should panic
         mock.verify();

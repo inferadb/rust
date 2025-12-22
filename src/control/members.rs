@@ -484,7 +484,14 @@ impl ListMembersRequest {
 
     async fn execute(self) -> Result<Page<MemberInfo>, Error> {
         // TODO: Implement actual API call
-        let _ = (&self.client, &self.organization_id, self.limit, self.cursor, self.sort, self.role);
+        let _ = (
+            &self.client,
+            &self.organization_id,
+            self.limit,
+            self.cursor,
+            self.sort,
+            self.role,
+        );
         Ok(Page::default())
     }
 }
@@ -531,7 +538,13 @@ impl ListInvitationsRequest {
 
     async fn execute(self) -> Result<Page<InvitationInfo>, Error> {
         // TODO: Implement actual API call
-        let _ = (&self.client, &self.organization_id, self.limit, self.cursor, self.status);
+        let _ = (
+            &self.client,
+            &self.organization_id,
+            self.limit,
+            self.cursor,
+            self.status,
+        );
         Ok(Page::default())
     }
 }
@@ -599,8 +612,8 @@ mod tests {
 
     #[test]
     fn test_invite_member_request() {
-        let req = InviteMemberRequest::new("alice@example.com", OrgRole::Admin)
-            .with_message("Welcome!");
+        let req =
+            InviteMemberRequest::new("alice@example.com", OrgRole::Admin).with_message("Welcome!");
 
         assert_eq!(req.email, "alice@example.com");
         assert_eq!(req.role, OrgRole::Admin);
@@ -688,8 +701,8 @@ mod tests {
     async fn test_members_invite() {
         let client = create_test_client().await;
         let members = MembersClient::new(client, "org_test");
-        let request = InviteMemberRequest::new("alice@example.com", OrgRole::Member)
-            .with_message("Welcome!");
+        let request =
+            InviteMemberRequest::new("alice@example.com", OrgRole::Member).with_message("Welcome!");
         let info = members.invite(request).await.unwrap();
         assert_eq!(info.email, "alice@example.com");
         assert_eq!(info.role, OrgRole::Member);
