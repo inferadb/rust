@@ -364,7 +364,7 @@ organization -> division -> department -> team -> folder -> subfolder -> documen
 For frequently-checked permissions, consider direct relations:
 
 ```rust
-// If checking document view is very frequent, consider caching
+// If document view checks are a hot path, consider caching
 // the resolved permission as a direct relation
 vault.relationships()
     .write(Relationship::new("document:hot", "cached_viewer", "user:frequent"))

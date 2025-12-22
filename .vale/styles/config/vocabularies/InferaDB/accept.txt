@@ -1,14 +1,18 @@
 # InferaDB Vocabulary - Accepted Terms
-# Add project-specific terms that should not be flagged as spelling errors
+# Technical terms that should not be flagged as spelling errors
 
-# Product Names
+# Product and Company Names
 InferaDB
 Zanzibar
 SpiceDB
 OpenFGA
 Oso
+Grafana
+Deno
+Zipkin
+Rego
 
-# Rust Terms and Crates
+# Rust Ecosystem
 rustfmt
 clippy
 Tokio
@@ -18,8 +22,9 @@ tonic
 hyper
 serde
 reqwest
+protobuf
 
-# Rust Syntax (common in doc examples)
+# Rust Language Terms
 async
 await
 fn
@@ -32,8 +37,10 @@ const
 cfg
 str
 Vec
+bool
+Bool
 
-# Technical Terms
+# Authorization and Security Terms
 ReBAC
 ABAC
 gRPC
@@ -42,12 +49,76 @@ authn
 authz
 OAuth
 JWT
+JWTs
 OIDC
 TLS
 mTLS
+HSMs
 
-# Project Terminology
-IPL
+# Technical Terminology
+middleware
+Middleware
+backpressure
+Backpressure
+backoff
+Backoff
+failover
+rollout
+Rollout
+cutover
+idempotency
+Idempotency
+typestate
+Typestate
+retriable
+Retriable
+boolean
+keepalive
+plaintext
+queryable
+parseable
+cloneable
+namespaced
+namespace
+deduplicates
+Deduplicate
+parallelization
+Parallelization
+monomorphized
+Monomorphized
+agentic
+Agentic
+runbook
+Runbook
+performant
+offboarding
+singleflight
+Singleflight
+subrelation
+
+# Common Plurals and Variations
+lookups
+runtimes
+Resends
+
+# API Method Names (snake_case in docs)
+check_batch
+write_batch
+delete_batch
+list_resources
+write_batch_streaming
+
+# Configuration Parameters
+client_id
+request_id
+pool_size
+idle_timeout
+
+# Technical Terms
+refcount
+Freemium
+
+# Common Abbreviations
 SDK
 SDKs
 API
@@ -55,6 +126,30 @@ APIs
 CLI
 TTL
 TTLs
-
-# Common Identifiers (in code examples)
+URL
+url
+HTTP
+http
+Http
+env
 Config
+configs
+deps
+orgs
+rels
+creds
+pem
+ctx
+codegen
+Codegen
+crypto
+interop
+Interop
+vtable
+userset
+unary
+Unary
+zeroize
+Zeroize
+zeroized
+Zeroizing

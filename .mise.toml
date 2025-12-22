@@ -14,13 +14,14 @@ rust = "stable"
 node = "24"
 
 # Development tools (installed automatically with `mise install`)
-"cargo:cargo-watch" = "latest"    # Auto-rebuild on file changes
-"cargo:cargo-nextest" = "latest"  # Next-generation test runner
-"cargo:cargo-audit" = "latest"    # Security vulnerability scanning
-"cargo:cargo-deny" = "latest"     # Lint dependencies
-"cargo:cargo-llvm-cov" = "latest" # Code coverage
+"cargo:cargo-watch" = "latest"      # Auto-rebuild on file changes
+"cargo:cargo-nextest" = "latest"    # Next-generation test runner
+"cargo:cargo-audit" = "latest"      # Security vulnerability scanning
+"cargo:cargo-deny" = "latest"       # Lint dependencies
+"cargo:cargo-llvm-cov" = "latest"   # Code coverage
+"cargo:cargo-deadlinks" = "latest"  # Check for broken doc links
 
-"npm:markdownlint-cli2" = "latest" # Markdown linter
+"npm:markdownlint-cli2" = "latest"  # Markdown linter
 
 [env]
 # Rust optimization settings for development

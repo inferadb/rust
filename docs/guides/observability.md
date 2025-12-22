@@ -344,7 +344,7 @@ groups:
 1. **Sample in production** - Use 1-10% sampling for high-traffic services
 2. **Always sample errors** - Ensure error traces are captured
 3. **Monitor cache effectiveness** - Low hit rates indicate configuration issues
-4. **Set latency alerts** - P99 > 100ms usually indicates problems
+4. **Set latency alerts** - P99 > 100ms warrants investigation
 5. **Include request IDs** - All errors include `request_id()` for debugging
 
 ## Related Guides
