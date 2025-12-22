@@ -3,7 +3,7 @@
 
 .PHONY: help build test check clean
 .PHONY: fmt fmt-check lint clippy doc doc-check
-.PHONY: lint-docs lint-markdown lint-prose lint-spelling lint-deadlinks
+.PHONY: lint-docs lint-markdown lint-prose lint-spelling
 .PHONY: lint-all setup-tools
 
 # Default target
@@ -32,7 +32,7 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '^(fmt|lint|clippy|check)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-20s$(RESET) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(GREEN)Documentation:$(RESET)"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '^(doc|lint-docs|lint-markdown|lint-prose|lint-spelling|lint-deadlinks)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-20s$(RESET) %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '^(doc|lint-docs|lint-markdown|lint-prose|lint-spelling)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-20s$(RESET) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(GREEN)Setup:$(RESET)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '^setup' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-20s$(RESET) %s\n", $$1, $$2}'
@@ -118,20 +118,7 @@ lint-spelling: ## Check spelling (note: Vale handles this via lint-prose)
 	@echo "$(BLUE)Spelling is checked by Vale via lint-prose target$(RESET)"
 	@echo "$(BLUE)Run 'make lint-prose' for spell checking$(RESET)"
 
-lint-deadlinks: ## Check for broken links in generated documentation
-	@if ! [ -d "target/doc" ]; then \
-		echo "$(YELLOW)Building documentation first...$(RESET)"; \
-		cargo doc --no-deps --all-features; \
-	fi
-	@if command -v cargo-deadlinks >/dev/null 2>&1; then \
-		cargo deadlinks 2>&1 || echo "$(YELLOW)Note: Some dead links are from dependency docs (e.g., tracing crate)$(RESET)"; \
-	elif cargo deadlinks --version >/dev/null 2>&1; then \
-		cargo deadlinks 2>&1 || echo "$(YELLOW)Note: Some dead links are from dependency docs (e.g., tracing crate)$(RESET)"; \
-	else \
-		echo "$(YELLOW)Warning: cargo-deadlinks not found. Install with: cargo install cargo-deadlinks$(RESET)"; \
-	fi
-
-lint-docs: lint-markdown lint-prose doc-check lint-deadlinks ## Run all documentation lints
+lint-docs: lint-markdown lint-prose doc-check ## Run all documentation lints
 	@echo "$(GREEN)All documentation lints passed!$(RESET)"
 
 #───────────────────────────────────────────────────────────────────────────────

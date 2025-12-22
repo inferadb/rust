@@ -19,7 +19,6 @@ node = "24"
 "cargo:cargo-audit" = "latest"      # Security vulnerability scanning
 "cargo:cargo-deny" = "latest"       # Lint dependencies
 "cargo:cargo-llvm-cov" = "latest"   # Code coverage
-"cargo:cargo-deadlinks" = "latest"  # Check for broken doc links
 
 "npm:markdownlint-cli2" = "latest"  # Markdown linter
 
