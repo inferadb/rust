@@ -23,8 +23,16 @@ use inferadb::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    // Create client from environment variables
-    let client = Client::from_env().await?;
+    // Create client with explicit configuration
+    let client = Client::builder()
+        .url("https://api.inferadb.com")
+        .credentials(ClientCredentialsConfig {
+            client_id: "my_service".into(),
+            private_key: Ed25519PrivateKey::from_pem_file("path/to/private-key.pem")?,
+            certificate_id: None,
+        })
+        .build()
+        .await?;
 
     // Get vault context (organization-first hierarchy)
     let vault = client
@@ -39,16 +47,6 @@ async fn main() -> Result<(), Error> {
     println!("Allowed: {}", allowed);
     Ok(())
 }
-```
-
-```bash
-# Set environment variables and run
-export INFERADB_URL=https://api.inferadb.com
-export INFERADB_CLIENT_ID=my_service
-export INFERADB_PRIVATE_KEY_PATH=./private_key.pem
-export INFERADB_VAULT_ID=my_vault
-
-cargo run
 ```
 
 ## Installation
@@ -82,6 +80,8 @@ inferadb = { version = "0.1", default-features = false, features = ["rest", "rus
 | `blocking`      | Sync/blocking API                      | No      |
 | `derive`        | Proc macros for type-safe schemas      | No      |
 | `serde`         | Serialization support                  | No      |
+| `test-utils`    | Testing utilities (MockClient, etc.)   | No      |
+| `wasm`          | Browser/WASM support (REST only)       | No      |
 
 ### Prelude Options
 
@@ -96,11 +96,11 @@ use inferadb::prelude::core::*;
 use inferadb::prelude::extended::*;
 ```
 
-| Prelude    | Use Case                 | Includes                            |
-| ---------- | ------------------------ | ----------------------------------- |
-| `core`     | Libraries, minimal deps  | Client, VaultClient, Error, traits  |
-| Default    | Most applications        | Core + config types, credentials    |
-| `extended` | Tests, feature-rich apps | Full + MockClient, derive macros    |
+| Prelude    | Use Case                 | Includes                           |
+| ---------- | ------------------------ | ---------------------------------- |
+| `core`     | Libraries, minimal deps  | Client, VaultClient, Error, traits |
+| Default    | Most applications        | Core + config types, credentials   |
+| `extended` | Tests, feature-rich apps | Full + MockClient, derive macros   |
 
 ## Usage
 
@@ -121,8 +121,8 @@ vault.check("user:alice", "view", "doc:1")
 // Check with ABAC context
 vault.check("user:alice", "view", "doc:confidential")
     .with_context(Context::new()
-        .insert("ip_address", "10.0.0.50")
-        .insert("mfa_verified", true))
+        .with("ip_address", "10.0.0.50")
+        .with("mfa_verified", true))
     .await?;
 
 // Batch checks - single round-trip
@@ -182,46 +182,20 @@ let subjects = vault
     .await?;
 ```
 
-### Watch for Changes
-
-```rust
-use futures::StreamExt;
-
-let vault = client.organization("org_...").vault("vlt_...");
-
-let mut stream = vault
-    .watch()
-    .filter(WatchFilter::resource_type("document"))
-    .run()
-    .await?;
-
-while let Some(change) = stream.next().await {
-    let change = change?;
-    println!("{:?}: {} -> {}",
-        change.operation,
-        change.relationship.subject,
-        change.relationship.resource
-    );
-}
-```
-
 ## Authentication
 
 ### Client Credentials (Recommended for Services)
 
 ```rust
-use inferadb::auth::{ClientCredentials, Ed25519PrivateKey};
-
-let creds = ClientCredentials {
-    client_id: "my_service".into(),
-    private_key: Ed25519PrivateKey::from_pem_file("private_key.pem")?,
-    certificate_id: None,
-};
+use inferadb::prelude::*;
 
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .client_credentials(creds)
-    .default_vault("my_vault")
+    .credentials(ClientCredentialsConfig {
+        client_id: "my_service".into(),
+        private_key: Ed25519PrivateKey::from_pem_file("private_key.pem")?,
+        certificate_id: None, // Optional: specific key ID
+    })
     .build()
     .await?;
 ```
@@ -231,22 +205,45 @@ let client = Client::builder()
 ```rust
 let client = Client::builder()
     .url("https://api.inferadb.com")
-    .bearer_token("eyJ...")
-    .default_vault("my_vault")
+    .credentials(BearerCredentialsConfig {
+        token: "eyJ...".into(),
+    })
     .build()
     .await?;
 ```
 
-### Environment Variables
+### Full Configuration Options
 
-| Variable                    | Description                      |
-| --------------------------- | -------------------------------- |
-| `INFERADB_URL`              | Service URL                      |
-| `INFERADB_CLIENT_ID`        | Client ID                        |
-| `INFERADB_PRIVATE_KEY_PATH` | Path to Ed25519 private key      |
-| `INFERADB_PRIVATE_KEY`      | Ed25519 private key PEM contents |
-| `INFERADB_VAULT_ID`         | Default vault ID                 |
-| `INFERADB_CERTIFICATE_ID`   | Specific certificate KID         |
+```rust
+let client = Client::builder()
+    // Connection
+    .url("https://api.inferadb.com")
+    .connect_timeout(Duration::from_secs(10))
+    .request_timeout(Duration::from_secs(30))
+
+    // Authentication
+    .credentials(ClientCredentialsConfig {
+        client_id: "my_service".into(),
+        private_key: Ed25519PrivateKey::from_pem_file("key.pem")?,
+        certificate_id: None,
+    })
+
+    // Retry behavior
+    .retry(RetryConfig::default()
+        .max_retries(3)
+        .initial_backoff(Duration::from_millis(100))
+        .max_backoff(Duration::from_secs(10)))
+
+    // Caching
+    .cache(CacheConfig::default()
+        .permission_ttl(Duration::from_secs(30))
+        .relationship_ttl(Duration::from_secs(300))
+        .schema_ttl(Duration::from_secs(3600)))
+
+    // Build
+    .build()
+    .await?;
+```
 
 ## Local Development
 
@@ -255,28 +252,29 @@ let client = Client::builder()
 ```rust
 let client = Client::builder()
     .url("http://localhost:8080")
-    .insecure()  // Allow non-TLS for local dev
-    .default_vault("dev-vault")
+    .insecure()  // Allow non-TLS for local dev (requires `insecure` feature)
+    .credentials(BearerCredentialsConfig {
+        token: "dev-token".into(),
+    })
     .build()
     .await?;
 ```
 
-### In-Memory Client for Unit Tests
+### MockClient for Unit Tests
 
 ```rust
-use inferadb::testing::InMemoryClient;
+use inferadb::testing::MockClient;
 
 #[tokio::test]
 async fn test_authorization() {
-    let client = InMemoryClient::new();
+    let mock = MockClient::builder()
+        .check("user:alice", "view", "document:readme", true)
+        .check("user:bob", "delete", "document:readme", false)
+        .build();
 
-    client.write_batch([
-        Relationship::new("document:readme", "owner", "user:alice"),
-        Relationship::new("document:readme", "viewer", "user:bob"),
-    ]).await.unwrap();
-
-    assert!(client.check("user:alice", "delete", "document:readme").await.unwrap());
-    assert!(!client.check("user:bob", "delete", "document:readme").await.unwrap());
+    // Use mock in tests
+    assert!(mock.check("user:alice", "view", "document:readme").await.unwrap());
+    assert!(!mock.check("user:bob", "delete", "document:readme").await.unwrap());
 }
 ```
 
@@ -295,21 +293,21 @@ services:
 
 ## Design Guarantees
 
-| Guarantee | Description |
-|-----------|-------------|
-| **Denial is not an error** | `check()` returns `Ok(false)` for denied access; only `require()` converts denial to error |
-| **Fail-closed by default** | Errors default to denying access; fail-open must be explicit |
-| **Results preserve order** | Batch operations return results in the same order as inputs |
-| **Writes are acknowledged** | Write operations return only after server confirmation |
-| **Cache never changes semantics** | Cached results are identical to fresh results |
-| **Errors include request IDs** | All server errors include a `request_id()` for debugging |
+| Guarantee                         | Description                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------ |
+| **Denial is not an error**        | `check()` returns `Ok(false)` for denied access; only `require()` converts denial to error |
+| **Fail-closed by default**        | Errors default to denying access; fail-open must be explicit                               |
+| **Results preserve order**        | Batch operations return results in the same order as inputs                                |
+| **Writes are acknowledged**       | Write operations return only after server confirmation                                     |
+| **Cache never changes semantics** | Cached results are identical to fresh results                                              |
+| **Errors include request IDs**    | All server errors include a `request_id()` for debugging                                   |
 
 ## Error Handling
 
 ```rust
 use inferadb::{Error, ErrorKind};
 
-match client.check("user:alice", "view", "doc:1").await {
+match vault.check("user:alice", "view", "doc:1").await {
     Ok(allowed) => println!("Allowed: {}", allowed),
     Err(e) => {
         match e.kind() {
@@ -334,7 +332,6 @@ match client.check("user:alice", "view", "doc:1").await {
 - [Error Handling](docs/guides/errors.md) - Error types and retry strategies
 - [Consistency & Watch](docs/guides/consistency.md) - Consistency tokens, real-time streams
 - [Control API](docs/guides/control-api.md) - Organizations, schemas, members, audit
-- [Advanced Features](docs/guides/advanced.md) - Simulation, explain, export/import
 - [Caching](docs/guides/caching.md) - Cache configuration and invalidation
 - [Performance Tuning](docs/guides/performance-tuning.md) - Optimization guide
 - [Production Checklist](docs/guides/production-checklist.md) - Deployment readiness
@@ -347,7 +344,6 @@ See the [examples](examples/) directory for complete working examples:
 ```bash
 cargo run --example basic_check
 cargo run --example batch_check
-cargo run --example watch_changes
 cargo run --example middleware_axum
 ```
 
