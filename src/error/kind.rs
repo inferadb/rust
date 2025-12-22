@@ -265,12 +265,14 @@ mod tests {
 
     #[test]
     fn test_is_retriable() {
+        // Retriable errors
         assert!(ErrorKind::Unavailable.is_retriable());
         assert!(ErrorKind::Timeout.is_retriable());
         assert!(ErrorKind::RateLimited.is_retriable());
         assert!(ErrorKind::CircuitOpen.is_retriable());
         assert!(ErrorKind::Connection.is_retriable());
 
+        // Non-retriable errors
         assert!(!ErrorKind::Unauthorized.is_retriable());
         assert!(!ErrorKind::Forbidden.is_retriable());
         assert!(!ErrorKind::NotFound.is_retriable());
@@ -278,39 +280,93 @@ mod tests {
         assert!(!ErrorKind::SchemaViolation.is_retriable());
         assert!(!ErrorKind::Internal.is_retriable());
         assert!(!ErrorKind::Cancelled.is_retriable());
+        assert!(!ErrorKind::Protocol.is_retriable());
+        assert!(!ErrorKind::Configuration.is_retriable());
+        assert!(!ErrorKind::Unknown.is_retriable());
     }
 
     #[test]
     fn test_http_status_code() {
+        // All error kinds should have an HTTP status code
         assert_eq!(ErrorKind::Unauthorized.http_status_code(), 401);
         assert_eq!(ErrorKind::Forbidden.http_status_code(), 403);
         assert_eq!(ErrorKind::NotFound.http_status_code(), 404);
         assert_eq!(ErrorKind::InvalidArgument.http_status_code(), 400);
+        assert_eq!(ErrorKind::SchemaViolation.http_status_code(), 400);
         assert_eq!(ErrorKind::RateLimited.http_status_code(), 429);
         assert_eq!(ErrorKind::Unavailable.http_status_code(), 503);
         assert_eq!(ErrorKind::Timeout.http_status_code(), 504);
         assert_eq!(ErrorKind::Internal.http_status_code(), 500);
+        assert_eq!(ErrorKind::Cancelled.http_status_code(), 499);
+        assert_eq!(ErrorKind::CircuitOpen.http_status_code(), 503);
+        assert_eq!(ErrorKind::Connection.http_status_code(), 502);
+        assert_eq!(ErrorKind::Protocol.http_status_code(), 502);
+        assert_eq!(ErrorKind::Configuration.http_status_code(), 500);
+        assert_eq!(ErrorKind::Unknown.http_status_code(), 500);
     }
 
     #[test]
     fn test_from_http_status() {
+        // Direct mappings
         assert_eq!(ErrorKind::from_http_status(400), ErrorKind::InvalidArgument);
         assert_eq!(ErrorKind::from_http_status(401), ErrorKind::Unauthorized);
         assert_eq!(ErrorKind::from_http_status(403), ErrorKind::Forbidden);
         assert_eq!(ErrorKind::from_http_status(404), ErrorKind::NotFound);
         assert_eq!(ErrorKind::from_http_status(429), ErrorKind::RateLimited);
+        assert_eq!(ErrorKind::from_http_status(499), ErrorKind::Cancelled);
         assert_eq!(ErrorKind::from_http_status(500), ErrorKind::Internal);
+        assert_eq!(ErrorKind::from_http_status(502), ErrorKind::Protocol);
         assert_eq!(ErrorKind::from_http_status(503), ErrorKind::Unavailable);
         assert_eq!(ErrorKind::from_http_status(504), ErrorKind::Timeout);
+
+        // 4xx range falls back to InvalidArgument
+        assert_eq!(ErrorKind::from_http_status(405), ErrorKind::InvalidArgument);
+        assert_eq!(ErrorKind::from_http_status(422), ErrorKind::InvalidArgument);
+        assert_eq!(ErrorKind::from_http_status(451), ErrorKind::InvalidArgument);
+
+        // 5xx range falls back to Internal
+        assert_eq!(ErrorKind::from_http_status(501), ErrorKind::Internal);
+        assert_eq!(ErrorKind::from_http_status(505), ErrorKind::Internal);
+
+        // Other status codes return Unknown
+        assert_eq!(ErrorKind::from_http_status(200), ErrorKind::Unknown);
+        assert_eq!(ErrorKind::from_http_status(301), ErrorKind::Unknown);
     }
 
     #[test]
     fn test_display() {
+        // All error kinds should have a display string
         assert_eq!(format!("{}", ErrorKind::Unauthorized), "unauthorized");
+        assert_eq!(format!("{}", ErrorKind::Forbidden), "forbidden");
+        assert_eq!(format!("{}", ErrorKind::NotFound), "not found");
+        assert_eq!(format!("{}", ErrorKind::InvalidArgument), "invalid argument");
+        assert_eq!(format!("{}", ErrorKind::SchemaViolation), "schema violation");
         assert_eq!(format!("{}", ErrorKind::RateLimited), "rate limited");
-        assert_eq!(
-            format!("{}", ErrorKind::SchemaViolation),
-            "schema violation"
-        );
+        assert_eq!(format!("{}", ErrorKind::Unavailable), "service unavailable");
+        assert_eq!(format!("{}", ErrorKind::Timeout), "timeout");
+        assert_eq!(format!("{}", ErrorKind::Internal), "internal error");
+        assert_eq!(format!("{}", ErrorKind::Cancelled), "cancelled");
+        assert_eq!(format!("{}", ErrorKind::CircuitOpen), "circuit breaker open");
+        assert_eq!(format!("{}", ErrorKind::Connection), "connection error");
+        assert_eq!(format!("{}", ErrorKind::Protocol), "protocol error");
+        assert_eq!(format!("{}", ErrorKind::Configuration), "configuration error");
+        assert_eq!(format!("{}", ErrorKind::Unknown), "unknown error");
+    }
+
+    #[test]
+    fn test_error_kind_clone_and_eq() {
+        let kind = ErrorKind::Timeout;
+        let cloned = kind;
+        assert_eq!(kind, cloned);
+    }
+
+    #[test]
+    fn test_error_kind_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(ErrorKind::Timeout);
+        set.insert(ErrorKind::Unavailable);
+        set.insert(ErrorKind::Timeout); // duplicate
+        assert_eq!(set.len(), 2);
     }
 }

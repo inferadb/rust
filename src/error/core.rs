@@ -446,4 +446,109 @@ mod tests {
         assert!(display.contains("vault not found"));
         assert!(display.contains("req_xyz789"));
     }
+
+    #[test]
+    fn test_from_kind_all_variants() {
+        // Test all ErrorKind variants to cover the match arms
+        let _ = Error::from_kind(ErrorKind::Forbidden);
+        let _ = Error::from_kind(ErrorKind::NotFound);
+        let _ = Error::from_kind(ErrorKind::InvalidArgument);
+        let _ = Error::from_kind(ErrorKind::SchemaViolation);
+        let _ = Error::from_kind(ErrorKind::RateLimited);
+        let _ = Error::from_kind(ErrorKind::Unavailable);
+        let _ = Error::from_kind(ErrorKind::Timeout);
+        let _ = Error::from_kind(ErrorKind::Internal);
+        let _ = Error::from_kind(ErrorKind::Cancelled);
+        let _ = Error::from_kind(ErrorKind::CircuitOpen);
+        let _ = Error::from_kind(ErrorKind::Connection);
+        let _ = Error::from_kind(ErrorKind::Protocol);
+        let _ = Error::from_kind(ErrorKind::Configuration);
+        let _ = Error::from_kind(ErrorKind::Unknown);
+    }
+
+    #[test]
+    fn test_from_io_error_not_found() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let err: Error = io_err.into();
+        assert_eq!(err.kind(), ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn test_from_io_error_permission_denied() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
+        let err: Error = io_err.into();
+        assert_eq!(err.kind(), ErrorKind::Forbidden);
+    }
+
+    #[test]
+    fn test_from_io_error_connection_refused() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "connection refused");
+        let err: Error = io_err.into();
+        assert_eq!(err.kind(), ErrorKind::Connection);
+    }
+
+    #[test]
+    fn test_from_io_error_connection_reset() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::ConnectionReset, "connection reset");
+        let err: Error = io_err.into();
+        assert_eq!(err.kind(), ErrorKind::Connection);
+    }
+
+    #[test]
+    fn test_from_io_error_connection_aborted() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::ConnectionAborted, "connection aborted");
+        let err: Error = io_err.into();
+        assert_eq!(err.kind(), ErrorKind::Connection);
+    }
+
+    #[test]
+    fn test_from_io_error_not_connected() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotConnected, "not connected");
+        let err: Error = io_err.into();
+        assert_eq!(err.kind(), ErrorKind::Connection);
+    }
+
+    #[test]
+    fn test_from_io_error_other() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::Other, "other error");
+        let err: Error = io_err.into();
+        assert_eq!(err.kind(), ErrorKind::Internal);
+    }
+
+    #[test]
+    fn test_from_url_parse_error() {
+        let url_err = url::Url::parse("not a valid url").unwrap_err();
+        let err: Error = url_err.into();
+        assert_eq!(err.kind(), ErrorKind::Configuration);
+        assert!(err.to_string().contains("invalid URL"));
+    }
+
+    #[test]
+    fn test_from_serde_json_error() {
+        let json_err: serde_json::Error = serde_json::from_str::<serde_json::Value>("{invalid}").unwrap_err();
+        let err: Error = json_err.into();
+        assert_eq!(err.kind(), ErrorKind::Protocol);
+        assert!(err.to_string().contains("JSON error"));
+    }
+
+    #[test]
+    fn test_error_display_without_request_id() {
+        let err = Error::new(ErrorKind::NotFound, "vault not found");
+        let display = err.to_string();
+        assert!(!display.contains("request_id"));
+    }
+
+    #[test]
+    fn test_error_source_none() {
+        let err = Error::new(ErrorKind::Internal, "test");
+        assert!(err.source().is_none());
+    }
+
+    #[test]
+    fn test_error_debug() {
+        let err = Error::new(ErrorKind::Internal, "test error");
+        let debug = format!("{:?}", err);
+        assert!(debug.contains("Error"));
+    }
+
 }

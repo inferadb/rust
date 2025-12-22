@@ -1428,6 +1428,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_require_with_context() {
+        let vault = create_test_vault().await;
+        let result = vault
+            .check("user:alice", "view", "doc:1")
+            .require()
+            .with_context(Context::new().with("env", "prod"))
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_require_with_consistency() {
+        let vault = create_test_vault().await;
+        let token = ConsistencyToken::new("test_token");
+        let result = vault
+            .check("user:alice", "view", "doc:1")
+            .require()
+            .at_least_as_fresh(token)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
     async fn test_detailed() {
         let vault = create_test_vault().await;
         let decision = vault
@@ -1445,5 +1468,447 @@ mod tests {
         assert!(debug.contains("VaultClient"));
         assert!(debug.contains("org_test"));
         assert!(debug.contains("vlt_test"));
+    }
+
+    #[tokio::test]
+    async fn test_vault_client_accessors() {
+        let vault = create_test_vault().await;
+        assert_eq!(vault.organization_id(), "org_test");
+        assert_eq!(vault.vault_id(), "vlt_test");
+        let _ = vault.client();
+    }
+
+    // BatchCheckItem tests
+    #[test]
+    fn test_batch_check_item_new() {
+        let item = BatchCheckItem::new("user:alice", "view", "doc:1");
+        assert_eq!(item.subject(), "user:alice");
+        assert_eq!(item.permission(), "view");
+        assert_eq!(item.resource(), "doc:1");
+    }
+
+    #[test]
+    fn test_batch_check_item_debug() {
+        let item = BatchCheckItem::new("user:alice", "view", "doc:1");
+        let debug = format!("{:?}", item);
+        assert!(debug.contains("user:alice"));
+    }
+
+    // BatchCheckRequest tests
+    #[tokio::test]
+    async fn test_check_batch_basic() {
+        let vault = create_test_vault().await;
+        let checks = vec![
+            ("user:alice", "view", "doc:1"),
+            ("user:bob", "edit", "doc:2"),
+        ];
+        let results = vault.check_batch(checks).await.unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_check_batch_with_context() {
+        let vault = create_test_vault().await;
+        let checks = vec![("user:alice", "view", "doc:1")];
+        let results = vault
+            .check_batch(checks)
+            .with_context(Context::new().with("env", "prod"))
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_check_batch_with_consistency() {
+        let vault = create_test_vault().await;
+        let token = ConsistencyToken::new("test_token");
+        let checks = vec![("user:alice", "view", "doc:1")];
+        let results = vault
+            .check_batch(checks)
+            .at_least_as_fresh(token)
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_check_batch_len_is_empty() {
+        let vault = create_test_vault().await;
+        let batch = vault.check_batch(vec![("user:alice", "view", "doc:1")]);
+        assert_eq!(batch.len(), 1);
+        assert!(!batch.is_empty());
+
+        let empty_batch = vault.check_batch(Vec::<(&str, &str, &str)>::new());
+        assert_eq!(empty_batch.len(), 0);
+        assert!(empty_batch.is_empty());
+    }
+
+    // BatchCheckResult tests
+    #[test]
+    fn test_batch_check_result() {
+        let result = BatchCheckResult {
+            results: vec![true, false, true],
+            decisions: None,
+            consistency_token: Some(ConsistencyToken::new("token")),
+        };
+
+        assert_eq!(result.as_slice(), &[true, false, true]);
+        assert_eq!(result.len(), 3);
+        assert!(!result.is_empty());
+        assert!(!result.all_allowed());
+        assert!(result.any_allowed());
+        assert_eq!(result.denied_indices(), vec![1]);
+
+        let items: Vec<_> = result.iter().collect();
+        assert_eq!(items, vec![true, false, true]);
+    }
+
+    #[test]
+    fn test_batch_check_result_all_allowed() {
+        let result = BatchCheckResult {
+            results: vec![true, true, true],
+            decisions: None,
+            consistency_token: None,
+        };
+        assert!(result.all_allowed());
+        assert!(result.any_allowed());
+        assert!(result.denied_indices().is_empty());
+    }
+
+    #[test]
+    fn test_batch_check_result_all_denied() {
+        let result = BatchCheckResult {
+            results: vec![false, false],
+            decisions: None,
+            consistency_token: None,
+        };
+        assert!(!result.all_allowed());
+        assert!(!result.any_allowed());
+        assert_eq!(result.denied_indices(), vec![0, 1]);
+    }
+
+    #[test]
+    fn test_batch_check_result_empty() {
+        let result = BatchCheckResult {
+            results: vec![],
+            decisions: None,
+            consistency_token: None,
+        };
+        assert!(result.is_empty());
+        assert!(result.all_allowed()); // vacuously true
+        assert!(!result.any_allowed());
+    }
+
+    // RelationshipsClient tests
+    #[tokio::test]
+    async fn test_relationships_client_debug() {
+        let vault = create_test_vault().await;
+        let rels = vault.relationships();
+        let debug = format!("{:?}", rels);
+        assert!(debug.contains("RelationshipsClient"));
+    }
+
+    #[tokio::test]
+    async fn test_relationships_write() {
+        let vault = create_test_vault().await;
+        let rel = Relationship::new("doc:1", "viewer", "user:alice");
+        let token = vault.relationships().write(rel).await.unwrap();
+        assert!(!token.value().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_relationships_write_batch() {
+        let vault = create_test_vault().await;
+        let rels = vec![
+            Relationship::new("doc:1", "viewer", "user:alice"),
+            Relationship::new("doc:1", "editor", "user:bob"),
+        ];
+        let batch = vault.relationships().write_batch(rels);
+        assert_eq!(batch.len(), 2);
+        assert!(!batch.is_empty());
+        let token = batch.await.unwrap();
+        assert!(!token.value().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_relationships_write_batch_empty() {
+        let vault = create_test_vault().await;
+        let batch = vault.relationships().write_batch(Vec::<Relationship>::new());
+        assert!(batch.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_relationships_delete() {
+        let vault = create_test_vault().await;
+        let rel = Relationship::new("doc:1", "viewer", "user:alice");
+        let result = vault.relationships().delete(rel).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_relationships_list() {
+        let vault = create_test_vault().await;
+        let response = vault.relationships().list().await.unwrap();
+        assert!(response.relationships.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_relationships_list_with_filters() {
+        let vault = create_test_vault().await;
+        let response = vault
+            .relationships()
+            .list()
+            .resource("doc:1")
+            .relation("viewer")
+            .subject("user:alice")
+            .limit(100)
+            .cursor("cursor123")
+            .await
+            .unwrap();
+        assert!(response.relationships.is_empty());
+    }
+
+    // ListRelationshipsResponse tests
+    #[test]
+    fn test_list_relationships_response() {
+        let response = ListRelationshipsResponse {
+            relationships: vec![
+                Relationship::new("doc:1", "viewer", "user:alice").into_owned(),
+            ],
+            next_cursor: Some("cursor123".to_string()),
+        };
+
+        assert!(response.has_more());
+        assert_eq!(response.iter().count(), 1);
+
+        let items: Vec<_> = response.into_iter().collect();
+        assert_eq!(items.len(), 1);
+    }
+
+    #[test]
+    fn test_list_relationships_response_no_more() {
+        let response = ListRelationshipsResponse {
+            relationships: vec![],
+            next_cursor: None,
+        };
+        assert!(!response.has_more());
+    }
+
+    // ResourcesClient tests
+    #[tokio::test]
+    async fn test_resources_accessible_by() {
+        let vault = create_test_vault().await;
+        let resources = vault
+            .resources()
+            .accessible_by("user:alice")
+            .with_permission("view")
+            .collect()
+            .await
+            .unwrap();
+        assert!(resources.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_resources_with_type() {
+        let vault = create_test_vault().await;
+        let resources = vault
+            .resources()
+            .accessible_by("user:alice")
+            .with_permission("view")
+            .resource_type("document")
+            .collect()
+            .await
+            .unwrap();
+        assert!(resources.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_resources_with_consistency() {
+        let vault = create_test_vault().await;
+        let token = ConsistencyToken::new("test_token");
+        let resources = vault
+            .resources()
+            .accessible_by("user:alice")
+            .with_permission("view")
+            .at_least_as_fresh_as(token)
+            .collect()
+            .await
+            .unwrap();
+        assert!(resources.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_resources_with_page_size() {
+        let vault = create_test_vault().await;
+        let resources = vault
+            .resources()
+            .accessible_by("user:alice")
+            .with_permission("view")
+            .page_size(50)
+            .collect()
+            .await
+            .unwrap();
+        assert!(resources.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_resources_take() {
+        let vault = create_test_vault().await;
+        let resources = vault
+            .resources()
+            .accessible_by("user:alice")
+            .with_permission("view")
+            .take(10)
+            .collect()
+            .await
+            .unwrap();
+        assert!(resources.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_resources_cursor() {
+        let vault = create_test_vault().await;
+        let page = vault
+            .resources()
+            .accessible_by("user:alice")
+            .with_permission("view")
+            .cursor(None)
+            .await
+            .unwrap();
+        assert!(!page.has_more());
+    }
+
+    // ResourcesPage tests
+    #[test]
+    fn test_resources_page() {
+        let page = ResourcesPage {
+            resources: vec!["doc:1".to_string(), "doc:2".to_string()],
+            next_cursor: Some("cursor".to_string()),
+        };
+
+        assert!(page.has_more());
+        let items: Vec<_> = page.iter().collect();
+        assert_eq!(items, vec!["doc:1", "doc:2"]);
+
+        let owned: Vec<_> = page.into_iter().collect();
+        assert_eq!(owned.len(), 2);
+    }
+
+    #[test]
+    fn test_resources_page_no_more() {
+        let page = ResourcesPage {
+            resources: vec![],
+            next_cursor: None,
+        };
+        assert!(!page.has_more());
+    }
+
+    // SubjectsClient tests
+    #[tokio::test]
+    async fn test_subjects_with_permission() {
+        let vault = create_test_vault().await;
+        let subjects = vault
+            .subjects()
+            .with_permission("edit")
+            .on_resource("doc:1")
+            .collect()
+            .await
+            .unwrap();
+        assert!(subjects.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_subjects_with_type() {
+        let vault = create_test_vault().await;
+        let subjects = vault
+            .subjects()
+            .with_permission("edit")
+            .on_resource("doc:1")
+            .subject_type("user")
+            .collect()
+            .await
+            .unwrap();
+        assert!(subjects.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_subjects_with_consistency() {
+        let vault = create_test_vault().await;
+        let token = ConsistencyToken::new("test_token");
+        let subjects = vault
+            .subjects()
+            .with_permission("edit")
+            .on_resource("doc:1")
+            .at_least_as_fresh_as(token)
+            .collect()
+            .await
+            .unwrap();
+        assert!(subjects.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_subjects_with_page_size() {
+        let vault = create_test_vault().await;
+        let subjects = vault
+            .subjects()
+            .with_permission("edit")
+            .on_resource("doc:1")
+            .page_size(50)
+            .collect()
+            .await
+            .unwrap();
+        assert!(subjects.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_subjects_take() {
+        let vault = create_test_vault().await;
+        let subjects = vault
+            .subjects()
+            .with_permission("edit")
+            .on_resource("doc:1")
+            .take(10)
+            .collect()
+            .await
+            .unwrap();
+        assert!(subjects.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_subjects_cursor() {
+        let vault = create_test_vault().await;
+        let page = vault
+            .subjects()
+            .with_permission("edit")
+            .on_resource("doc:1")
+            .cursor(None)
+            .await
+            .unwrap();
+        assert!(!page.has_more());
+    }
+
+    // SubjectsPage tests
+    #[test]
+    fn test_subjects_page() {
+        let page = SubjectsPage {
+            subjects: vec!["user:alice".to_string(), "user:bob".to_string()],
+            next_cursor: Some("cursor".to_string()),
+        };
+
+        assert!(page.has_more());
+        let items: Vec<_> = page.iter().collect();
+        assert_eq!(items, vec!["user:alice", "user:bob"]);
+
+        let owned: Vec<_> = page.into_iter().collect();
+        assert_eq!(owned.len(), 2);
+    }
+
+    #[test]
+    fn test_subjects_page_no_more() {
+        let page = SubjectsPage {
+            subjects: vec![],
+            next_cursor: None,
+        };
+        assert!(!page.has_more());
     }
 }

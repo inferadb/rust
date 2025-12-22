@@ -393,6 +393,16 @@ impl std::future::IntoFuture for DeleteVaultRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::BearerCredentialsConfig;
+
+    async fn create_test_client() -> Client {
+        Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build()
+            .await
+            .unwrap()
+    }
 
     #[test]
     fn test_vault_status() {
@@ -400,6 +410,10 @@ mod tests {
         assert!(VaultStatus::Active.is_available());
         assert!(!VaultStatus::Suspended.is_active());
         assert!(!VaultStatus::Suspended.is_available());
+        assert!(!VaultStatus::Deleting.is_active());
+        assert!(!VaultStatus::Deleting.is_available());
+        assert!(!VaultStatus::Archived.is_active());
+        assert!(!VaultStatus::Archived.is_available());
         assert_eq!(VaultStatus::default(), VaultStatus::Active);
     }
 
@@ -430,5 +444,107 @@ mod tests {
 
         assert_eq!(req.display_name, Some("New Name".to_string()));
         assert_eq!(req.description, Some("New description".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_vaults_client_accessors() {
+        let client = create_test_client().await;
+        let vaults = VaultsClient::new(client, "org_test");
+        assert_eq!(vaults.organization_id(), "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_vaults_client_debug() {
+        let client = create_test_client().await;
+        let vaults = VaultsClient::new(client, "org_test");
+        let debug = format!("{:?}", vaults);
+        assert!(debug.contains("VaultsClient"));
+        assert!(debug.contains("org_test"));
+    }
+
+    #[tokio::test]
+    async fn test_vaults_list() {
+        let client = create_test_client().await;
+        let vaults = VaultsClient::new(client, "org_test");
+        let page = vaults.list().await.unwrap();
+        assert!(page.items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_vaults_list_with_options() {
+        let client = create_test_client().await;
+        let vaults = VaultsClient::new(client, "org_test");
+        let page = vaults
+            .list()
+            .limit(10)
+            .cursor("cursor123")
+            .sort(SortOrder::Descending)
+            .status(VaultStatus::Active)
+            .await
+            .unwrap();
+        assert!(page.items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_vaults_create() {
+        let client = create_test_client().await;
+        let vaults = VaultsClient::new(client, "org_test");
+        let request = CreateVaultRequest::new("my-vault")
+            .with_display_name("My Vault")
+            .with_description("A test vault");
+        let info = vaults.create(request).await.unwrap();
+        assert_eq!(info.name, "my-vault");
+        assert_eq!(info.display_name, Some("My Vault".to_string()));
+        assert_eq!(info.description, Some("A test vault".to_string()));
+        assert_eq!(info.organization_id, "org_test");
+        assert!(info.status.is_active());
+    }
+
+    #[tokio::test]
+    async fn test_vaults_get() {
+        let client = create_test_client().await;
+        let vaults = VaultsClient::new(client, "org_test");
+        let info = vaults.get("vlt_abc123").await.unwrap();
+        assert_eq!(info.id, "vlt_abc123");
+        assert_eq!(info.organization_id, "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_vaults_update() {
+        let client = create_test_client().await;
+        let vaults = VaultsClient::new(client, "org_test");
+        let request = UpdateVaultRequest::new()
+            .with_display_name("New Name")
+            .with_description("New description");
+        let info = vaults.update("vlt_abc123", request).await.unwrap();
+        assert_eq!(info.id, "vlt_abc123");
+    }
+
+    #[tokio::test]
+    async fn test_vaults_delete_with_confirmation() {
+        let client = create_test_client().await;
+        let vaults = VaultsClient::new(client, "org_test");
+        let result = vaults.delete("vlt_abc123").confirm("DELETE vlt_abc123").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_vaults_delete_wrong_confirmation() {
+        let client = create_test_client().await;
+        let vaults = VaultsClient::new(client, "org_test");
+        let result = vaults.delete("vlt_abc123").confirm("DELETE wrong_vault").await;
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("Invalid confirmation"));
+    }
+
+    #[tokio::test]
+    async fn test_vaults_delete_no_confirmation() {
+        let client = create_test_client().await;
+        let vaults = VaultsClient::new(client, "org_test");
+        let result = vaults.delete("vlt_abc123").await;
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("requires confirmation"));
     }
 }

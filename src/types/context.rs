@@ -517,4 +517,163 @@ mod tests {
         let ctx: Context = pairs.into_iter().collect();
         assert_eq!(ctx.len(), 2);
     }
+
+    #[test]
+    fn test_context_value_as_wrong_type() {
+        // Test as_bool on non-Bool
+        assert!(ContextValue::Integer(42).as_bool().is_none());
+        assert!(ContextValue::Null.as_bool().is_none());
+
+        // Test as_i64 on non-Integer
+        assert!(ContextValue::Bool(true).as_i64().is_none());
+        assert!(ContextValue::String("test".into()).as_i64().is_none());
+
+        // Test as_f64 on non-numeric
+        assert!(ContextValue::Bool(true).as_f64().is_none());
+        assert!(ContextValue::Null.as_f64().is_none());
+
+        // Test as_str on non-String
+        assert!(ContextValue::Integer(42).as_str().is_none());
+        assert!(ContextValue::Bool(true).as_str().is_none());
+
+        // Test as_array on non-Array
+        assert!(ContextValue::Integer(42).as_array().is_none());
+        assert!(ContextValue::String("test".into()).as_array().is_none());
+
+        // Test as_object on non-Object
+        assert!(ContextValue::Integer(42).as_object().is_none());
+        assert!(ContextValue::Array(vec![]).as_object().is_none());
+    }
+
+    #[test]
+    fn test_context_value_as_f64_from_integer() {
+        // Integer can be converted to f64
+        let val = ContextValue::Integer(42);
+        assert_eq!(val.as_f64(), Some(42.0));
+    }
+
+    #[test]
+    fn test_context_value_from_i64() {
+        let val: ContextValue = 100i64.into();
+        assert_eq!(val.as_i64(), Some(100));
+    }
+
+    #[test]
+    fn test_context_value_from_string_owned() {
+        let val: ContextValue = String::from("hello").into();
+        assert_eq!(val.as_str(), Some("hello"));
+    }
+
+    #[test]
+    fn test_context_value_display_float() {
+        let val = ContextValue::Float(3.14);
+        assert_eq!(val.to_string(), "3.14");
+    }
+
+    #[test]
+    fn test_context_value_display_array_multiple() {
+        let arr = ContextValue::Array(vec![
+            ContextValue::Integer(1),
+            ContextValue::Integer(2),
+            ContextValue::Integer(3),
+        ]);
+        assert_eq!(arr.to_string(), "[1, 2, 3]");
+    }
+
+    #[test]
+    fn test_context_value_display_object() {
+        let mut obj = HashMap::new();
+        obj.insert("key".to_string(), ContextValue::String("value".into()));
+        let val = ContextValue::Object(obj);
+        let display = val.to_string();
+        assert!(display.starts_with("{"));
+        assert!(display.ends_with("}"));
+        assert!(display.contains("\"key\""));
+        assert!(display.contains("\"value\""));
+    }
+
+    #[test]
+    fn test_context_value_display_object_multiple() {
+        let mut obj = HashMap::new();
+        obj.insert("a".to_string(), ContextValue::Integer(1));
+        obj.insert("b".to_string(), ContextValue::Integer(2));
+        let val = ContextValue::Object(obj);
+        let display = val.to_string();
+        // Contains comma separator
+        assert!(display.contains(", "));
+    }
+
+    #[test]
+    fn test_context_into_iterator() {
+        let ctx = Context::new()
+            .with("a", 1)
+            .with("b", 2);
+
+        let mut count = 0;
+        for (key, _) in ctx {
+            assert!(key == "a" || key == "b");
+            count += 1;
+        }
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_context_ref_into_iterator() {
+        let ctx = Context::new()
+            .with("a", 1)
+            .with("b", 2);
+
+        let mut count = 0;
+        for (key, _) in &ctx {
+            assert!(key == "a" || key == "b");
+            count += 1;
+        }
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_context_extend() {
+        let mut ctx1 = Context::new().with("a", 1);
+        let ctx2 = Context::new().with("b", 2).with("a", 3);
+
+        ctx1.extend(ctx2);
+
+        assert_eq!(ctx1.get("a").and_then(|v| v.as_i64()), Some(3));
+        assert_eq!(ctx1.get("b").and_then(|v| v.as_i64()), Some(2));
+    }
+
+    #[test]
+    fn test_context_value_debug() {
+        let val = ContextValue::Integer(42);
+        let debug = format!("{:?}", val);
+        assert!(debug.contains("Integer"));
+        assert!(debug.contains("42"));
+    }
+
+    #[test]
+    fn test_context_value_clone() {
+        let val = ContextValue::String("test".into());
+        let cloned = val.clone();
+        assert_eq!(val, cloned);
+    }
+
+    #[test]
+    fn test_context_default() {
+        let ctx = Context::default();
+        assert!(ctx.is_empty());
+    }
+
+    #[test]
+    fn test_context_debug() {
+        let ctx = Context::new().with("key", "value");
+        let debug = format!("{:?}", ctx);
+        assert!(debug.contains("Context"));
+    }
+
+    #[test]
+    fn test_context_clone() {
+        let ctx = Context::new().with("key", "value");
+        let cloned = ctx.clone();
+        assert_eq!(ctx.get("key"), cloned.get("key"));
+    }
 }

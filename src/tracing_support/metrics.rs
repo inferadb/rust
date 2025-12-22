@@ -577,4 +577,295 @@ mod tests {
         gauge.decrement();
         assert_eq!(gauge.value(), 100);
     }
+
+    #[test]
+    fn test_metrics_config_with_latency_buckets() {
+        let buckets = vec![0.01, 0.05, 0.1, 0.5, 1.0];
+        let config = MetricsConfig::default().with_latency_buckets(buckets.clone());
+        assert_eq!(config.latency_buckets, buckets);
+    }
+
+    #[test]
+    fn test_metrics_config_accessor() {
+        let config = MetricsConfig::default().with_prefix("test_prefix");
+        let metrics = Metrics::new(config);
+        assert_eq!(metrics.config().prefix, "test_prefix");
+    }
+
+    #[test]
+    fn test_metrics_check_errors() {
+        let metrics = Metrics::default();
+        metrics.increment_check_errors();
+        metrics.increment_check_errors();
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.check_errors, 2);
+    }
+
+    #[test]
+    fn test_metrics_relationship_deletes() {
+        let metrics = Metrics::default();
+        metrics.increment_relationship_deletes(3);
+        metrics.increment_relationship_deletes(2);
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.relationship_deletes, 5);
+    }
+
+    #[test]
+    fn test_metrics_write_latency() {
+        let metrics = Metrics::default();
+        metrics.record_write_latency(Duration::from_millis(20));
+        metrics.record_write_latency(Duration::from_millis(40));
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.write_latency_avg_ns, 30_000_000); // 30ms
+    }
+
+    #[test]
+    fn test_metrics_connection_pool_size() {
+        let metrics = Metrics::default();
+        metrics.set_connection_pool_size(10);
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.connection_pool_size, 10);
+
+        metrics.set_connection_pool_size(5);
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.connection_pool_size, 5);
+    }
+
+    #[test]
+    fn test_metrics_connection_errors() {
+        let metrics = Metrics::default();
+        metrics.increment_connection_errors();
+        metrics.increment_connection_errors();
+        metrics.increment_connection_errors();
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.connection_errors, 3);
+    }
+
+    #[test]
+    fn test_metrics_snapshot_latency_durations() {
+        let metrics = Metrics::default();
+        metrics.record_check_latency(Duration::from_millis(25), true);
+        metrics.record_write_latency(Duration::from_millis(50));
+
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.check_latency_avg(), Duration::from_millis(25));
+        assert_eq!(snapshot.write_latency_avg(), Duration::from_millis(50));
+    }
+
+    #[test]
+    fn test_metrics_snapshot_zero_latency() {
+        let metrics = Metrics::default();
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.check_latency_avg_ns, 0);
+        assert_eq!(snapshot.write_latency_avg_ns, 0);
+        assert_eq!(snapshot.check_latency_avg(), Duration::ZERO);
+        assert_eq!(snapshot.write_latency_avg(), Duration::ZERO);
+    }
+
+    #[test]
+    fn test_metrics_snapshot_check_error_rate() {
+        let metrics = Metrics::default();
+
+        // No checks, no errors
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.check_error_rate(), 0.0);
+
+        // 10 checks, 2 errors
+        for _ in 0..10 {
+            metrics.increment_check_count(true);
+        }
+        metrics.increment_check_errors();
+        metrics.increment_check_errors();
+
+        let snapshot = metrics.snapshot();
+        // 2 errors / (10 checks + 2 errors) = 2/12 ≈ 0.1667
+        assert!((snapshot.check_error_rate() - 0.16666666).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_metrics_snapshot_check_allow_rate_zero() {
+        let snapshot = MetricsSnapshot::default();
+        assert_eq!(snapshot.check_allow_rate(), 0.0);
+    }
+
+    #[test]
+    fn test_counter_name() {
+        let metrics = Metrics::default();
+        let counter = metrics.counter("request_count");
+        assert_eq!(counter.name(), "request_count");
+    }
+
+    #[test]
+    fn test_counter_reuse() {
+        let metrics = Metrics::default();
+
+        // Create and increment
+        let counter1 = metrics.counter("shared");
+        counter1.add(10);
+
+        // Get the same counter again
+        let counter2 = metrics.counter("shared");
+        assert_eq!(counter2.value(), 10);
+
+        counter2.increment();
+        assert_eq!(counter1.value(), 11);
+    }
+
+    #[test]
+    fn test_gauge_name() {
+        let metrics = Metrics::default();
+        let gauge = metrics.gauge("active_connections");
+        assert_eq!(gauge.name(), "active_connections");
+    }
+
+    #[test]
+    fn test_gauge_add_sub() {
+        let metrics = Metrics::default();
+        let gauge = metrics.gauge("queue_size");
+
+        gauge.add(10);
+        assert_eq!(gauge.value(), 10);
+
+        gauge.add(5);
+        assert_eq!(gauge.value(), 15);
+
+        gauge.sub(3);
+        assert_eq!(gauge.value(), 12);
+    }
+
+    #[test]
+    fn test_gauge_reuse() {
+        let metrics = Metrics::default();
+
+        // Create and set
+        let gauge1 = metrics.gauge("shared_gauge");
+        gauge1.set(50);
+
+        // Get the same gauge again
+        let gauge2 = metrics.gauge("shared_gauge");
+        assert_eq!(gauge2.value(), 50);
+
+        gauge2.increment();
+        assert_eq!(gauge1.value(), 51);
+    }
+
+    #[test]
+    fn test_histogram_name() {
+        let metrics = Metrics::default();
+        let histogram = metrics.histogram("request_latency");
+        assert_eq!(histogram.name(), "request_latency");
+    }
+
+    #[test]
+    fn test_histogram_record() {
+        let metrics = Metrics::default();
+        // First create a counter with the same name (since histogram uses counters internally)
+        let counter = metrics.counter("latency_hist");
+        assert_eq!(counter.value(), 0);
+
+        let histogram = metrics.histogram("latency_hist");
+        histogram.record(0.5);
+        histogram.record(1.0);
+
+        // Histogram increments the counter
+        assert_eq!(counter.value(), 2);
+    }
+
+    #[test]
+    fn test_histogram_record_duration() {
+        let metrics = Metrics::default();
+        let counter = metrics.counter("duration_hist");
+
+        let histogram = metrics.histogram("duration_hist");
+        histogram.record_duration(Duration::from_millis(100));
+        histogram.record_duration(Duration::from_millis(200));
+
+        assert_eq!(counter.value(), 2);
+    }
+
+    #[test]
+    fn test_metrics_clone() {
+        let metrics = Metrics::default();
+        metrics.increment_check_count(true);
+
+        let cloned = metrics.clone();
+        cloned.increment_check_count(true);
+
+        // Both should see the same data (Arc)
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.check_total, 2);
+    }
+
+    #[test]
+    fn test_metrics_snapshot_default() {
+        let snapshot = MetricsSnapshot::default();
+        assert_eq!(snapshot.check_total, 0);
+        assert_eq!(snapshot.check_allowed, 0);
+        assert_eq!(snapshot.check_denied, 0);
+        assert_eq!(snapshot.check_errors, 0);
+        assert_eq!(snapshot.relationship_writes, 0);
+        assert_eq!(snapshot.relationship_deletes, 0);
+        assert_eq!(snapshot.check_latency_avg_ns, 0);
+        assert_eq!(snapshot.write_latency_avg_ns, 0);
+        assert_eq!(snapshot.connection_pool_size, 0);
+        assert_eq!(snapshot.connection_errors, 0);
+    }
+
+    #[test]
+    fn test_counter_debug() {
+        let metrics = Metrics::default();
+        let counter = metrics.counter("test");
+        let debug = format!("{:?}", counter);
+        assert!(debug.contains("Counter"));
+        assert!(debug.contains("test"));
+    }
+
+    #[test]
+    fn test_gauge_debug() {
+        let metrics = Metrics::default();
+        let gauge = metrics.gauge("test");
+        let debug = format!("{:?}", gauge);
+        assert!(debug.contains("Gauge"));
+        assert!(debug.contains("test"));
+    }
+
+    #[test]
+    fn test_histogram_debug() {
+        let metrics = Metrics::default();
+        let histogram = metrics.histogram("test");
+        let debug = format!("{:?}", histogram);
+        assert!(debug.contains("Histogram"));
+        assert!(debug.contains("test"));
+    }
+
+    #[test]
+    fn test_metrics_config_debug() {
+        let config = MetricsConfig::default();
+        let debug = format!("{:?}", config);
+        assert!(debug.contains("MetricsConfig"));
+        assert!(debug.contains("inferadb"));
+    }
+
+    #[test]
+    fn test_metrics_debug() {
+        let metrics = Metrics::default();
+        let debug = format!("{:?}", metrics);
+        assert!(debug.contains("Metrics"));
+    }
+
+    #[test]
+    fn test_metrics_snapshot_debug() {
+        let snapshot = MetricsSnapshot::default();
+        let debug = format!("{:?}", snapshot);
+        assert!(debug.contains("MetricsSnapshot"));
+    }
+
+    #[test]
+    fn test_metrics_snapshot_clone() {
+        let metrics = Metrics::default();
+        metrics.increment_check_count(true);
+        let snapshot = metrics.snapshot();
+        let cloned = snapshot.clone();
+        assert_eq!(snapshot.check_total, cloned.check_total);
+    }
 }

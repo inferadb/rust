@@ -548,6 +548,16 @@ impl std::future::IntoFuture for ListInvitationsRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::BearerCredentialsConfig;
+
+    async fn create_test_client() -> Client {
+        Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build()
+            .await
+            .unwrap()
+    }
 
     #[test]
     fn test_org_role() {
@@ -555,6 +565,8 @@ mod tests {
         assert!(OrgRole::Owner.is_admin());
         assert!(OrgRole::Admin.is_admin());
         assert!(!OrgRole::Member.is_admin());
+        assert!(!OrgRole::Billing.is_admin());
+        assert!(!OrgRole::Viewer.is_admin());
         assert!(OrgRole::Owner.is_owner());
         assert!(!OrgRole::Admin.is_owner());
     }
@@ -573,6 +585,7 @@ mod tests {
         assert_eq!(MemberStatus::default(), MemberStatus::Active);
         assert_eq!(MemberStatus::Active.to_string(), "active");
         assert_eq!(MemberStatus::Suspended.to_string(), "suspended");
+        assert_eq!(MemberStatus::Deactivated.to_string(), "deactivated");
     }
 
     #[test]
@@ -580,6 +593,8 @@ mod tests {
         assert_eq!(InvitationStatus::default(), InvitationStatus::Pending);
         assert_eq!(InvitationStatus::Pending.to_string(), "pending");
         assert_eq!(InvitationStatus::Accepted.to_string(), "accepted");
+        assert_eq!(InvitationStatus::Expired.to_string(), "expired");
+        assert_eq!(InvitationStatus::Revoked.to_string(), "revoked");
     }
 
     #[test]
@@ -600,5 +615,146 @@ mod tests {
 
         assert_eq!(req.role, Some(OrgRole::Admin));
         assert_eq!(req.status, Some(MemberStatus::Suspended));
+    }
+
+    #[tokio::test]
+    async fn test_members_client_accessors() {
+        let client = create_test_client().await;
+        let members = MembersClient::new(client, "org_test");
+        assert_eq!(members.organization_id(), "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_members_client_debug() {
+        let client = create_test_client().await;
+        let members = MembersClient::new(client, "org_test");
+        let debug = format!("{:?}", members);
+        assert!(debug.contains("MembersClient"));
+        assert!(debug.contains("org_test"));
+    }
+
+    #[tokio::test]
+    async fn test_members_list() {
+        let client = create_test_client().await;
+        let members = MembersClient::new(client, "org_test");
+        let page = members.list().await.unwrap();
+        assert!(page.items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_members_list_with_options() {
+        let client = create_test_client().await;
+        let members = MembersClient::new(client, "org_test");
+        let page = members
+            .list()
+            .limit(10)
+            .cursor("cursor123")
+            .sort(SortOrder::Ascending)
+            .role(OrgRole::Admin)
+            .await
+            .unwrap();
+        assert!(page.items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_members_get() {
+        let client = create_test_client().await;
+        let members = MembersClient::new(client, "org_test");
+        let info = members.get("user_abc123").await.unwrap();
+        assert_eq!(info.user_id, "user_abc123");
+        assert_eq!(info.organization_id, "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_members_update() {
+        let client = create_test_client().await;
+        let members = MembersClient::new(client, "org_test");
+        let request = UpdateMemberRequest::new()
+            .with_role(OrgRole::Admin)
+            .with_status(MemberStatus::Suspended);
+        let info = members.update("user_abc123", request).await.unwrap();
+        assert_eq!(info.user_id, "user_abc123");
+    }
+
+    #[tokio::test]
+    async fn test_members_remove() {
+        let client = create_test_client().await;
+        let members = MembersClient::new(client, "org_test");
+        let result = members.remove("user_abc123").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_members_invite() {
+        let client = create_test_client().await;
+        let members = MembersClient::new(client, "org_test");
+        let request = InviteMemberRequest::new("alice@example.com", OrgRole::Member)
+            .with_message("Welcome!");
+        let info = members.invite(request).await.unwrap();
+        assert_eq!(info.email, "alice@example.com");
+        assert_eq!(info.role, OrgRole::Member);
+    }
+
+    #[tokio::test]
+    async fn test_invitations_client_accessors() {
+        let client = create_test_client().await;
+        let invitations = InvitationsClient::new(client, "org_test");
+        assert_eq!(invitations.organization_id(), "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_invitations_client_debug() {
+        let client = create_test_client().await;
+        let invitations = InvitationsClient::new(client, "org_test");
+        let debug = format!("{:?}", invitations);
+        assert!(debug.contains("InvitationsClient"));
+        assert!(debug.contains("org_test"));
+    }
+
+    #[tokio::test]
+    async fn test_invitations_list() {
+        let client = create_test_client().await;
+        let invitations = InvitationsClient::new(client, "org_test");
+        let page = invitations.list().await.unwrap();
+        assert!(page.items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_invitations_list_with_options() {
+        let client = create_test_client().await;
+        let invitations = InvitationsClient::new(client, "org_test");
+        let page = invitations
+            .list()
+            .limit(10)
+            .cursor("cursor123")
+            .status(InvitationStatus::Pending)
+            .await
+            .unwrap();
+        assert!(page.items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_invitations_get() {
+        let client = create_test_client().await;
+        let invitations = InvitationsClient::new(client, "org_test");
+        let info = invitations.get("inv_abc123").await.unwrap();
+        assert_eq!(info.id, "inv_abc123");
+        assert_eq!(info.organization_id, "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_invitations_revoke() {
+        let client = create_test_client().await;
+        let invitations = InvitationsClient::new(client, "org_test");
+        let result = invitations.revoke("inv_abc123").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_invitations_resend() {
+        let client = create_test_client().await;
+        let invitations = InvitationsClient::new(client, "org_test");
+        let result = invitations.resend("inv_abc123").await;
+        assert!(result.is_ok());
     }
 }

@@ -294,4 +294,196 @@ mod tests {
         let ctx = propagator.extract(&headers).unwrap();
         assert!(!ctx.is_sampled());
     }
+
+    #[test]
+    fn test_b3_single_accept() {
+        let propagator = B3Propagator::single();
+        let mut headers = HashMap::new();
+        headers.insert("b3".to_string(), "1".to_string());
+
+        let ctx = propagator.extract(&headers).unwrap();
+        assert!(ctx.is_sampled());
+    }
+
+    #[test]
+    fn test_b3_single_not_sampled() {
+        let propagator = B3Propagator::single();
+        let ctx = TraceContext::new_root().with_sampled(false);
+
+        let mut headers = HashMap::new();
+        propagator.inject(&ctx, &mut headers);
+
+        let b3 = headers.get("b3").unwrap();
+        assert!(b3.ends_with("-0"));
+    }
+
+    #[test]
+    fn test_b3_multi_with_parent() {
+        let propagator = B3Propagator::multi();
+        let parent = TraceContext::new_root();
+        let child = parent.child();
+
+        let mut headers = HashMap::new();
+        propagator.inject(&child, &mut headers);
+
+        assert!(headers.contains_key("x-b3-parentspanid"));
+    }
+
+    #[test]
+    fn test_b3_multi_not_sampled() {
+        let propagator = B3Propagator::multi();
+        let ctx = TraceContext::new_root().with_sampled(false);
+
+        let mut headers = HashMap::new();
+        propagator.inject(&ctx, &mut headers);
+
+        assert_eq!(headers.get("x-b3-sampled"), Some(&"0".to_string()));
+    }
+
+    #[test]
+    fn test_b3_multi_extract_with_sampled_true() {
+        let propagator = B3Propagator::multi();
+        let mut headers = HashMap::new();
+        headers.insert("x-b3-traceid".to_string(), "4bf92f3577b34da6a3ce929d0e0e4736".to_string());
+        headers.insert("x-b3-spanid".to_string(), "00f067aa0ba902b7".to_string());
+        headers.insert("x-b3-sampled".to_string(), "true".to_string());
+
+        let ctx = propagator.extract(&headers).unwrap();
+        assert!(ctx.is_sampled());
+    }
+
+    #[test]
+    fn test_b3_multi_extract_without_sampled() {
+        let propagator = B3Propagator::multi();
+        let mut headers = HashMap::new();
+        headers.insert("x-b3-traceid".to_string(), "4bf92f3577b34da6a3ce929d0e0e4736".to_string());
+        headers.insert("x-b3-spanid".to_string(), "00f067aa0ba902b7".to_string());
+
+        let ctx = propagator.extract(&headers).unwrap();
+        // Default to sampled when not specified
+        assert!(ctx.is_sampled());
+    }
+
+    #[test]
+    fn test_b3_single_debug_flag() {
+        let propagator = B3Propagator::single();
+        let mut headers = HashMap::new();
+        // "d" means debug (force sampling)
+        headers.insert("b3".to_string(), "4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-d".to_string());
+
+        let ctx = propagator.extract(&headers).unwrap();
+        assert!(ctx.is_sampled());
+    }
+
+    #[test]
+    fn test_b3_single_without_sampling_state() {
+        let propagator = B3Propagator::single();
+        let mut headers = HashMap::new();
+        headers.insert("b3".to_string(), "4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7".to_string());
+
+        let ctx = propagator.extract(&headers).unwrap();
+        // Default to sampled when not specified
+        assert!(ctx.is_sampled());
+    }
+
+    #[test]
+    fn test_b3_single_invalid_format() {
+        let propagator = B3Propagator::single();
+        let mut headers = HashMap::new();
+        headers.insert("b3".to_string(), "invalid".to_string());
+
+        let result = propagator.extract(&headers);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_b3_default() {
+        let propagator = B3Propagator::default();
+        // Default should be single header
+        let ctx = TraceContext::new_root();
+        let mut headers = HashMap::new();
+        propagator.inject(&ctx, &mut headers);
+        assert!(headers.contains_key("b3"));
+    }
+
+    #[test]
+    fn test_w3c_missing_traceparent() {
+        let propagator = W3CTraceContext;
+        let headers: HashMap<String, String> = HashMap::new();
+
+        let result = propagator.extract(&headers);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_w3c_propagator_debug() {
+        let propagator = W3CTraceContext;
+        let debug = format!("{:?}", propagator);
+        assert!(debug.contains("W3CTraceContext"));
+    }
+
+    #[test]
+    fn test_w3c_propagator_clone() {
+        let propagator = W3CTraceContext;
+        let cloned = propagator;
+        let _ = cloned; // Copy trait
+    }
+
+    #[test]
+    fn test_w3c_propagator_default() {
+        let _propagator = W3CTraceContext::default();
+    }
+
+    #[test]
+    fn test_b3_propagator_debug() {
+        let propagator = B3Propagator::single();
+        let debug = format!("{:?}", propagator);
+        assert!(debug.contains("B3Propagator"));
+    }
+
+    #[test]
+    fn test_b3_propagator_clone() {
+        let propagator = B3Propagator::single();
+        let cloned = propagator;
+        let _ = cloned; // Copy trait
+    }
+
+    #[test]
+    fn test_b3_multi_missing_trace_id() {
+        let propagator = B3Propagator::multi();
+        let mut headers = HashMap::new();
+        headers.insert("x-b3-spanid".to_string(), "00f067aa0ba902b7".to_string());
+
+        let result = propagator.extract(&headers);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_b3_multi_missing_span_id() {
+        let propagator = B3Propagator::multi();
+        let mut headers = HashMap::new();
+        headers.insert("x-b3-traceid".to_string(), "4bf92f3577b34da6a3ce929d0e0e4736".to_string());
+
+        let result = propagator.extract(&headers);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_header_extractor_for_hashmap() {
+        let mut headers = HashMap::new();
+        headers.insert("key".to_string(), "value".to_string());
+
+        let result = HeaderExtractor::get(&headers, "key");
+        assert_eq!(result, Some("value"));
+
+        let result = HeaderExtractor::get(&headers, "missing");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_header_injector_for_hashmap() {
+        let mut headers: HashMap<String, String> = HashMap::new();
+        HeaderInjector::set(&mut headers, "key", "value".to_string());
+        assert_eq!(headers.get("key"), Some(&"value".to_string()));
+    }
 }

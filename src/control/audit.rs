@@ -535,6 +535,16 @@ impl ExportAuditLogsRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::BearerCredentialsConfig;
+
+    async fn create_test_client() -> Client {
+        Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build()
+            .await
+            .unwrap()
+    }
 
     #[test]
     fn test_actor_type() {
@@ -550,6 +560,17 @@ mod tests {
         assert_eq!(AuditAction::Check.to_string(), "check");
         assert_eq!(AuditAction::RelationshipWrite.to_string(), "relationship.write");
         assert_eq!(AuditAction::SchemaPush.to_string(), "schema.push");
+        assert_eq!(AuditAction::RelationshipDelete.to_string(), "relationship.delete");
+        assert_eq!(AuditAction::SchemaActivate.to_string(), "schema.activate");
+        assert_eq!(AuditAction::VaultCreate.to_string(), "vault.create");
+        assert_eq!(AuditAction::VaultUpdate.to_string(), "vault.update");
+        assert_eq!(AuditAction::VaultDelete.to_string(), "vault.delete");
+        assert_eq!(AuditAction::MemberInvite.to_string(), "member.invite");
+        assert_eq!(AuditAction::MemberUpdate.to_string(), "member.update");
+        assert_eq!(AuditAction::MemberRemove.to_string(), "member.remove");
+        assert_eq!(AuditAction::TeamCreate.to_string(), "team.create");
+        assert_eq!(AuditAction::TeamUpdate.to_string(), "team.update");
+        assert_eq!(AuditAction::TeamDelete.to_string(), "team.delete");
     }
 
     #[test]
@@ -563,5 +584,86 @@ mod tests {
     #[test]
     fn test_export_format() {
         assert_eq!(ExportFormat::default(), ExportFormat::Json);
+    }
+
+    #[tokio::test]
+    async fn test_audit_logs_client_accessors() {
+        let client = create_test_client().await;
+        let audit = AuditLogsClient::new(client, "org_test");
+        assert_eq!(audit.organization_id(), "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_audit_logs_client_debug() {
+        let client = create_test_client().await;
+        let audit = AuditLogsClient::new(client, "org_test");
+        let debug = format!("{:?}", audit);
+        assert!(debug.contains("AuditLogsClient"));
+        assert!(debug.contains("org_test"));
+    }
+
+    #[tokio::test]
+    async fn test_audit_logs_list() {
+        let client = create_test_client().await;
+        let audit = AuditLogsClient::new(client, "org_test");
+        let page = audit.list().await.unwrap();
+        assert!(page.items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_audit_logs_list_with_options() {
+        let client = create_test_client().await;
+        let audit = AuditLogsClient::new(client, "org_test");
+        let now = chrono::Utc::now();
+        let page = audit
+            .list()
+            .vault("vlt_abc123")
+            .limit(10)
+            .cursor("cursor123")
+            .sort(SortOrder::Descending)
+            .actor("user_xyz")
+            .action(AuditAction::Check)
+            .resource("doc:1")
+            .after(now - chrono::Duration::hours(1))
+            .before(now)
+            .await
+            .unwrap();
+        assert!(page.items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_audit_logs_get() {
+        let client = create_test_client().await;
+        let audit = AuditLogsClient::new(client, "org_test");
+        let event = audit.get("evt_abc123").await.unwrap();
+        assert_eq!(event.id, "evt_abc123");
+        assert_eq!(event.organization_id, "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_audit_logs_export() {
+        let client = create_test_client().await;
+        let audit = AuditLogsClient::new(client, "org_test");
+        let now = chrono::Utc::now();
+        let export = audit
+            .export()
+            .vault("vlt_abc123")
+            .after(now - chrono::Duration::hours(1))
+            .before(now)
+            .format(ExportFormat::Csv);
+
+        // Check that stream returns an iterator
+        let _stream = export.stream();
+    }
+
+    #[tokio::test]
+    async fn test_audit_logs_export_to_file() {
+        let client = create_test_client().await;
+        let audit = AuditLogsClient::new(client, "org_test");
+        let result = audit
+            .export()
+            .write_to_file("/tmp/audit.json")
+            .await;
+        assert!(result.is_ok());
     }
 }

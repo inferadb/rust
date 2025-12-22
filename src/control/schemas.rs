@@ -491,14 +491,26 @@ impl std::future::IntoFuture for ListSchemasRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::BearerCredentialsConfig;
+
+    async fn create_test_client() -> Client {
+        Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build()
+            .await
+            .unwrap()
+    }
 
     #[test]
     fn test_schema_status() {
         assert_eq!(SchemaStatus::default(), SchemaStatus::Inactive);
         assert!(SchemaStatus::Active.is_active());
         assert!(!SchemaStatus::Inactive.is_active());
+        assert!(!SchemaStatus::Deprecated.is_active());
         assert_eq!(SchemaStatus::Active.to_string(), "active");
         assert_eq!(SchemaStatus::Inactive.to_string(), "inactive");
+        assert_eq!(SchemaStatus::Deprecated.to_string(), "deprecated");
     }
 
     #[test]
@@ -540,7 +552,105 @@ mod tests {
     #[test]
     fn test_schema_change_type() {
         assert_eq!(SchemaChangeType::EntityAdded.to_string(), "entity_added");
+        assert_eq!(SchemaChangeType::EntityRemoved.to_string(), "entity_removed");
+        assert_eq!(SchemaChangeType::RelationAdded.to_string(), "relation_added");
         assert_eq!(SchemaChangeType::RelationRemoved.to_string(), "relation_removed");
+        assert_eq!(SchemaChangeType::RelationModified.to_string(), "relation_modified");
+        assert_eq!(SchemaChangeType::PermissionAdded.to_string(), "permission_added");
+        assert_eq!(SchemaChangeType::PermissionRemoved.to_string(), "permission_removed");
         assert_eq!(SchemaChangeType::PermissionModified.to_string(), "permission_modified");
+    }
+
+    #[tokio::test]
+    async fn test_schemas_client_accessors() {
+        let client = create_test_client().await;
+        let schemas = SchemasClient::new(client, "org_test", "vlt_abc123");
+        assert_eq!(schemas.organization_id(), "org_test");
+        assert_eq!(schemas.vault_id(), "vlt_abc123");
+    }
+
+    #[tokio::test]
+    async fn test_schemas_client_debug() {
+        let client = create_test_client().await;
+        let schemas = SchemasClient::new(client, "org_test", "vlt_abc123");
+        let debug = format!("{:?}", schemas);
+        assert!(debug.contains("SchemasClient"));
+        assert!(debug.contains("org_test"));
+        assert!(debug.contains("vlt_abc123"));
+    }
+
+    #[tokio::test]
+    async fn test_schemas_get_active() {
+        let client = create_test_client().await;
+        let schemas = SchemasClient::new(client, "org_test", "vlt_abc123");
+        let info = schemas.get_active().await.unwrap();
+        assert_eq!(info.status, SchemaStatus::Active);
+    }
+
+    #[tokio::test]
+    async fn test_schemas_get() {
+        let client = create_test_client().await;
+        let schemas = SchemasClient::new(client, "org_test", "vlt_abc123");
+        let info = schemas.get("v1.0.0").await.unwrap();
+        assert_eq!(info.version, "v1.0.0");
+        assert_eq!(info.vault_id, "vlt_abc123");
+    }
+
+    #[tokio::test]
+    async fn test_schemas_list() {
+        let client = create_test_client().await;
+        let schemas = SchemasClient::new(client, "org_test", "vlt_abc123");
+        let page = schemas.list().await.unwrap();
+        assert!(page.items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_schemas_list_with_options() {
+        let client = create_test_client().await;
+        let schemas = SchemasClient::new(client, "org_test", "vlt_abc123");
+        let page = schemas
+            .list()
+            .limit(10)
+            .cursor("cursor123")
+            .sort(SortOrder::Descending)
+            .status(SchemaStatus::Active)
+            .await
+            .unwrap();
+        assert!(page.items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_schemas_push() {
+        let client = create_test_client().await;
+        let schemas = SchemasClient::new(client, "org_test", "vlt_abc123");
+        let result = schemas.push("entity user {}").await.unwrap();
+        assert!(result.validation.is_valid);
+    }
+
+    #[tokio::test]
+    async fn test_schemas_validate() {
+        let client = create_test_client().await;
+        let schemas = SchemasClient::new(client, "org_test", "vlt_abc123");
+        let result = schemas.validate("entity user {}").await.unwrap();
+        assert!(result.is_valid);
+    }
+
+    #[tokio::test]
+    async fn test_schemas_activate() {
+        let client = create_test_client().await;
+        let schemas = SchemasClient::new(client, "org_test", "vlt_abc123");
+        let result = schemas.activate("v1.0.0").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_schemas_diff() {
+        let client = create_test_client().await;
+        let schemas = SchemasClient::new(client, "org_test", "vlt_abc123");
+        let diff = schemas.diff("v1.0.0", "v1.1.0").await.unwrap();
+        // The mock returns hardcoded "1" and "2" for now
+        assert_eq!(diff.from_version, "1");
+        assert_eq!(diff.to_version, "2");
+        assert!(diff.is_backward_compatible);
     }
 }

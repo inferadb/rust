@@ -405,6 +405,16 @@ impl std::future::IntoFuture for ListTeamMembersRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::BearerCredentialsConfig;
+
+    async fn create_test_client() -> Client {
+        Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build()
+            .await
+            .unwrap()
+    }
 
     #[test]
     fn test_team_role() {
@@ -431,5 +441,120 @@ mod tests {
 
         assert_eq!(req.name, Some("New Name".to_string()));
         assert_eq!(req.description, Some("New description".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_teams_client_accessors() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+        assert_eq!(teams.organization_id(), "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_teams_client_debug() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+        let debug = format!("{:?}", teams);
+        assert!(debug.contains("TeamsClient"));
+        assert!(debug.contains("org_test"));
+    }
+
+    #[tokio::test]
+    async fn test_teams_list() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+        let page = teams.list().await.unwrap();
+        assert!(page.items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_teams_list_with_options() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+        let page = teams
+            .list()
+            .limit(10)
+            .cursor("cursor123")
+            .sort(SortOrder::Descending)
+            .await
+            .unwrap();
+        assert!(page.items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_teams_create() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+        let request = CreateTeamRequest::new("Engineering")
+            .with_description("Backend team");
+        let info = teams.create(request).await.unwrap();
+        assert_eq!(info.name, "Engineering");
+        assert_eq!(info.description, Some("Backend team".to_string()));
+        assert_eq!(info.organization_id, "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_teams_get() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+        let info = teams.get("team_abc123").await.unwrap();
+        assert_eq!(info.id, "team_abc123");
+        assert_eq!(info.organization_id, "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_teams_update() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+        let request = UpdateTeamRequest::new()
+            .with_name("New Name")
+            .with_description("New description");
+        let info = teams.update("team_abc123", request).await.unwrap();
+        assert_eq!(info.id, "team_abc123");
+    }
+
+    #[tokio::test]
+    async fn test_teams_delete() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+        let result = teams.delete("team_abc123").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_teams_add_member() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+        let result = teams.add_member("team_abc123", "user_xyz").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_teams_remove_member() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+        let result = teams.remove_member("team_abc123", "user_xyz").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_teams_list_members() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+        let page = teams.list_members("team_abc123").await.unwrap();
+        assert!(page.items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_teams_list_members_with_options() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+        let page = teams
+            .list_members("team_abc123")
+            .limit(10)
+            .cursor("cursor123")
+            .await
+            .unwrap();
+        assert!(page.items.is_empty());
     }
 }

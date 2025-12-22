@@ -512,4 +512,246 @@ mod tests {
             ctx.trace_id()
         );
     }
+
+    #[test]
+    fn test_span_kind_otel_value() {
+        assert_eq!(SpanKind::Client.otel_value(), 3);
+        assert_eq!(SpanKind::Server.otel_value(), 2);
+        assert_eq!(SpanKind::Internal.otel_value(), 1);
+        assert_eq!(SpanKind::Producer.otel_value(), 4);
+        assert_eq!(SpanKind::Consumer.otel_value(), 5);
+    }
+
+    #[test]
+    fn test_span_kind_default() {
+        assert_eq!(SpanKind::default(), SpanKind::Client);
+    }
+
+    #[test]
+    fn test_span_kind_display_all() {
+        assert_eq!(SpanKind::Producer.to_string(), "producer");
+        assert_eq!(SpanKind::Consumer.to_string(), "consumer");
+    }
+
+    #[test]
+    fn test_span_kind_debug() {
+        let debug = format!("{:?}", SpanKind::Client);
+        assert_eq!(debug, "Client");
+    }
+
+    #[test]
+    fn test_span_kind_clone_eq() {
+        let kind = SpanKind::Server;
+        let cloned = kind;
+        assert_eq!(kind, cloned);
+    }
+
+    #[test]
+    fn test_span_status_default() {
+        assert_eq!(SpanStatus::default(), SpanStatus::Ok);
+    }
+
+    #[test]
+    fn test_span_status_unset() {
+        let status = SpanStatus::Unset;
+        assert!(!status.is_ok());
+        assert!(!status.is_error());
+        assert!(status.error_message().is_none());
+    }
+
+    #[test]
+    fn test_span_status_display() {
+        assert_eq!(SpanStatus::Ok.to_string(), "ok");
+        assert_eq!(SpanStatus::Error("test".to_string()).to_string(), "error: test");
+        assert_eq!(SpanStatus::Unset.to_string(), "unset");
+    }
+
+    #[test]
+    fn test_span_status_debug() {
+        let debug = format!("{:?}", SpanStatus::Ok);
+        assert!(debug.contains("Ok"));
+    }
+
+    #[test]
+    fn test_span_status_clone_eq() {
+        let status = SpanStatus::Ok;
+        let cloned = status.clone();
+        assert_eq!(status, cloned);
+    }
+
+    #[test]
+    fn test_span_value_display() {
+        assert_eq!(SpanValue::String("test".to_string()).to_string(), "test");
+        assert_eq!(SpanValue::Int(42).to_string(), "42");
+        assert_eq!(SpanValue::Float(3.14).to_string(), "3.14");
+        assert_eq!(SpanValue::Bool(true).to_string(), "true");
+        assert!(SpanValue::StringArray(vec!["a".to_string()]).to_string().contains("a"));
+        assert!(SpanValue::IntArray(vec![1, 2]).to_string().contains("1"));
+    }
+
+    #[test]
+    fn test_span_value_as_wrong_type() {
+        let string_val = SpanValue::String("test".to_string());
+        assert!(string_val.as_int().is_none());
+        assert!(string_val.as_float().is_none());
+        assert!(string_val.as_bool().is_none());
+
+        let int_val = SpanValue::Int(42);
+        assert!(int_val.as_str().is_none());
+        assert!(int_val.as_float().is_none());
+        assert!(int_val.as_bool().is_none());
+
+        let float_val = SpanValue::Float(3.14);
+        assert!(float_val.as_str().is_none());
+        assert!(float_val.as_int().is_none());
+        assert!(float_val.as_bool().is_none());
+
+        let bool_val = SpanValue::Bool(true);
+        assert!(bool_val.as_str().is_none());
+        assert!(bool_val.as_int().is_none());
+        assert!(bool_val.as_float().is_none());
+    }
+
+    #[test]
+    fn test_span_value_from_i32() {
+        let val: SpanValue = 42i32.into();
+        assert_eq!(val.as_int(), Some(42));
+    }
+
+    #[test]
+    fn test_span_value_from_u64() {
+        let val: SpanValue = 100u64.into();
+        assert_eq!(val.as_int(), Some(100));
+    }
+
+    #[test]
+    fn test_span_value_from_usize() {
+        let val: SpanValue = 50usize.into();
+        assert_eq!(val.as_int(), Some(50));
+    }
+
+    #[test]
+    fn test_span_value_from_string() {
+        let val: SpanValue = String::from("hello").into();
+        assert_eq!(val.as_str(), Some("hello"));
+    }
+
+    #[test]
+    fn test_span_value_from_vec_string() {
+        let val: SpanValue = vec!["a".to_string(), "b".to_string()].into();
+        if let SpanValue::StringArray(arr) = val {
+            assert_eq!(arr, vec!["a", "b"]);
+        } else {
+            panic!("Expected StringArray");
+        }
+    }
+
+    #[test]
+    fn test_span_value_from_vec_i64() {
+        let val: SpanValue = vec![1i64, 2i64, 3i64].into();
+        if let SpanValue::IntArray(arr) = val {
+            assert_eq!(arr, vec![1, 2, 3]);
+        } else {
+            panic!("Expected IntArray");
+        }
+    }
+
+    #[test]
+    fn test_span_value_eq() {
+        let val1 = SpanValue::Int(42);
+        let val2 = SpanValue::Int(42);
+        assert_eq!(val1, val2);
+
+        let val3 = SpanValue::Int(43);
+        assert_ne!(val1, val3);
+    }
+
+    #[test]
+    fn test_span_elapsed() {
+        let span = InferaDbSpan::new("test");
+        std::thread::sleep(std::time::Duration::from_millis(1));
+        assert!(span.elapsed() >= std::time::Duration::from_millis(1));
+    }
+
+    #[test]
+    fn test_span_finish_with_status() {
+        let span = InferaDbSpan::new("test");
+        let finished = span.finish(SpanStatus::Unset);
+        assert_eq!(*finished.status(), SpanStatus::Unset);
+    }
+
+    #[test]
+    fn test_finished_span_accessors() {
+        let ctx = TraceContext::new_root();
+        let span = InferaDbSpan::new("test.op")
+            .with_kind(SpanKind::Server)
+            .with_trace_context(ctx.clone())
+            .with_attribute("key", "value");
+
+        let finished = span.finish_ok();
+
+        assert_eq!(finished.name(), "test.op");
+        assert_eq!(finished.kind(), SpanKind::Server);
+        assert!(finished.trace_context().is_some());
+        assert_eq!(finished.attributes().len(), 1);
+        assert!(finished.duration() >= Duration::ZERO);
+        assert!(finished.is_ok());
+        assert!(!finished.is_error());
+    }
+
+    #[test]
+    fn test_finished_span_clone() {
+        let span = InferaDbSpan::new("test");
+        let finished = span.finish_ok();
+        let cloned = finished.clone();
+        assert_eq!(finished.name(), cloned.name());
+    }
+
+    #[test]
+    fn test_finished_span_debug() {
+        let span = InferaDbSpan::new("test");
+        let finished = span.finish_ok();
+        let debug = format!("{:?}", finished);
+        assert!(debug.contains("FinishedSpan"));
+        assert!(debug.contains("test"));
+    }
+
+    #[test]
+    fn test_span_debug() {
+        let span = InferaDbSpan::new("test");
+        let debug = format!("{:?}", span);
+        assert!(debug.contains("InferaDbSpan"));
+    }
+
+    #[test]
+    fn test_span_clone() {
+        let span = InferaDbSpan::new("test")
+            .with_attribute("key", "value");
+        let cloned = span.clone();
+        assert_eq!(span.name(), cloned.name());
+    }
+
+    #[test]
+    fn test_span_names_constants() {
+        assert_eq!(span_names::CHECK, "inferadb.check");
+        assert_eq!(span_names::CHECK_BATCH, "inferadb.check_batch");
+        assert_eq!(span_names::RELATIONSHIP_WRITE, "inferadb.relationship.write");
+        assert_eq!(span_names::RELATIONSHIP_DELETE, "inferadb.relationship.delete");
+        assert_eq!(span_names::RELATIONSHIP_LIST, "inferadb.relationship.list");
+        assert_eq!(span_names::SCHEMA_PUSH, "inferadb.schema.push");
+        assert_eq!(span_names::SCHEMA_ACTIVATE, "inferadb.schema.activate");
+    }
+
+    #[test]
+    fn test_attribute_keys_constants() {
+        assert_eq!(attribute_keys::SUBJECT, "inferadb.subject");
+        assert_eq!(attribute_keys::PERMISSION, "inferadb.permission");
+        assert_eq!(attribute_keys::RESOURCE, "inferadb.resource");
+        assert_eq!(attribute_keys::ALLOWED, "inferadb.allowed");
+        assert_eq!(attribute_keys::RELATION, "inferadb.relation");
+        assert_eq!(attribute_keys::VAULT_ID, "inferadb.vault_id");
+        assert_eq!(attribute_keys::ORG_ID, "inferadb.org_id");
+        assert_eq!(attribute_keys::REQUEST_ID, "inferadb.request_id");
+        assert_eq!(attribute_keys::BATCH_SIZE, "inferadb.batch_size");
+    }
 }
