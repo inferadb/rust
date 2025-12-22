@@ -144,9 +144,10 @@ impl AsRef<str> for ConsistencyToken {
 /// Represents the desired consistency level for a read operation.
 ///
 /// This is used internally to specify how fresh the data should be.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum ConsistencyRequirement {
     /// Use eventual consistency (fastest, but may see stale data).
+    #[default]
     Eventual,
 
     /// Ensure data is at least as fresh as the given token.
@@ -156,11 +157,6 @@ pub enum ConsistencyRequirement {
     Full,
 }
 
-impl Default for ConsistencyRequirement {
-    fn default() -> Self {
-        ConsistencyRequirement::Eventual
-    }
-}
 
 impl ConsistencyRequirement {
     /// Returns the token if this is an `AtLeastAsFresh` requirement.

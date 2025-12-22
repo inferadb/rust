@@ -1,5 +1,8 @@
 //! VaultClient implementation.
 
+// Allow dead code for request types that aren't fully integrated yet
+#![allow(dead_code)]
+
 use std::borrow::Cow;
 
 use crate::client::Client;

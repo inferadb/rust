@@ -11,7 +11,7 @@ use super::ConsistencyToken;
 ///
 /// When using detailed checks, this provides insight into why
 /// access was granted or denied.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum DecisionReason {
     /// Access granted through a direct relationship.
@@ -44,6 +44,7 @@ pub enum DecisionReason {
     ExplicitDeny,
 
     /// The reason is unknown or not provided.
+    #[default]
     Unknown,
 }
 
@@ -62,11 +63,6 @@ impl fmt::Display for DecisionReason {
     }
 }
 
-impl Default for DecisionReason {
-    fn default() -> Self {
-        DecisionReason::Unknown
-    }
-}
 
 /// Metadata about an authorization decision.
 ///

@@ -1,0 +1,604 @@
+//! Member management for the control plane.
+
+use serde::{Deserialize, Serialize};
+
+use crate::client::Client;
+use crate::control::{Page, SortOrder};
+use crate::Error;
+
+/// Client for organization member management operations.
+///
+/// Access via `org.members()`.
+///
+/// ## Example
+///
+/// ```rust,ignore
+/// let members = org.members();
+///
+/// // List all members
+/// let list = members.list().await?;
+///
+/// // Invite a new member
+/// members.invite(InviteMemberRequest::new("alice@example.com", OrgRole::Member)).await?;
+///
+/// // Update member role
+/// members.update("user_abc123", UpdateMemberRequest::new()
+///     .with_role(OrgRole::Admin)
+/// ).await?;
+/// ```
+#[derive(Clone)]
+pub struct MembersClient {
+    client: Client,
+    organization_id: String,
+}
+
+impl MembersClient {
+    /// Creates a new members client.
+    pub(crate) fn new(client: Client, organization_id: impl Into<String>) -> Self {
+        Self {
+            client,
+            organization_id: organization_id.into(),
+        }
+    }
+
+    /// Returns the organization ID.
+    pub fn organization_id(&self) -> &str {
+        &self.organization_id
+    }
+
+    /// Lists all members in the organization.
+    ///
+    /// ## Example
+    ///
+    /// ```rust,ignore
+    /// let members = org.members().list().await?;
+    /// for member in members.items {
+    ///     println!("{}: {} ({})", member.user_id, member.email, member.role);
+    /// }
+    /// ```
+    pub fn list(&self) -> ListMembersRequest {
+        ListMembersRequest {
+            client: self.client.clone(),
+            organization_id: self.organization_id.clone(),
+            limit: None,
+            cursor: None,
+            sort: None,
+            role: None,
+        }
+    }
+
+    /// Gets a specific member by user ID.
+    ///
+    /// ## Example
+    ///
+    /// ```rust,ignore
+    /// let member = org.members().get("user_abc123").await?;
+    /// ```
+    pub async fn get(&self, user_id: impl Into<String>) -> Result<MemberInfo, Error> {
+        // TODO: Implement actual API call
+        let user_id = user_id.into();
+        Ok(MemberInfo {
+            user_id,
+            organization_id: self.organization_id.clone(),
+            email: "user@example.com".to_string(),
+            name: None,
+            role: OrgRole::Member,
+            status: MemberStatus::Active,
+            joined_at: chrono::Utc::now(),
+        })
+    }
+
+    /// Invites a new member to the organization.
+    ///
+    /// ## Example
+    ///
+    /// ```rust,ignore
+    /// org.members().invite(InviteMemberRequest::new("alice@example.com", OrgRole::Member)
+    ///     .with_message("Welcome to the team!")
+    /// ).await?;
+    /// ```
+    pub async fn invite(&self, request: InviteMemberRequest) -> Result<InvitationInfo, Error> {
+        // TODO: Implement actual API call
+        Ok(InvitationInfo {
+            id: format!("inv_{}", uuid::Uuid::new_v4()),
+            organization_id: self.organization_id.clone(),
+            email: request.email,
+            role: request.role,
+            status: InvitationStatus::Pending,
+            expires_at: chrono::Utc::now() + chrono::Duration::days(7),
+            created_at: chrono::Utc::now(),
+        })
+    }
+
+    /// Updates a member's role or status.
+    ///
+    /// ## Example
+    ///
+    /// ```rust,ignore
+    /// org.members().update("user_abc123", UpdateMemberRequest::new()
+    ///     .with_role(OrgRole::Admin)
+    /// ).await?;
+    /// ```
+    pub async fn update(
+        &self,
+        user_id: impl Into<String>,
+        request: UpdateMemberRequest,
+    ) -> Result<MemberInfo, Error> {
+        // TODO: Implement actual API call
+        let _ = request;
+        self.get(user_id).await
+    }
+
+    /// Removes a member from the organization.
+    ///
+    /// ## Example
+    ///
+    /// ```rust,ignore
+    /// org.members().remove("user_abc123").await?;
+    /// ```
+    pub async fn remove(&self, user_id: impl Into<String>) -> Result<(), Error> {
+        // TODO: Implement actual API call
+        let _ = (user_id.into(), &self.client);
+        Ok(())
+    }
+}
+
+impl std::fmt::Debug for MembersClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MembersClient")
+            .field("organization_id", &self.organization_id)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Client for managing invitations.
+///
+/// Access via `org.invitations()`.
+///
+/// ## Example
+///
+/// ```rust,ignore
+/// let invitations = org.invitations();
+///
+/// // List pending invitations
+/// let pending = invitations.list().await?;
+///
+/// // Resend an invitation
+/// invitations.resend("inv_abc123").await?;
+///
+/// // Revoke an invitation
+/// invitations.revoke("inv_abc123").await?;
+/// ```
+#[derive(Clone)]
+pub struct InvitationsClient {
+    client: Client,
+    organization_id: String,
+}
+
+impl InvitationsClient {
+    /// Creates a new invitations client.
+    pub(crate) fn new(client: Client, organization_id: impl Into<String>) -> Self {
+        Self {
+            client,
+            organization_id: organization_id.into(),
+        }
+    }
+
+    /// Returns the organization ID.
+    pub fn organization_id(&self) -> &str {
+        &self.organization_id
+    }
+
+    /// Lists all pending invitations.
+    ///
+    /// ## Example
+    ///
+    /// ```rust,ignore
+    /// let invitations = org.invitations().list().await?;
+    /// ```
+    pub fn list(&self) -> ListInvitationsRequest {
+        ListInvitationsRequest {
+            client: self.client.clone(),
+            organization_id: self.organization_id.clone(),
+            limit: None,
+            cursor: None,
+            status: None,
+        }
+    }
+
+    /// Gets a specific invitation by ID.
+    pub async fn get(&self, invitation_id: impl Into<String>) -> Result<InvitationInfo, Error> {
+        // TODO: Implement actual API call
+        let invitation_id = invitation_id.into();
+        Ok(InvitationInfo {
+            id: invitation_id,
+            organization_id: self.organization_id.clone(),
+            email: "user@example.com".to_string(),
+            role: OrgRole::Member,
+            status: InvitationStatus::Pending,
+            expires_at: chrono::Utc::now() + chrono::Duration::days(7),
+            created_at: chrono::Utc::now(),
+        })
+    }
+
+    /// Resends an invitation email.
+    ///
+    /// ## Example
+    ///
+    /// ```rust,ignore
+    /// org.invitations().resend("inv_abc123").await?;
+    /// ```
+    pub async fn resend(&self, invitation_id: impl Into<String>) -> Result<(), Error> {
+        // TODO: Implement actual API call
+        let _ = (invitation_id.into(), &self.client);
+        Ok(())
+    }
+
+    /// Revokes a pending invitation.
+    ///
+    /// ## Example
+    ///
+    /// ```rust,ignore
+    /// org.invitations().revoke("inv_abc123").await?;
+    /// ```
+    pub async fn revoke(&self, invitation_id: impl Into<String>) -> Result<(), Error> {
+        // TODO: Implement actual API call
+        let _ = (invitation_id.into(), &self.client);
+        Ok(())
+    }
+}
+
+impl std::fmt::Debug for InvitationsClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InvitationsClient")
+            .field("organization_id", &self.organization_id)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Information about an organization member.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemberInfo {
+    /// The user ID.
+    pub user_id: String,
+    /// The organization ID.
+    pub organization_id: String,
+    /// The member's email address.
+    pub email: String,
+    /// The member's display name.
+    pub name: Option<String>,
+    /// The member's role in the organization.
+    pub role: OrgRole,
+    /// The member's status.
+    pub status: MemberStatus,
+    /// When the member joined.
+    pub joined_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Information about an invitation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InvitationInfo {
+    /// The invitation ID.
+    pub id: String,
+    /// The organization ID.
+    pub organization_id: String,
+    /// The invited email address.
+    pub email: String,
+    /// The role that will be assigned upon acceptance.
+    pub role: OrgRole,
+    /// The invitation status.
+    pub status: InvitationStatus,
+    /// When the invitation expires.
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+    /// When the invitation was created.
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Role within an organization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OrgRole {
+    /// Organization owner with full permissions.
+    Owner,
+    /// Administrator with most permissions.
+    Admin,
+    /// Regular member.
+    #[default]
+    Member,
+    /// Billing administrator (can manage billing only).
+    Billing,
+    /// Read-only viewer.
+    Viewer,
+}
+
+impl OrgRole {
+    /// Returns `true` if this is an admin role (owner or admin).
+    pub fn is_admin(&self) -> bool {
+        matches!(self, OrgRole::Owner | OrgRole::Admin)
+    }
+
+    /// Returns `true` if this is the owner role.
+    pub fn is_owner(&self) -> bool {
+        matches!(self, OrgRole::Owner)
+    }
+}
+
+impl std::fmt::Display for OrgRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OrgRole::Owner => write!(f, "owner"),
+            OrgRole::Admin => write!(f, "admin"),
+            OrgRole::Member => write!(f, "member"),
+            OrgRole::Billing => write!(f, "billing"),
+            OrgRole::Viewer => write!(f, "viewer"),
+        }
+    }
+}
+
+/// Status of an organization member.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemberStatus {
+    /// Member is active.
+    #[default]
+    Active,
+    /// Member is suspended.
+    Suspended,
+    /// Member has been deactivated.
+    Deactivated,
+}
+
+impl std::fmt::Display for MemberStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MemberStatus::Active => write!(f, "active"),
+            MemberStatus::Suspended => write!(f, "suspended"),
+            MemberStatus::Deactivated => write!(f, "deactivated"),
+        }
+    }
+}
+
+/// Status of an invitation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InvitationStatus {
+    /// Invitation is pending acceptance.
+    #[default]
+    Pending,
+    /// Invitation was accepted.
+    Accepted,
+    /// Invitation expired.
+    Expired,
+    /// Invitation was revoked.
+    Revoked,
+}
+
+impl std::fmt::Display for InvitationStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InvitationStatus::Pending => write!(f, "pending"),
+            InvitationStatus::Accepted => write!(f, "accepted"),
+            InvitationStatus::Expired => write!(f, "expired"),
+            InvitationStatus::Revoked => write!(f, "revoked"),
+        }
+    }
+}
+
+/// Request to invite a new member.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InviteMemberRequest {
+    /// Email address to invite.
+    pub email: String,
+    /// Role to assign upon acceptance.
+    pub role: OrgRole,
+    /// Optional message to include in the invitation email.
+    pub message: Option<String>,
+}
+
+impl InviteMemberRequest {
+    /// Creates a new invite request.
+    pub fn new(email: impl Into<String>, role: OrgRole) -> Self {
+        Self {
+            email: email.into(),
+            role,
+            message: None,
+        }
+    }
+
+    /// Sets a custom message for the invitation email.
+    #[must_use]
+    pub fn with_message(mut self, message: impl Into<String>) -> Self {
+        self.message = Some(message.into());
+        self
+    }
+}
+
+/// Request to update a member.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdateMemberRequest {
+    /// New role for the member.
+    pub role: Option<OrgRole>,
+    /// New status for the member.
+    pub status: Option<MemberStatus>,
+}
+
+impl UpdateMemberRequest {
+    /// Creates a new empty update request.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the role.
+    #[must_use]
+    pub fn with_role(mut self, role: OrgRole) -> Self {
+        self.role = Some(role);
+        self
+    }
+
+    /// Sets the status.
+    #[must_use]
+    pub fn with_status(mut self, status: MemberStatus) -> Self {
+        self.status = Some(status);
+        self
+    }
+}
+
+/// Request to list members.
+pub struct ListMembersRequest {
+    client: Client,
+    organization_id: String,
+    limit: Option<usize>,
+    cursor: Option<String>,
+    sort: Option<SortOrder>,
+    role: Option<OrgRole>,
+}
+
+impl ListMembersRequest {
+    /// Sets the maximum number of results to return.
+    #[must_use]
+    pub fn limit(mut self, limit: usize) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    /// Sets the pagination cursor.
+    #[must_use]
+    pub fn cursor(mut self, cursor: impl Into<String>) -> Self {
+        self.cursor = Some(cursor.into());
+        self
+    }
+
+    /// Sets the sort order.
+    #[must_use]
+    pub fn sort(mut self, order: SortOrder) -> Self {
+        self.sort = Some(order);
+        self
+    }
+
+    /// Filters by role.
+    #[must_use]
+    pub fn role(mut self, role: OrgRole) -> Self {
+        self.role = Some(role);
+        self
+    }
+
+    async fn execute(self) -> Result<Page<MemberInfo>, Error> {
+        // TODO: Implement actual API call
+        let _ = (&self.client, &self.organization_id, self.limit, self.cursor, self.sort, self.role);
+        Ok(Page::default())
+    }
+}
+
+impl std::future::IntoFuture for ListMembersRequest {
+    type Output = Result<Page<MemberInfo>, Error>;
+    type IntoFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send>>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(self.execute())
+    }
+}
+
+/// Request to list invitations.
+pub struct ListInvitationsRequest {
+    client: Client,
+    organization_id: String,
+    limit: Option<usize>,
+    cursor: Option<String>,
+    status: Option<InvitationStatus>,
+}
+
+impl ListInvitationsRequest {
+    /// Sets the maximum number of results to return.
+    #[must_use]
+    pub fn limit(mut self, limit: usize) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    /// Sets the pagination cursor.
+    #[must_use]
+    pub fn cursor(mut self, cursor: impl Into<String>) -> Self {
+        self.cursor = Some(cursor.into());
+        self
+    }
+
+    /// Filters by status.
+    #[must_use]
+    pub fn status(mut self, status: InvitationStatus) -> Self {
+        self.status = Some(status);
+        self
+    }
+
+    async fn execute(self) -> Result<Page<InvitationInfo>, Error> {
+        // TODO: Implement actual API call
+        let _ = (&self.client, &self.organization_id, self.limit, self.cursor, self.status);
+        Ok(Page::default())
+    }
+}
+
+impl std::future::IntoFuture for ListInvitationsRequest {
+    type Output = Result<Page<InvitationInfo>, Error>;
+    type IntoFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send>>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(self.execute())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_org_role() {
+        assert_eq!(OrgRole::default(), OrgRole::Member);
+        assert!(OrgRole::Owner.is_admin());
+        assert!(OrgRole::Admin.is_admin());
+        assert!(!OrgRole::Member.is_admin());
+        assert!(OrgRole::Owner.is_owner());
+        assert!(!OrgRole::Admin.is_owner());
+    }
+
+    #[test]
+    fn test_org_role_display() {
+        assert_eq!(OrgRole::Owner.to_string(), "owner");
+        assert_eq!(OrgRole::Admin.to_string(), "admin");
+        assert_eq!(OrgRole::Member.to_string(), "member");
+        assert_eq!(OrgRole::Billing.to_string(), "billing");
+        assert_eq!(OrgRole::Viewer.to_string(), "viewer");
+    }
+
+    #[test]
+    fn test_member_status() {
+        assert_eq!(MemberStatus::default(), MemberStatus::Active);
+        assert_eq!(MemberStatus::Active.to_string(), "active");
+        assert_eq!(MemberStatus::Suspended.to_string(), "suspended");
+    }
+
+    #[test]
+    fn test_invitation_status() {
+        assert_eq!(InvitationStatus::default(), InvitationStatus::Pending);
+        assert_eq!(InvitationStatus::Pending.to_string(), "pending");
+        assert_eq!(InvitationStatus::Accepted.to_string(), "accepted");
+    }
+
+    #[test]
+    fn test_invite_member_request() {
+        let req = InviteMemberRequest::new("alice@example.com", OrgRole::Admin)
+            .with_message("Welcome!");
+
+        assert_eq!(req.email, "alice@example.com");
+        assert_eq!(req.role, OrgRole::Admin);
+        assert_eq!(req.message, Some("Welcome!".to_string()));
+    }
+
+    #[test]
+    fn test_update_member_request() {
+        let req = UpdateMemberRequest::new()
+            .with_role(OrgRole::Admin)
+            .with_status(MemberStatus::Suspended);
+
+        assert_eq!(req.role, Some(OrgRole::Admin));
+        assert_eq!(req.status, Some(MemberStatus::Suspended));
+    }
+}

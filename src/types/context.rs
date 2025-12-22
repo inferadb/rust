@@ -20,10 +20,11 @@ use serde::{Deserialize, Serialize};
 /// let bool_val: ContextValue = true.into();
 /// let null_val = ContextValue::Null;
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(untagged)]
 pub enum ContextValue {
     /// Null value.
+    #[default]
     Null,
 
     /// Boolean value.
@@ -108,11 +109,6 @@ impl ContextValue {
     }
 }
 
-impl Default for ContextValue {
-    fn default() -> Self {
-        ContextValue::Null
-    }
-}
 
 impl From<bool> for ContextValue {
     fn from(value: bool) -> Self {

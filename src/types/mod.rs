@@ -7,6 +7,9 @@
 //! - [`ConsistencyToken`]: Snapshot token for read-after-write consistency
 //! - [`Decision`]: Authorization decision result with metadata
 
+// Allow dead code for types not yet integrated
+#![allow(dead_code)]
+
 mod consistency;
 mod context;
 mod decision;

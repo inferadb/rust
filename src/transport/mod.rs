@@ -4,6 +4,7 @@
 //!
 //! - gRPC transport (via tonic) - default, high performance
 //! - REST transport (via reqwest) - for environments without gRPC support
+//! - Mock transport - for testing without network
 //!
 //! The transport layer is internal to the SDK. Users interact with
 //! the higher-level [`Client`](crate::Client) and [`VaultClient`](crate::VaultClient) APIs.
@@ -12,9 +13,20 @@
 //!
 //! - `grpc` (default): Enable gRPC transport
 //! - `rest` (default): Enable REST transport
+//!
+//! ## Transport Selection
+//!
+//! ```rust
+//! use inferadb::Transport;
+//!
+//! // Available transports
+//! let grpc = Transport::Grpc;   // High performance (default)
+//! let http = Transport::Http;   // Universal compatibility
+//! let mock = Transport::Mock;   // For testing
+//! ```
 
-// Transport implementation is internal for now
-// Will be implemented in Phase 6
+// Allow dead code for transport types not yet integrated with client
+#![allow(dead_code)]
 
 pub(crate) mod traits;
 
@@ -23,3 +35,21 @@ pub(crate) mod grpc;
 
 #[cfg(feature = "rest")]
 pub(crate) mod rest;
+
+pub(crate) mod mock;
+
+// Re-export public types
+pub use traits::{
+    FallbackReason, FallbackTrigger, GrpcStats, PoolConfig, RestStats, Transport,
+    TransportEvent, TransportStats, TransportStrategy,
+};
+
+// Internal re-exports (will be used when transport is integrated with client)
+#[allow(unused_imports)]
+pub(crate) use traits::{
+    CheckRequest as TransportCheckRequest, CheckResponse as TransportCheckResponse,
+    ListRelationshipsResponse as TransportListRelationshipsResponse,
+    ListResourcesResponse as TransportListResourcesResponse,
+    ListSubjectsResponse as TransportListSubjectsResponse, TransportClient,
+    WriteRequest as TransportWriteRequest, WriteResponse as TransportWriteResponse,
+};

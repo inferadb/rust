@@ -33,6 +33,7 @@ pub struct MockClient {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct Expectation {
     subject: String,
     permission: String,

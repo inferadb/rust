@@ -40,6 +40,9 @@
 //!     .await?;
 //! ```
 
+// Allow dead code for auth types not yet integrated
+#![allow(dead_code)]
+
 mod credentials;
 mod ed25519;
 mod provider;

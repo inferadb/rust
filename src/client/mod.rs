@@ -24,6 +24,9 @@
 //! let allowed = vault.check("user:alice", "view", "doc:readme").await?;
 //! ```
 
+// Allow dead code for client internals not yet integrated
+#![allow(dead_code)]
+
 mod builder;
 mod inner;
 

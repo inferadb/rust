@@ -99,6 +99,12 @@ pub use config::{
     DegradationConfig, FailureMode, FailurePredicate, RetryConfig, TlsConfig,
 };
 
+// Re-export transport types
+pub use transport::{
+    FallbackReason, FallbackTrigger, GrpcStats, PoolConfig, RestStats, Transport,
+    TransportEvent, TransportStats, TransportStrategy,
+};
+
 // Testing support
 pub use testing::{AuthorizationClient, InMemoryClient, MockClient};
 

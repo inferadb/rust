@@ -189,7 +189,7 @@ impl<S: Into<String>> From<S> for BearerCredentialsConfig {
 /// ```
 pub enum Credentials {
     /// OAuth 2.0 client credentials with Ed25519 JWT signing.
-    ClientCredentials(ClientCredentialsConfig),
+    ClientCredentials(Box<ClientCredentialsConfig>),
 
     /// Direct bearer token.
     Bearer(BearerCredentialsConfig),
@@ -236,7 +236,7 @@ impl fmt::Debug for Credentials {
 
 impl From<ClientCredentialsConfig> for Credentials {
     fn from(config: ClientCredentialsConfig) -> Self {
-        Credentials::ClientCredentials(config)
+        Credentials::ClientCredentials(Box::new(config))
     }
 }
 
