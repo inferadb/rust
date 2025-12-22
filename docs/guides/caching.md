@@ -57,7 +57,7 @@ let client = Client::builder()
 
 ## Cache Sizing
 
-```
+```text
 entries ≈ unique_subjects × unique_resources × permissions_per_check
 ```
 

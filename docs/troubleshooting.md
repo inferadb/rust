@@ -537,4 +537,4 @@ If you're still stuck:
    - Rust version (`rustc --version`)
    - Minimal reproduction code
    - Full error message with request ID
-3. For urgent production issues, contact support@inferadb.com
+3. For urgent production issues, contact <support@inferadb.com>

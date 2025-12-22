@@ -1,0 +1,5 @@
+# InferaDB Vocabulary - Rejected Terms
+# Add terms that should always be flagged as incorrect
+
+# Common misspellings
+Infera[Dd][Bb]

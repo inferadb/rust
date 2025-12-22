@@ -129,7 +129,7 @@ SpiceDB and InferaDB share similar concepts (both inspired by Zanzibar).
 
 ### Schema Migration
 
-```
+```text
 // SpiceDB (Zed language)
 definition user {}
 
@@ -144,7 +144,7 @@ definition document {
 }
 ```
 
-```
+```ipl
 // InferaDB (IPL)
 type user {}
 
@@ -271,7 +271,7 @@ OpenFGA uses a JSON-based schema format and similar ReBAC concepts.
 }
 ```
 
-```
+```ipl
 // InferaDB (IPL)
 type document {
     relation viewer: user
@@ -372,7 +372,7 @@ has_role(user: User, "viewer", doc: Document) if
     doc.viewers.contains(user);
 ```
 
-```
+```ipl
 // InferaDB (IPL)
 type document {
     relation viewer: user

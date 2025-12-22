@@ -100,7 +100,7 @@ let client = Client::builder()
 
 ### Cache Sizing Guidelines
 
-```
+```text
 cache_size = unique_subjects * unique_resources * avg_permissions_per_check
 ```
 

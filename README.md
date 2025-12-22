@@ -327,19 +327,19 @@ match vault.check("user:alice", "view", "doc:1").await {
 - [API Documentation](https://docs.rs/inferadb) - Full API reference
 - [Documentation Index](docs/README.md) - Complete guide to all documentation
 
-**Getting Started**
+### Getting Started
 
 - [Integration Patterns](docs/guides/integration-patterns.md) - Axum, Actix-web, GraphQL, gRPC
 - [Testing Guide](docs/guides/testing.md) - MockClient, InMemoryClient, TestVault
 - [Error Handling](docs/guides/errors.md) - Error types and retry strategies
 - [Migration Guide](docs/guides/migration.md) - From SpiceDB, OpenFGA, Oso, custom RBAC
 
-**Schema & Design**
+### Schema & Design
 
 - [Schema Design](docs/guides/schema-design.md) - ReBAC patterns, role hierarchy, anti-patterns
 - [Authorization Scenarios](docs/guides/authorization-scenarios.md) - Multi-tenant SaaS, document sharing, API keys
 
-**Production**
+### Production
 
 - [Performance Tuning](docs/guides/performance-tuning.md) - Optimization guide
 - [Production Checklist](docs/guides/production-checklist.md) - Deployment readiness

@@ -112,7 +112,7 @@ cargo test --ignored --features integration
 
 ### Test Organization
 
-```
+```text
 tests/
 ├── unit/           # Unit tests with mocks
 ├── integration/    # Tests requiring InferaDB instance
@@ -142,6 +142,7 @@ tests/
    ```
 
 4. **Build documentation:**
+
    ```bash
    cargo doc --workspace --no-deps
    ```
@@ -159,7 +160,7 @@ tests/
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
-```
+```text
 feat: add batch check support
 fix: resolve token refresh race condition
 docs: update authentication examples
@@ -178,7 +179,7 @@ For breaking changes:
 
 ## Reporting Issues
 
-File issues at: https://github.com/inferadb/rust-sdk/issues
+File issues at: <https://github.com/inferadb/rust-sdk/issues>
 
 ### Bug Reports
 
@@ -203,7 +204,7 @@ Include:
 
 - **Questions:** Open a [Discussion](https://github.com/inferadb/rust-sdk/discussions)
 - **Bugs:** Open an [Issue](https://github.com/inferadb/rust-sdk/issues)
-- **Security:** Email security@inferadb.com (do not open public issues)
+- **Security:** Email <security@inferadb.com> (do not open public issues)
 
 ## License
 

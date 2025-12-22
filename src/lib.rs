@@ -49,7 +49,14 @@
 //! - `insecure`: Enable `.insecure()` for development (never use in production)
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
+// Documentation lints
 #![warn(missing_docs)]
+#![warn(rustdoc::broken_intra_doc_links)]
+#![warn(rustdoc::private_intra_doc_links)]
+#![warn(rustdoc::invalid_codeblock_attributes)]
+#![warn(rustdoc::invalid_html_tags)]
+#![warn(rustdoc::bare_urls)]
+// Code quality lints
 #![warn(clippy::all)]
 #![deny(unsafe_code)]
 

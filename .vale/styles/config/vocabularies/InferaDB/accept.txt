@@ -1,0 +1,60 @@
+# InferaDB Vocabulary - Accepted Terms
+# Add project-specific terms that should not be flagged as spelling errors
+
+# Product Names
+InferaDB
+Zanzibar
+SpiceDB
+OpenFGA
+Oso
+
+# Rust Terms and Crates
+rustfmt
+clippy
+Tokio
+tokio
+rustls
+tonic
+hyper
+serde
+reqwest
+
+# Rust Syntax (common in doc examples)
+async
+await
+fn
+struct
+impl
+enum
+pub
+mut
+const
+cfg
+str
+Vec
+
+# Technical Terms
+ReBAC
+ABAC
+gRPC
+OpenTelemetry
+authn
+authz
+OAuth
+JWT
+OIDC
+TLS
+mTLS
+
+# Project Terminology
+IPL
+SDK
+SDKs
+API
+APIs
+CLI
+TTL
+TTLs
+
+# Common Identifiers (in code examples)
+Config

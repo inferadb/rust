@@ -1,6 +1,166 @@
-# markdownlint-cli2 configuration
+# markdownlint-cli2 configuration for InferaDB Rust SDK
 # https://github.com/DavidAnson/markdownlint-cli2
 
+# Paths to ignore
 ignores:
   - "target/**"
   - "node_modules/**"
+  - ".vale/**"
+  - "docs/internal/**"
+
+# Linting rules configuration
+config:
+  # MD001 - Heading levels should only increment by one level at a time
+  MD001: true
+
+  # MD003 - Heading style (atx = # style)
+  MD003:
+    style: atx
+
+  # MD004 - Unordered list style (dash)
+  MD004:
+    style: dash
+
+  # MD009 - Trailing spaces
+  MD009:
+    br_spaces: 2
+
+  # MD010 - Hard tabs
+  MD010: true
+
+  # MD012 - Multiple consecutive blank lines
+  MD012:
+    maximum: 1
+
+  # MD013 - Line length (disable - code examples can be long)
+  MD013: false
+
+  # MD014 - Dollar signs used before commands without showing output
+  MD014: true
+
+  # MD018 - No space after hash on atx style heading
+  MD018: true
+
+  # MD019 - Multiple spaces after hash on atx style heading
+  MD019: true
+
+  # MD022 - Headings should be surrounded by blank lines
+  MD022:
+    lines_above: 1
+    lines_below: 1
+
+  # MD023 - Headings must start at the beginning of the line
+  MD023: true
+
+  # MD024 - Multiple headings with the same content
+  MD024:
+    siblings_only: true
+
+  # MD025 - Multiple top-level headings
+  MD025: true
+
+  # MD026 - Trailing punctuation in heading
+  MD026:
+    punctuation: ".,;:!"
+
+  # MD027 - Multiple spaces after blockquote symbol
+  MD027: true
+
+  # MD028 - Blank line inside blockquote
+  MD028: true
+
+  # MD029 - Ordered list item prefix (ordered = 1. 2. 3.)
+  MD029:
+    style: ordered
+
+  # MD030 - Spaces after list markers
+  MD030: true
+
+  # MD031 - Fenced code blocks should be surrounded by blank lines
+  MD031: true
+
+  # MD032 - Lists should be surrounded by blank lines
+  MD032: true
+
+  # MD033 - Inline HTML (allow some common elements and Rust generics)
+  MD033:
+    allowed_elements:
+      - br
+      - details
+      - summary
+      - sub
+      - sup
+      - String
+      - str
+      - T
+      - Self
+
+  # MD034 - Bare URL used
+  MD034: true
+
+  # MD035 - Horizontal rule style
+  MD035:
+    style: "---"
+
+  # MD036 - Emphasis used instead of a heading
+  MD036: true
+
+  # MD037 - Spaces inside emphasis markers
+  MD037: true
+
+  # MD038 - Spaces inside code span elements
+  MD038: true
+
+  # MD039 - Spaces inside link text
+  MD039: true
+
+  # MD040 - Fenced code blocks should have a language specified
+  MD040: true
+
+  # MD041 - First line in file should be a top-level heading
+  MD041: true
+
+  # MD042 - No empty links
+  MD042: true
+
+  # MD044 - Proper names should have correct capitalization
+  MD044:
+    names:
+      - InferaDB
+      - Rust
+      - Cargo
+      - GitHub
+      - JavaScript
+      - TypeScript
+    code_blocks: false
+
+  # MD045 - Images should have alt text
+  MD045: true
+
+  # MD046 - Code block style (fenced)
+  MD046:
+    style: fenced
+
+  # MD047 - Files should end with a single newline
+  MD047: true
+
+  # MD048 - Code fence style (backtick)
+  MD048:
+    style: backtick
+
+  # MD049 - Emphasis style (asterisks)
+  MD049:
+    style: asterisk
+
+  # MD050 - Strong style (asterisks)
+  MD050:
+    style: asterisk
+
+  # MD051 - Link fragments should be valid
+  MD051: true
+
+  # MD052 - Reference links should be defined
+  MD052: true
+
+  # MD053 - Link/image reference definitions should be needed
+  MD053: true

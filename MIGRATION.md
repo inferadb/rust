@@ -282,5 +282,5 @@ client
 If you encounter issues during migration:
 
 1. Check the [Troubleshooting Guide](docs/troubleshooting.md)
-2. Open an issue at https://github.com/inferadb/rust-sdk/issues
+2. Open an issue at <https://github.com/inferadb/rust-sdk/issues>
 3. Join our Discord for community support

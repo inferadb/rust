@@ -41,14 +41,14 @@ if explanation.allowed {
 
 ### Example Output
 
-```
+```text
 Allowed: true
 Access granted via:
   -> document:readme#editor <- user:alice
   -> edit = editor | owner
 ```
 
-```
+```text
 Allowed: false
 Denial reasons:
   - No relationship found: user:alice -> document:secret
@@ -78,7 +78,7 @@ if let Some(trace) = &decision.trace {
 
 ### Trace Output
 
-```
+```text
 edit (ALLOWED)
 ├── editor (NOT_FOUND)
 │   └── Direct lookup: user:alice -> document:readme#editor ✗

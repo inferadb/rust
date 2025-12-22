@@ -12,7 +12,7 @@ Model roles with inherited permissions using computed relations.
 
 ### Basic Role Hierarchy
 
-```
+```ipl
 // Schema (IPL)
 type document {
     relation viewer: user | group#member
@@ -42,7 +42,7 @@ assert!(vault.check("user:alice", "delete", "document:readme").await?);
 
 For applications with more granular roles:
 
-```
+```ipl
 type document {
     relation viewer: user | group#member
     relation commenter: user | group#member
@@ -65,7 +65,7 @@ Model parent-child relationships where permissions cascade down.
 
 ### Folder/Document Hierarchy
 
-```
+```ipl
 type folder {
     relation viewer: user | group#member
     relation editor: user | group#member
@@ -109,7 +109,7 @@ assert!(vault.check("user:alice", "delete", "document:design-doc").await?);
 
 For deeply nested resources, use recursive relations:
 
-```
+```ipl
 type folder {
     relation parent: folder
     relation viewer: user | group#member
@@ -127,7 +127,7 @@ Essential for multi-tenant SaaS applications.
 
 ### Basic Organization Isolation
 
-```
+```ipl
 type organization {
     relation member: user
     relation admin: user
@@ -167,7 +167,7 @@ assert!(!vault.check("user:charlie", "view", "project:widget").await?);
 
 ### Organization with Teams
 
-```
+```ipl
 type organization {
     relation member: user
     relation admin: user
@@ -198,7 +198,7 @@ Use groups for managing permissions at scale.
 
 ### Basic Groups
 
-```
+```ipl
 type group {
     relation member: user | group#member  // Nested groups supported
     relation admin: user
@@ -251,7 +251,7 @@ Combine ReBAC with runtime attributes for fine-grained control.
 
 ### IP-Based Access
 
-```
+```ipl
 type document {
     relation viewer: user
     relation confidential_viewer: user
@@ -274,7 +274,7 @@ let allowed = vault
 
 ### Time-Based Access
 
-```
+```ipl
 type resource {
     relation viewer: user
     relation after_hours_viewer: user
@@ -287,7 +287,7 @@ type resource {
 
 ### Anti-Pattern: Over-Flattening
 
-```
+```ipl
 // BAD: Duplicating permissions across types
 type document {
     relation org_admin: user    // Don't duplicate org structure
@@ -304,7 +304,7 @@ type document {
 
 ### Anti-Pattern: Permission Explosion
 
-```
+```ipl
 // BAD: Separate relation for every permission
 type document {
     relation can_view: user
@@ -331,7 +331,7 @@ type document {
 
 ### Anti-Pattern: Missing Hierarchy
 
-```
+```ipl
 // BAD: No inheritance, must grant access at every level
 type folder { relation viewer: user }
 type subfolder { relation viewer: user }
@@ -351,7 +351,7 @@ type folder {
 
 Deep hierarchies require more graph traversal:
 
-```
+```text
 // Prefer: 2-3 levels
 organization -> project -> document
 

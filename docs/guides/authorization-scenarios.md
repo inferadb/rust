@@ -8,7 +8,7 @@ Isolate data between organizations while supporting internal collaboration.
 
 ### Schema
 
-```
+```ipl
 type organization {
     relation member: user
     relation admin: user
@@ -104,7 +104,7 @@ Share documents with different permission levels, support public/link sharing.
 
 ### Schema
 
-```
+```ipl
 type user {
     // Users can be identified
 }
@@ -201,7 +201,7 @@ Limit what resources an API key can access.
 
 ### Schema
 
-```
+```ipl
 type api_key {
     relation owner: user
     relation scope: resource | project | organization
@@ -297,7 +297,7 @@ Allow services or users to act on behalf of another user.
 
 ### Schema
 
-```
+```ipl
 type user {
     relation delegate: user | service_account
 
@@ -386,7 +386,7 @@ Grant time-limited access to resources.
 
 ### Schema
 
-```
+```ipl
 type resource {
     relation viewer: user
     relation temp_viewer: user  // Managed externally with TTL
@@ -473,7 +473,7 @@ Require approval before granting access.
 
 ### Schema
 
-```
+```ipl
 type access_request {
     relation requester: user
     relation resource: resource
@@ -569,7 +569,7 @@ Control feature access through authorization.
 
 ### Schema
 
-```
+```ipl
 type feature {
     relation enabled_for: user | organization#member | plan#subscriber
 

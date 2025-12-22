@@ -305,7 +305,7 @@ vault.schema().deploy(schema_without_deprecated).await?;
 
 ### Store Schemas in Git
 
-```
+```text
 project/
 ├── src/
 ├── schemas/

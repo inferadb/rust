@@ -96,7 +96,7 @@ impl<C> ClientBuilder<NoUrl, C> {
     ///
     /// # Arguments
     ///
-    /// * `url` - The API endpoint (e.g., "https://api.inferadb.com")
+    /// * `url` - The API endpoint (e.g., `https://api.inferadb.com`)
     ///
     /// # Example
     ///
@@ -276,12 +276,12 @@ impl ClientBuilder<HasUrl, HasCredentials> {
             .ok_or_else(|| Error::configuration("credentials are required"))?;
 
         // Validate URL
-        let parsed_url = url::Url::parse(&url)
+        let _parsed_url = url::Url::parse(&url)
             .map_err(|e| Error::configuration(format!("invalid URL: {}", e)))?;
 
         // Ensure HTTPS (unless insecure feature is enabled)
         #[cfg(not(feature = "insecure"))]
-        if parsed_url.scheme() != "https" {
+        if _parsed_url.scheme() != "https" {
             return Err(Error::configuration(
                 "HTTPS is required. Use the 'insecure' feature for development with HTTP.",
             ));
