@@ -968,6 +968,7 @@ dependencies = [
 name = "inferadb-derive"
 version = "0.1.0"
 dependencies = [
+ "inferadb",
  "proc-macro2",
  "quote",
  "syn",

@@ -618,7 +618,7 @@ mod tests {
         let transport = MockTransport::new();
         for i in 0..10 {
             transport.add_relationship(
-                Relationship::new(&format!("doc:{}", i), "viewer", "user:alice").into_owned(),
+                Relationship::new(format!("doc:{}", i), "viewer", "user:alice").into_owned(),
             );
         }
 
@@ -635,7 +635,7 @@ mod tests {
         let transport = MockTransport::new();
         for i in 0..10 {
             transport.add_relationship(
-                Relationship::new("doc:1", "viewer", &format!("user:{}", i)).into_owned(),
+                Relationship::new("doc:1", "viewer", format!("user:{}", i)).into_owned(),
             );
         }
 

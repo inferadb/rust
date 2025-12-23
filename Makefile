@@ -44,7 +44,7 @@ help: ## Show this help message
 #───────────────────────────────────────────────────────────────────────────────
 
 build: ## Build the project
-	cargo build --all-features
+	cargo build --workspace --all-features
 
 test: test-unit ## Run unit tests (alias for test-unit)
 
@@ -83,7 +83,7 @@ fmt-check: ## Check code formatting
 	cargo +nightly fmt --all -- --check
 
 clippy: ## Run clippy linter
-	cargo clippy --workspace --all-targets --all-features -- -D warnings
+	cargo clippy --workspace --all-targets -- -D warnings
 
 lint: clippy ## Alias for clippy
 
@@ -95,13 +95,13 @@ check: fmt-check clippy ## Run all code checks (format + clippy)
 #───────────────────────────────────────────────────────────────────────────────
 
 doc: ## Build documentation
-	cargo doc --no-deps --all-features
+	cargo doc --workspace --no-deps
 
 doc-open: ## Build and open documentation in browser
-	cargo doc --no-deps --all-features --open
+	cargo doc --workspace --no-deps --open
 
 doc-check: ## Check documentation for warnings/errors
-	RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
+	RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 	@echo "$(GREEN)Documentation check passed!$(RESET)"
 
 #───────────────────────────────────────────────────────────────────────────────

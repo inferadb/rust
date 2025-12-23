@@ -1,3 +1,6 @@
+[workspace]
+members = ["inferadb-derive"]
+
 [package]
 name = "inferadb"
 version = "0.1.0"

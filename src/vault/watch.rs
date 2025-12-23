@@ -1315,7 +1315,6 @@ mod tests {
     #[tokio::test]
     async fn test_watch_stream_basic() {
         use crate::auth::BearerCredentialsConfig;
-        use futures::StreamExt;
 
         let client = crate::Client::builder()
             .url("https://api.example.com")
@@ -1472,8 +1471,6 @@ mod tests {
 
     #[test]
     fn test_watch_stream_matches_filters() {
-        use crate::auth::BearerCredentialsConfig;
-
         // Create a simple test with filter matching
         let rel = Relationship::new("document:readme", "viewer", "user:alice");
         let event = WatchEvent::new(Operation::Create, rel, 1, chrono::Utc::now());

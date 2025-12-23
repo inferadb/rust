@@ -1346,7 +1346,7 @@ mod wiremock_tests {
 
     async fn create_test_transport(server: &MockServer) -> RestTransport {
         RestTransportBuilder::new()
-            .base_url(&server.uri())
+            .base_url(server.uri())
             .unwrap()
             .timeout(Duration::from_secs(5))
             .build()
