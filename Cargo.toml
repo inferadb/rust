@@ -87,6 +87,15 @@ test-case = "3"
 wiremock = "0.6"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# Integration test dependencies
+anyhow = "1"
+jsonwebtoken = { version = "9", default-features = false, features = ["use_pem"] }
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+required-features = ["rest"]
+
 [features]
 default = ["grpc", "rest", "rustls"]
 
