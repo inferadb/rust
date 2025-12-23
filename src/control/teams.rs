@@ -787,7 +787,12 @@ mod wiremock_tests {
 
         let client = create_mock_client(&server).await;
         let teams = TeamsClient::new(client, "org_123");
-        let result = teams.list().limit(10).cursor("cursor_abc").sort(SortOrder::Descending).await;
+        let result = teams
+            .list()
+            .limit(10)
+            .cursor("cursor_abc")
+            .sort(SortOrder::Descending)
+            .await;
 
         assert!(result.is_ok());
     }
@@ -812,7 +817,9 @@ mod wiremock_tests {
 
         let client = create_mock_client(&server).await;
         let teams = TeamsClient::new(client, "org_123");
-        let result = teams.create(CreateTeamRequest::new("New Team").with_description("A new team")).await;
+        let result = teams
+            .create(CreateTeamRequest::new("New Team").with_description("A new team"))
+            .await;
 
         assert!(result.is_ok());
         let team = result.unwrap();
@@ -866,7 +873,12 @@ mod wiremock_tests {
 
         let client = create_mock_client(&server).await;
         let teams = TeamsClient::new(client, "org_123");
-        let result = teams.update("team_abc", UpdateTeamRequest::new().with_name("Updated Team")).await;
+        let result = teams
+            .update(
+                "team_abc",
+                UpdateTeamRequest::new().with_name("Updated Team"),
+            )
+            .await;
 
         assert!(result.is_ok());
         let team = result.unwrap();
@@ -895,7 +907,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
-            .and(path("/control/v1/organizations/org_123/teams/team_abc/members"))
+            .and(path(
+                "/control/v1/organizations/org_123/teams/team_abc/members",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_string("null"))
             .mount(&server)
             .await;
@@ -912,7 +926,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("DELETE"))
-            .and(path("/control/v1/organizations/org_123/teams/team_abc/members/user_xyz"))
+            .and(path(
+                "/control/v1/organizations/org_123/teams/team_abc/members/user_xyz",
+            ))
             .respond_with(ResponseTemplate::new(204))
             .mount(&server)
             .await;
@@ -929,7 +945,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(path("/control/v1/organizations/org_123/teams/team_abc/members"))
+            .and(path(
+                "/control/v1/organizations/org_123/teams/team_abc/members",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [
                     {
@@ -964,5 +982,4 @@ mod wiremock_tests {
         assert_eq!(page.items.len(), 2);
         assert_eq!(page.items[0].role, TeamRole::Owner);
     }
-
 }

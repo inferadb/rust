@@ -812,9 +812,18 @@ mod tests {
         assert_eq!(AuditAction::Login.to_string(), "login");
         assert_eq!(AuditAction::Logout.to_string(), "logout");
         assert_eq!(AuditAction::LoginFailed.to_string(), "login_failed");
-        assert_eq!(AuditAction::ApiClientCreate.to_string(), "api_client.create");
-        assert_eq!(AuditAction::ApiClientUpdate.to_string(), "api_client.update");
-        assert_eq!(AuditAction::ApiClientDelete.to_string(), "api_client.delete");
+        assert_eq!(
+            AuditAction::ApiClientCreate.to_string(),
+            "api_client.create"
+        );
+        assert_eq!(
+            AuditAction::ApiClientUpdate.to_string(),
+            "api_client.update"
+        );
+        assert_eq!(
+            AuditAction::ApiClientDelete.to_string(),
+            "api_client.delete"
+        );
     }
 
     #[test]
@@ -1327,5 +1336,4 @@ mod wiremock_tests {
         assert_eq!(events.len(), 1);
         assert!(events[0].is_ok());
     }
-
 }

@@ -194,7 +194,10 @@ async fn test_default_transport_strategy() {
                 .vault(fixture.vault_id_str());
 
             let check_result = vault.check("user:test", "view", "document:test").await;
-            assert!(check_result.is_ok(), "Client should be able to perform checks");
+            assert!(
+                check_result.is_ok(),
+                "Client should be able to perform checks"
+            );
         }
         Err(e) => {
             println!("Default client creation error: {:?}", e);
@@ -236,10 +239,7 @@ async fn test_pool_configuration() {
 
             // Verify it works
             let result = client.health_check().await;
-            assert!(
-                result.is_ok(),
-                "Client with custom pool config should work"
-            );
+            assert!(result.is_ok(), "Client with custom pool config should work");
         }
         Err(e) => {
             println!("Pool config client creation error: {:?}", e);
@@ -273,9 +273,8 @@ async fn test_concurrent_operations() {
         let subject = format!("user:concurrent{}", i);
         let resource = format!("document:concurrent{}", i);
 
-        let handle = tokio::spawn(async move {
-            vault_clone.check(&subject, "view", &resource).await
-        });
+        let handle =
+            tokio::spawn(async move { vault_clone.check(&subject, "view", &resource).await });
         handles.push(handle);
     }
 
@@ -409,7 +408,11 @@ async fn test_batch_transport_operations() {
     let mut relationships = Vec::new();
     for i in 0..20 {
         let resource = format!("document:batch-transport{}", i);
-        relationships.push(inferadb::Relationship::new(resource, "viewer", "user:alice"))
+        relationships.push(inferadb::Relationship::new(
+            resource,
+            "viewer",
+            "user:alice",
+        ))
     }
 
     let write_result = vault.relationships().write_batch(relationships).await;

@@ -858,7 +858,8 @@ mod tests {
     async fn test_simulate_builder_remove_relationship() {
         let mock_transport = Arc::new(MockTransport::new());
         // Add existing relationship
-        mock_transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        mock_transport
+            .add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
 
         let client = Client::builder()
             .url("https://api.example.com")
@@ -908,8 +909,10 @@ mod tests {
     #[tokio::test]
     async fn test_simulate_builder_remove_all() {
         let mock_transport = Arc::new(MockTransport::new());
-        mock_transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
-        mock_transport.add_relationship(Relationship::new("doc:2", "viewer", "user:bob").into_owned());
+        mock_transport
+            .add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        mock_transport
+            .add_relationship(Relationship::new("doc:2", "viewer", "user:bob").into_owned());
 
         let client = Client::builder()
             .url("https://api.example.com")
@@ -964,7 +967,8 @@ mod tests {
     async fn test_simulate_builder_chaining() {
         let mock_transport = Arc::new(MockTransport::new());
         // Add some initial relationships
-        mock_transport.add_relationship(Relationship::new("doc:2", "viewer", "user:charlie").into_owned());
+        mock_transport
+            .add_relationship(Relationship::new("doc:2", "viewer", "user:charlie").into_owned());
 
         let client = Client::builder()
             .url("https://api.example.com")
@@ -993,7 +997,8 @@ mod tests {
     async fn test_simulate_compare_now_denied() {
         let mock_transport = Arc::new(MockTransport::new());
         // Add existing relationship
-        mock_transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        mock_transport
+            .add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
 
         let client = Client::builder()
             .url("https://api.example.com")
@@ -1022,7 +1027,8 @@ mod tests {
     async fn test_simulate_compare_no_change() {
         let mock_transport = Arc::new(MockTransport::new());
         // Add existing relationship
-        mock_transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        mock_transport
+            .add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
 
         let client = Client::builder()
             .url("https://api.example.com")

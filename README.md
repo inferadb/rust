@@ -68,20 +68,17 @@ inferadb = { version = "0.1", default-features = false, features = ["rest", "rus
 
 ### Feature Flags
 
-| Feature         | Description                            | Default |
-| --------------- | -------------------------------------- | ------- |
-| `grpc`          | gRPC transport (faster, streaming)     | Yes     |
-| `rest`          | REST transport (broader compatibility) | Yes     |
-| `rustls`        | Pure-Rust TLS                          | Yes     |
-| `native-tls`    | System TLS (OpenSSL/Schannel)          | No      |
-| `tracing`       | Tracing spans                          | No      |
-| `metrics`       | Metrics emission                       | No      |
-| `opentelemetry` | OTLP integration                       | No      |
-| `blocking`      | Sync/blocking API                      | No      |
-| `derive`        | Proc macros for type-safe schemas      | No      |
-| `serde`         | Serialization support                  | No      |
-| `test-utils`    | Testing utilities (MockClient, etc.)   | No      |
-| `wasm`          | Browser/WASM support (REST only)       | No      |
+| Feature      | Description                            | Default |
+| ------------ | -------------------------------------- | ------- |
+| `grpc`       | gRPC transport (faster, streaming)     | Yes     |
+| `rest`       | REST transport (broader compatibility) | Yes     |
+| `rustls`     | Pure-Rust TLS                          | Yes     |
+| `native-tls` | System TLS (OpenSSL/Schannel)          | No      |
+| `tracing`    | Tracing spans                          | No      |
+| `blocking`   | Sync/blocking API                      | No      |
+| `derive`     | Proc macros for type-safe schemas      | No      |
+| `wasm`       | Browser/WASM support (REST only)       | No      |
+| `insecure`   | Allow HTTP for local development       | No      |
 
 ### Prelude
 
@@ -124,12 +121,11 @@ vault.check("user:alice", "view", "doc:confidential")
     .await?;
 
 // Batch checks - single round-trip
-let results = vault
+let results: Vec<bool> = vault
     .check_batch([
         ("user:alice", "view", "doc:1"),
         ("user:alice", "edit", "doc:1"),
     ])
-    .collect()
     .await?;
 ```
 
@@ -351,10 +347,13 @@ match vault.check("user:alice", "view", "doc:1").await {
 See the [examples](examples/) directory for complete working examples:
 
 ```bash
-cargo run --example basic_check
-cargo run --example batch_check
-cargo run --example middleware_axum
+# Run from the SDK root directory
+cargo run -p inferadb-examples --bin basic_check
+cargo run -p inferadb-examples --bin batch_operations
+cargo run -p inferadb-examples --bin axum_middleware
 ```
+
+Examples are in a separate workspace member to keep the main SDK dependencies lean.
 
 ## Contributing
 

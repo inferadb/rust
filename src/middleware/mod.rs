@@ -243,7 +243,7 @@ impl RequestMetadata {
 
 /// W3C Trace Context for distributed tracing.
 ///
-/// Implements the W3C Trace Context specification (https://www.w3.org/TR/trace-context/)
+/// Implements the W3C Trace Context specification (<https://www.w3.org/TR/trace-context/>)
 /// for propagating trace information across service boundaries.
 ///
 /// ## Example

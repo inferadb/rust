@@ -913,7 +913,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/active"))
+            .and(path(
+                "/control/v1/organizations/org_123/vaults/vlt_456/schemas/active",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": "sch_abc",
                 "vault_id": "vlt_456",
@@ -941,7 +943,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas"))
+            .and(path(
+                "/control/v1/organizations/org_123/vaults/vlt_456/schemas",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [
                     {
@@ -985,7 +989,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas"))
+            .and(path(
+                "/control/v1/organizations/org_123/vaults/vlt_456/schemas",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [],
                 "page_info": {
@@ -1015,7 +1021,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/1"))
+            .and(path(
+                "/control/v1/organizations/org_123/vaults/vlt_456/schemas/1",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": "sch_1",
                 "vault_id": "vlt_456",
@@ -1041,7 +1049,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
-            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas"))
+            .and(path(
+                "/control/v1/organizations/org_123/vaults/vlt_456/schemas",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "schema": {
                     "id": "sch_new",
@@ -1075,7 +1085,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
-            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/validate"))
+            .and(path(
+                "/control/v1/organizations/org_123/vaults/vlt_456/schemas/validate",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "is_valid": true,
                 "errors": [],
@@ -1106,7 +1118,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
-            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/2/activate"))
+            .and(path(
+                "/control/v1/organizations/org_123/vaults/vlt_456/schemas/2/activate",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": "sch_2",
                 "vault_id": "vlt_456",
@@ -1133,7 +1147,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("DELETE"))
-            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/1"))
+            .and(path(
+                "/control/v1/organizations/org_123/vaults/vlt_456/schemas/1",
+            ))
             .respond_with(ResponseTemplate::new(204))
             .mount(&server)
             .await;
@@ -1150,7 +1166,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/diff"))
+            .and(path(
+                "/control/v1/organizations/org_123/vaults/vlt_456/schemas/diff",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "from_version": "1",
                 "to_version": "2",

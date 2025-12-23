@@ -6,7 +6,8 @@ Thank you for your interest in contributing to the InferaDB Rust SDK! This docum
 
 ### Prerequisites
 
-- Rust 1.70+ (stable)
+- [Mise](https://mise.jdx.dev/) - Tool version manager (recommended)
+- Rust 1.75+ (stable) - Managed by mise or rustup
 - Rust nightly (for formatting)
 - Docker (for integration tests)
 
@@ -17,15 +18,31 @@ Thank you for your interest in contributing to the InferaDB Rust SDK! This docum
 git clone https://github.com/inferadb/rust-sdk
 cd rust-sdk
 
-# Install dependencies
-cargo build --workspace
+# One-time setup (installs Rust toolchain and dev tools)
+make setup
+
+# Build the project
+make build
 
 # Run tests
-cargo nextest run --workspace
+make test
 
-# Or with standard cargo test
-cargo test --workspace
+# See all available commands
+make help
 ```
+
+### Makefile Targets
+
+| Target             | Description                              |
+| ------------------ | ---------------------------------------- |
+| `make setup`       | One-time dev environment setup via Mise  |
+| `make build`       | Build all workspace crates               |
+| `make test`        | Run unit tests                           |
+| `make test-all`    | Run unit + integration tests             |
+| `make check`       | Run format check + clippy                |
+| `make coverage`    | Run tests with coverage report           |
+| `make doc`         | Build documentation                      |
+| `make ci`          | Full CI pipeline (format, lint, test)    |
 
 ### Running with Local InferaDB
 
@@ -34,22 +51,25 @@ cargo test --workspace
 docker-compose up -d
 
 # Run integration tests
-INFERADB_URL=http://localhost:8080 cargo test --features integration
+make test-integration
 ```
 
 ## Code Style
 
-We use Rust's standard formatting and linting tools:
+We use Rust's standard formatting and linting tools. Use the Makefile for convenience:
 
 ```bash
 # Format code (requires nightly)
-cargo +nightly fmt --all
+make fmt
 
-# Lint
-cargo clippy --workspace --all-targets -- -D warnings
+# Lint with clippy
+make clippy
 
-# Check documentation
-cargo doc --workspace --no-deps
+# Run all checks (format + clippy)
+make check
+
+# Build documentation
+make doc
 ```
 
 ### Style Guidelines
@@ -67,7 +87,7 @@ cargo doc --workspace --no-deps
 Use mocks for unit tests to avoid network dependencies:
 
 ```rust
-use inferadb_test::MockClient;
+use inferadb::testing::MockClient;
 
 #[tokio::test]
 async fn test_check_returns_true_for_allowed() {
@@ -107,7 +127,7 @@ async fn integration_test_check() {
 Run integration tests with:
 
 ```bash
-cargo test --ignored --features integration
+make test-integration
 ```
 
 ### Test Organization
@@ -123,35 +143,29 @@ tests/
 
 ### Before Submitting
 
-1. **Run the full test suite:**
+Run the full CI pipeline locally:
 
-   ```bash
-   cargo nextest run --workspace
-   ```
+```bash
+make ci
+```
 
-2. **Check for clippy warnings:**
+This runs format checks, clippy, tests, and documentation checks.
 
-   ```bash
-   cargo clippy --workspace --all-targets -- -D warnings
-   ```
+Or run individual steps:
 
-3. **Format your code:**
-
-   ```bash
-   cargo +nightly fmt --all
-   ```
-
-4. **Build documentation:**
-
-   ```bash
-   cargo doc --workspace --no-deps
-   ```
+```bash
+make fmt        # Format code
+make check      # Format check + clippy
+make test       # Run tests
+make doc-check  # Check documentation
+```
 
 ### PR Checklist
 
-- [ ] Tests pass (`cargo nextest run --workspace`)
-- [ ] No clippy warnings (`cargo clippy -- -D warnings`)
-- [ ] Code formatted (`cargo +nightly fmt --all`)
+- [ ] CI passes (`make ci`)
+- [ ] Tests pass (`make test`)
+- [ ] No clippy warnings (`make clippy`)
+- [ ] Code formatted (`make fmt`)
 - [ ] Documentation updated for public API changes
 - [ ] CHANGELOG.md updated (under `[Unreleased]`)
 - [ ] Version bumped if needed (for breaking changes)

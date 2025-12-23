@@ -632,7 +632,9 @@ mod wiremock_tests {
 
         Mock::given(method("GET"))
             .and(path("/livez"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "ok"})))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "ok"})),
+            )
             .mount(&server)
             .await;
 
@@ -731,7 +733,9 @@ mod wiremock_tests {
 
         Mock::given(method("GET"))
             .and(path("/livez"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "ok"})))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "ok"})),
+            )
             .mount(&server)
             .await;
 

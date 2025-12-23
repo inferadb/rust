@@ -1145,7 +1145,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(path("/control/v1/organizations/org_123/clients/cli_abc/certificates"))
+            .and(path(
+                "/control/v1/organizations/org_123/clients/cli_abc/certificates",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [
                     {
@@ -1182,7 +1184,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
-            .and(path("/control/v1/organizations/org_123/clients/cli_abc/certificates"))
+            .and(path(
+                "/control/v1/organizations/org_123/clients/cli_abc/certificates",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": "cert_new",
                 "fingerprint": "sha256:newkey",
@@ -1210,7 +1214,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("DELETE"))
-            .and(path("/control/v1/organizations/org_123/clients/cli_abc/certificates/cert_123"))
+            .and(path(
+                "/control/v1/organizations/org_123/clients/cli_abc/certificates/cert_123",
+            ))
             .respond_with(ResponseTemplate::new(204))
             .mount(&server)
             .await;
@@ -1229,7 +1235,9 @@ mod wiremock_tests {
 
         // rotate() posts to /certificates (adds new cert, server handles grace period)
         Mock::given(method("POST"))
-            .and(path("/control/v1/organizations/org_123/clients/cli_abc/certificates"))
+            .and(path(
+                "/control/v1/organizations/org_123/clients/cli_abc/certificates",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": "cert_rotated",
                 "fingerprint": "sha256:rotated",

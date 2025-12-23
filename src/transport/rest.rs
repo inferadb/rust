@@ -140,7 +140,7 @@ impl RestTransport {
             headers.insert(
                 AUTHORIZATION,
                 HeaderValue::from_str(&auth_value).map_err(|_| {
-                    Error::new(ErrorKind::Authentication, "Invalid auth token format")
+                    Error::new(ErrorKind::Unauthorized, "Invalid auth token format")
                 })?,
             );
         }
@@ -968,7 +968,7 @@ impl TransportClient for RestTransport {
             Ok(())
         } else {
             Err(Error::new(
-                ErrorKind::ServiceUnavailable,
+                ErrorKind::Unavailable,
                 format!("Health check failed with status {}", response.status()),
             ))
         }
@@ -1132,12 +1132,12 @@ fn map_reqwest_error(e: reqwest::Error) -> Error {
     if e.is_timeout() {
         Error::new(ErrorKind::Timeout, format!("Request timed out: {}", e))
     } else if e.is_connect() {
-        Error::new(
-            ErrorKind::ConnectionFailed,
-            format!("Connection failed: {}", e),
-        )
+        Error::new(ErrorKind::Connection, format!("Connection failed: {}", e))
     } else if e.is_request() {
-        Error::new(ErrorKind::InvalidRequest, format!("Invalid request: {}", e))
+        Error::new(
+            ErrorKind::InvalidArgument,
+            format!("Invalid request: {}", e),
+        )
     } else {
         Error::new(ErrorKind::Transport, format!("HTTP error: {}", e))
     }
@@ -1161,13 +1161,13 @@ fn map_status_error(status: u16, body: &str) -> Error {
     };
 
     match status {
-        400 => Error::new(ErrorKind::InvalidRequest, message),
-        401 => Error::new(ErrorKind::Authentication, message),
-        403 => Error::new(ErrorKind::PermissionDenied, message),
+        400 => Error::new(ErrorKind::InvalidArgument, message),
+        401 => Error::new(ErrorKind::Unauthorized, message),
+        403 => Error::new(ErrorKind::Forbidden, message),
         404 => Error::new(ErrorKind::NotFound, message),
         409 => Error::new(ErrorKind::Conflict, message),
         429 => Error::new(ErrorKind::RateLimited, message),
-        500..=599 => Error::new(ErrorKind::ServiceUnavailable, message),
+        500..=599 => Error::new(ErrorKind::Unavailable, message),
         _ => Error::new(ErrorKind::Transport, message),
     }
 }
@@ -1207,7 +1207,7 @@ mod tests {
     #[test]
     fn test_map_status_error() {
         let err = map_status_error(401, "");
-        assert!(matches!(err.kind(), ErrorKind::Authentication));
+        assert!(matches!(err.kind(), ErrorKind::Unauthorized));
 
         let err = map_status_error(404, "{\"error\":\"Not found\"}");
         assert!(matches!(err.kind(), ErrorKind::NotFound));
@@ -1217,7 +1217,7 @@ mod tests {
         assert!(matches!(err.kind(), ErrorKind::RateLimited));
 
         let err = map_status_error(503, "Service unavailable");
-        assert!(matches!(err.kind(), ErrorKind::ServiceUnavailable));
+        assert!(matches!(err.kind(), ErrorKind::Unavailable));
     }
 
     #[test]
@@ -1246,13 +1246,13 @@ mod tests {
     #[test]
     fn test_map_status_error_400() {
         let err = map_status_error(400, "Bad request");
-        assert!(matches!(err.kind(), ErrorKind::InvalidRequest));
+        assert!(matches!(err.kind(), ErrorKind::InvalidArgument));
     }
 
     #[test]
     fn test_map_status_error_403() {
         let err = map_status_error(403, "Forbidden");
-        assert!(matches!(err.kind(), ErrorKind::PermissionDenied));
+        assert!(matches!(err.kind(), ErrorKind::Forbidden));
     }
 
     #[test]
@@ -1271,7 +1271,7 @@ mod tests {
     fn test_map_status_error_500_range() {
         for status in [500u16, 502, 503, 504] {
             let err = map_status_error(status, "Server error");
-            assert!(matches!(err.kind(), ErrorKind::ServiceUnavailable));
+            assert!(matches!(err.kind(), ErrorKind::Unavailable));
         }
     }
 
@@ -1359,7 +1359,9 @@ mod wiremock_tests {
 
         Mock::given(method("GET"))
             .and(path("/healthz"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "ok"})))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "ok"})),
+            )
             .mount(&server)
             .await;
 
@@ -1381,7 +1383,7 @@ mod wiremock_tests {
         let transport = create_test_transport(&server).await;
         let result = transport.health_check().await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err().kind(), ErrorKind::ServiceUnavailable));
+        assert!(matches!(result.unwrap_err().kind(), ErrorKind::Unavailable));
     }
 
     #[tokio::test]
@@ -1471,7 +1473,7 @@ mod wiremock_tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err().kind(),
-            ErrorKind::Authentication
+            ErrorKind::Unauthorized
         ));
     }
 
@@ -1536,7 +1538,9 @@ mod wiremock_tests {
 
         // delete uses path with URL-encoded components
         Mock::given(method("DELETE"))
-            .and(path("/access/v1/relationships/document%3Areadme/viewer/user%3Aalice"))
+            .and(path(
+                "/access/v1/relationships/document%3Areadme/viewer/user%3Aalice",
+            ))
             .respond_with(ResponseTemplate::new(204))
             .mount(&server)
             .await;
@@ -1554,7 +1558,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("DELETE"))
-            .and(path("/access/v1/relationships/document%3Amissing/viewer/user%3Aalice"))
+            .and(path(
+                "/access/v1/relationships/document%3Amissing/viewer/user%3Aalice",
+            ))
             .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
                 "error": "Relationship not found"
             })))
@@ -1590,7 +1596,7 @@ mod wiremock_tests {
             resource: "document:readme".to_string(),
             context: None,
             additions: vec![
-                Relationship::new("document:readme", "viewer", "user:alice").into_owned(),
+                Relationship::new("document:readme", "viewer", "user:alice").into_owned()
             ],
             removals: vec![],
         };
@@ -1656,10 +1662,7 @@ mod wiremock_tests {
 
         let result = transport.check(request).await;
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err().kind(),
-            ErrorKind::RateLimited
-        ));
+        assert!(matches!(result.unwrap_err().kind(), ErrorKind::RateLimited));
     }
 
     #[tokio::test]
@@ -1687,10 +1690,7 @@ mod wiremock_tests {
         let result = transport.check(request).await;
         assert!(result.is_err());
         // 500-599 errors are mapped to ServiceUnavailable in rest.rs
-        assert!(matches!(
-            result.unwrap_err().kind(),
-            ErrorKind::ServiceUnavailable
-        ));
+        assert!(matches!(result.unwrap_err().kind(), ErrorKind::Unavailable));
     }
 
     #[tokio::test]
@@ -1718,10 +1718,7 @@ mod wiremock_tests {
         let result = transport.check(request).await;
         assert!(result.is_err());
         // 403 is mapped to PermissionDenied in rest.rs
-        assert!(matches!(
-            result.unwrap_err().kind(),
-            ErrorKind::PermissionDenied
-        ));
+        assert!(matches!(result.unwrap_err().kind(), ErrorKind::Forbidden));
     }
 
     #[tokio::test]
@@ -1745,10 +1742,7 @@ mod wiremock_tests {
 
         let result = transport.write(request).await;
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err().kind(),
-            ErrorKind::Conflict
-        ));
+        assert!(matches!(result.unwrap_err().kind(), ErrorKind::Conflict));
     }
 
     #[tokio::test]
@@ -1766,10 +1760,7 @@ mod wiremock_tests {
         let transport = create_test_transport(&server).await;
         let result = transport.health_check().await;
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err().kind(),
-            ErrorKind::ServiceUnavailable
-        ));
+        assert!(matches!(result.unwrap_err().kind(), ErrorKind::Unavailable));
     }
 
     #[tokio::test]
@@ -1799,7 +1790,7 @@ mod wiremock_tests {
         // 400 errors are mapped to InvalidRequest in rest.rs
         assert!(matches!(
             result.unwrap_err().kind(),
-            ErrorKind::InvalidRequest
+            ErrorKind::InvalidArgument
         ));
     }
 
@@ -1912,7 +1903,7 @@ mod wiremock_tests {
                     .insert_header("content-type", "text/event-stream")
                     .set_body_string(
                         "data: \"doc:1\"\n\n\
-                         data: \"doc:2\"\n\n"
+                         data: \"doc:2\"\n\n",
                     ),
             )
             .mount(&server)
@@ -1939,7 +1930,7 @@ mod wiremock_tests {
                     .insert_header("content-type", "text/event-stream")
                     .set_body_string(
                         "data: \"user:alice\"\n\n\
-                         data: \"user:bob\"\n\n"
+                         data: \"user:bob\"\n\n",
                     ),
             )
             .mount(&server)
@@ -2052,7 +2043,7 @@ mod wiremock_tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err().kind(),
-            ErrorKind::Authentication
+            ErrorKind::Unauthorized
         ));
     }
 
@@ -2084,10 +2075,10 @@ mod wiremock_tests {
             resource: "document:readme".to_string(),
             context: None,
             additions: vec![
-                Relationship::new("document:readme", "editor", "user:alice").into_owned(),
+                Relationship::new("document:readme", "editor", "user:alice").into_owned()
             ],
             removals: vec![
-                Relationship::new("document:readme", "viewer", "user:alice").into_owned(),
+                Relationship::new("document:readme", "viewer", "user:alice").into_owned()
             ],
         };
 

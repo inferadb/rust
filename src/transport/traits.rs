@@ -704,7 +704,10 @@ mod tests {
 
     #[test]
     fn test_fallback_reason_connect_timeout() {
-        assert_eq!(FallbackReason::ConnectTimeout.to_string(), "connect timeout");
+        assert_eq!(
+            FallbackReason::ConnectTimeout.to_string(),
+            "connect timeout"
+        );
     }
 
     #[test]

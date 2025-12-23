@@ -76,7 +76,7 @@ impl ClientInner {
             headers.insert(
                 AUTHORIZATION,
                 HeaderValue::from_str(&auth_value).map_err(|_| {
-                    Error::new(ErrorKind::Authentication, "Invalid auth token format")
+                    Error::new(ErrorKind::Unauthorized, "Invalid auth token format")
                 })?,
             );
         }
@@ -221,8 +221,8 @@ impl ClientInner {
     fn map_status_error(&self, status: reqwest::StatusCode, body: &str) -> Error {
         match status.as_u16() {
             400 => Error::new(ErrorKind::InvalidArgument, format!("Bad request: {}", body)),
-            401 => Error::new(ErrorKind::Authentication, "Authentication required"),
-            403 => Error::new(ErrorKind::PermissionDenied, "Permission denied"),
+            401 => Error::new(ErrorKind::Unauthorized, "Authentication required"),
+            403 => Error::new(ErrorKind::Forbidden, "Permission denied"),
             404 => Error::new(ErrorKind::NotFound, format!("Not found: {}", body)),
             409 => Error::new(ErrorKind::Conflict, format!("Conflict: {}", body)),
             429 => Error::new(ErrorKind::RateLimited, "Rate limit exceeded"),
@@ -322,7 +322,10 @@ mod tests {
         let inner = create_test_inner_no_http_client();
         let result = inner.http_client();
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err().kind(), ErrorKind::Configuration));
+        assert!(matches!(
+            result.unwrap_err().kind(),
+            ErrorKind::Configuration
+        ));
     }
 
     #[test]
@@ -337,14 +340,14 @@ mod tests {
     fn test_map_status_error_401() {
         let inner = create_test_inner();
         let error = inner.map_status_error(StatusCode::UNAUTHORIZED, "");
-        assert!(matches!(error.kind(), ErrorKind::Authentication));
+        assert!(matches!(error.kind(), ErrorKind::Unauthorized));
     }
 
     #[test]
     fn test_map_status_error_403() {
         let inner = create_test_inner();
         let error = inner.map_status_error(StatusCode::FORBIDDEN, "");
-        assert!(matches!(error.kind(), ErrorKind::PermissionDenied));
+        assert!(matches!(error.kind(), ErrorKind::Forbidden));
     }
 
     #[test]

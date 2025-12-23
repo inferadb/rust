@@ -106,8 +106,9 @@ fn derive_resource_impl(input: DeriveInput) -> Result<TokenStream2> {
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     // Parse #[resource(type = "...")] from struct attributes
-    let resource_type = parse_type_attr(&input, "resource")?
-        .ok_or_else(|| Error::new_spanned(&input, "missing #[resource(type = \"...\")] attribute"))?;
+    let resource_type = parse_type_attr(&input, "resource")?.ok_or_else(|| {
+        Error::new_spanned(&input, "missing #[resource(type = \"...\")] attribute")
+    })?;
 
     // Find the field with #[resource(id)]
     let id_field = find_id_field(&input.data, "resource")?;
@@ -130,8 +131,9 @@ fn derive_subject_impl(input: DeriveInput) -> Result<TokenStream2> {
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     // Parse #[subject(type = "...")] from struct attributes
-    let subject_type = parse_type_attr(&input, "subject")?
-        .ok_or_else(|| Error::new_spanned(&input, "missing #[subject(type = \"...\")] attribute"))?;
+    let subject_type = parse_type_attr(&input, "subject")?.ok_or_else(|| {
+        Error::new_spanned(&input, "missing #[subject(type = \"...\")] attribute")
+    })?;
 
     // Find the field with #[subject(id)]
     let id_field = find_id_field(&input.data, "subject")?;

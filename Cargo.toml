@@ -1,5 +1,5 @@
 [workspace]
-members = ["inferadb-derive"]
+members = ["inferadb-derive", "examples"]
 
 [package]
 name = "inferadb"
@@ -96,6 +96,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Integration test dependencies
 anyhow = "1"
 jsonwebtoken = { version = "9", default-features = false, features = ["use_pem"] }
+
 
 [[test]]
 name = "integration"

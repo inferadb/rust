@@ -37,7 +37,10 @@ async fn test_check_with_context() {
         Ok(allowed) => {
             println!("Check with context returned: {}", allowed);
             // Should be denied since no relationships exist
-            assert!(!allowed, "Permission should be denied without relationships");
+            assert!(
+                !allowed,
+                "Permission should be denied without relationships"
+            );
         }
         Err(e) => {
             println!("Check with context error: {:?}", e);
@@ -71,7 +74,10 @@ async fn test_detailed_check() {
     match result {
         Ok(decision) => {
             println!("Detailed check decision: {:?}", decision);
-            assert!(!decision.is_allowed(), "Should be denied without relationships");
+            assert!(
+                !decision.is_allowed(),
+                "Should be denied without relationships"
+            );
         }
         Err(e) => {
             println!("Detailed check error: {:?}", e);
@@ -330,11 +336,19 @@ async fn test_list_relationships_with_filters() {
     // Write some test relationships first
     let _ = vault
         .relationships()
-        .write(Relationship::new("document:filter1", "viewer", "user:alice"))
+        .write(Relationship::new(
+            "document:filter1",
+            "viewer",
+            "user:alice",
+        ))
         .await;
     let _ = vault
         .relationships()
-        .write(Relationship::new("document:filter2", "viewer", "user:alice"))
+        .write(Relationship::new(
+            "document:filter2",
+            "viewer",
+            "user:alice",
+        ))
         .await;
 
     // List with resource filter
@@ -360,11 +374,7 @@ async fn test_list_relationships_with_filters() {
     }
 
     // List with subject filter
-    let result = vault
-        .relationships()
-        .list()
-        .subject("user:alice")
-        .await;
+    let result = vault.relationships().list().subject("user:alice").await;
 
     match result {
         Ok(response) => {
@@ -470,23 +480,19 @@ async fn test_subjects_with_type_filter() {
     // Write relationships with different subject types
     let _ = vault
         .relationships()
-        .write(Relationship::new(
-            "document:typed",
-            "viewer",
-            "user:alice",
-        ))
-        .await;
-    let _ = vault
-        .relationships()
-        .write(Relationship::new("document:typed", "viewer", "group:admins"))
+        .write(Relationship::new("document:typed", "viewer", "user:alice"))
         .await;
     let _ = vault
         .relationships()
         .write(Relationship::new(
             "document:typed",
             "viewer",
-            "service:api",
+            "group:admins",
         ))
+        .await;
+    let _ = vault
+        .relationships()
+        .write(Relationship::new("document:typed", "viewer", "service:api"))
         .await;
 
     // Query with subject type filter
@@ -786,7 +792,10 @@ async fn test_require_permission() {
         .require()
         .await;
 
-    assert!(result.is_err(), "require() should fail when no relationship exists");
+    assert!(
+        result.is_err(),
+        "require() should fail when no relationship exists"
+    );
 
     if let Err(e) = result {
         println!("require() correctly returned error: {:?}", e);

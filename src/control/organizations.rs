@@ -642,7 +642,12 @@ mod wiremock_tests {
 
         let client = create_mock_client(&server).await;
         let orgs = OrganizationsClient::new(client);
-        let result = orgs.list().limit(10).cursor("cursor_abc").sort(SortOrder::Descending).await;
+        let result = orgs
+            .list()
+            .limit(10)
+            .cursor("cursor_abc")
+            .sort(SortOrder::Descending)
+            .await;
 
         assert!(result.is_ok());
     }
@@ -665,7 +670,8 @@ mod wiremock_tests {
 
         let client = create_mock_client(&server).await;
         let orgs = OrganizationsClient::new(client);
-        let request = CreateOrganizationRequest::new("new-org").with_display_name("New Organization");
+        let request =
+            CreateOrganizationRequest::new("new-org").with_display_name("New Organization");
         let result = orgs.create(request).await;
 
         assert!(result.is_ok());
@@ -716,7 +722,8 @@ mod wiremock_tests {
 
         let client = create_mock_client(&server).await;
         let org = OrganizationControlClient::new(client, "org_abc");
-        let request = UpdateOrganizationRequest::default().with_display_name("Updated Organization");
+        let request =
+            UpdateOrganizationRequest::default().with_display_name("Updated Organization");
         let result = org.update(request).await;
 
         assert!(result.is_ok());

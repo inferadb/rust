@@ -1,0 +1,31 @@
+[package]
+name = "inferadb-examples"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Examples for the InferaDB Rust SDK"
+
+# This crate exists solely to hold examples with their own dependencies,
+# keeping the main SDK lean for integrators.
+
+[[bin]]
+name = "basic_check"
+path = "src/bin/basic_check.rs"
+
+[[bin]]
+name = "batch_operations"
+path = "src/bin/batch_operations.rs"
+
+[[bin]]
+name = "axum_middleware"
+path = "src/bin/axum_middleware.rs"
+
+[dependencies]
+# The SDK itself
+inferadb = { path = "..", features = ["rest"] }
+
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+
+# Web framework for axum example
+axum = "0.7"

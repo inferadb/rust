@@ -112,14 +112,9 @@ impl Error {
             ErrorKind::Protocol => "protocol error",
             ErrorKind::Configuration => "configuration error",
             ErrorKind::Unknown => "unknown error",
-            ErrorKind::Authentication => "authentication failed",
-            ErrorKind::PermissionDenied => "permission denied",
-            ErrorKind::Conflict => "conflict",
+            ErrorKind::Conflict => "resource conflict",
             ErrorKind::Transport => "transport error",
-            ErrorKind::ConnectionFailed => "connection failed",
-            ErrorKind::InvalidRequest => "invalid request",
             ErrorKind::InvalidResponse => "invalid response",
-            ErrorKind::ServiceUnavailable => "service unavailable",
         };
         Self::new(kind, message)
     }
@@ -570,15 +565,10 @@ mod tests {
 
     #[test]
     fn test_from_kind_remaining_variants() {
-        // Cover all remaining from_kind match arms
-        let _ = Error::from_kind(ErrorKind::Authentication);
-        let _ = Error::from_kind(ErrorKind::PermissionDenied);
+        // Cover remaining from_kind match arms
         let _ = Error::from_kind(ErrorKind::Conflict);
         let _ = Error::from_kind(ErrorKind::Transport);
-        let _ = Error::from_kind(ErrorKind::ConnectionFailed);
-        let _ = Error::from_kind(ErrorKind::InvalidRequest);
         let _ = Error::from_kind(ErrorKind::InvalidResponse);
-        let _ = Error::from_kind(ErrorKind::ServiceUnavailable);
     }
 
     #[test]

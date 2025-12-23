@@ -1174,7 +1174,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("DELETE"))
-            .and(path("/control/v1/organizations/org_123/invitations/inv_abc"))
+            .and(path(
+                "/control/v1/organizations/org_123/invitations/inv_abc",
+            ))
             .respond_with(ResponseTemplate::new(204))
             .mount(&server)
             .await;
@@ -1191,7 +1193,9 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
-            .and(path("/control/v1/organizations/org_123/invitations/inv_abc/resend"))
+            .and(path(
+                "/control/v1/organizations/org_123/invitations/inv_abc/resend",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_string("null"))
             .mount(&server)
             .await;

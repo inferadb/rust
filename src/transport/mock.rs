@@ -492,9 +492,7 @@ mod tests {
                 permission: "viewer".to_string(),
                 resource: "doc:1".to_string(),
                 context: None,
-                additions: vec![
-                    Relationship::new("doc:1", "viewer", "user:bob").into_owned(),
-                ],
+                additions: vec![Relationship::new("doc:1", "viewer", "user:bob").into_owned()],
                 removals: vec![],
             })
             .await
@@ -518,9 +516,7 @@ mod tests {
                 resource: "doc:1".to_string(),
                 context: None,
                 additions: vec![],
-                removals: vec![
-                    Relationship::new("doc:1", "viewer", "user:alice").into_owned(),
-                ],
+                removals: vec![Relationship::new("doc:1", "viewer", "user:alice").into_owned()],
             })
             .await
             .unwrap();
@@ -533,7 +529,8 @@ mod tests {
         let transport = MockTransport::new();
         transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
         transport.add_relationship(Relationship::new("doc:2", "viewer", "user:alice").into_owned());
-        transport.add_relationship(Relationship::new("folder:1", "viewer", "user:alice").into_owned());
+        transport
+            .add_relationship(Relationship::new("folder:1", "viewer", "user:alice").into_owned());
 
         let result = transport
             .list_resources("user:alice", "viewer", None, None, None)
@@ -551,7 +548,8 @@ mod tests {
         let transport = MockTransport::new();
         transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
         transport.add_relationship(Relationship::new("doc:2", "viewer", "user:alice").into_owned());
-        transport.add_relationship(Relationship::new("folder:1", "viewer", "user:alice").into_owned());
+        transport
+            .add_relationship(Relationship::new("folder:1", "viewer", "user:alice").into_owned());
 
         let result = transport
             .list_resources("user:alice", "viewer", Some("doc"), None, None)
@@ -568,7 +566,8 @@ mod tests {
         let transport = MockTransport::new();
         transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
         transport.add_relationship(Relationship::new("doc:1", "viewer", "user:bob").into_owned());
-        transport.add_relationship(Relationship::new("doc:1", "viewer", "group:admins").into_owned());
+        transport
+            .add_relationship(Relationship::new("doc:1", "viewer", "group:admins").into_owned());
 
         let result = transport
             .list_subjects("viewer", "doc:1", None, None, None)
@@ -586,7 +585,8 @@ mod tests {
         let transport = MockTransport::new();
         transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
         transport.add_relationship(Relationship::new("doc:1", "viewer", "user:bob").into_owned());
-        transport.add_relationship(Relationship::new("doc:1", "viewer", "group:admins").into_owned());
+        transport
+            .add_relationship(Relationship::new("doc:1", "viewer", "group:admins").into_owned());
 
         let result = transport
             .list_subjects("viewer", "doc:1", Some("user"), None, None)

@@ -3049,7 +3049,10 @@ mod tests {
         let vault = create_test_vault().await;
         let result = vault.relationships().delete_where().await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("at least one filter"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("at least one filter"));
     }
 
     #[tokio::test]

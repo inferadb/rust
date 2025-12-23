@@ -112,6 +112,7 @@ setup: ## Install development tools
 	mise trust
 	mise install
 	rustup component add rustfmt clippy
+	rustup toolchain install nightly --component rustfmt
 	@echo "$(GREEN)Setup complete!$(RESET)"
 
 ci: fmt-check clippy test doc-check ## CI pipeline checks
