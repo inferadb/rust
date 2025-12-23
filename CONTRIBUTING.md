@@ -9,13 +9,14 @@ Thank you for your interest in contributing to the InferaDB Rust SDK! This docum
 - [Mise](https://mise.jdx.dev/) - Tool version manager (recommended)
 - Rust 1.75+ (stable) - Managed by mise or rustup
 - Rust nightly (for formatting)
-- Docker (for integration tests)
+- Docker and Docker Compose (for integration tests)
+- [inferadb/deploy](https://github.com/inferadb/deploy) - Development environment (for integration tests)
 
 ### Getting Started
 
 ```bash
 # Clone the SDK repository
-git clone https://github.com/inferadb/rust-sdk
+git clone https://github.com/inferadb/rust
 cd rust-sdk
 
 # One-time setup (installs Rust toolchain and dev tools)
@@ -33,27 +34,61 @@ make help
 
 ### Makefile Targets
 
-| Target             | Description                              |
-| ------------------ | ---------------------------------------- |
-| `make setup`       | One-time dev environment setup via Mise  |
-| `make build`       | Build all workspace crates               |
-| `make test`        | Run unit tests                           |
-| `make test-all`    | Run unit + integration tests             |
-| `make check`       | Run format check + clippy                |
-| `make coverage`    | Run tests with coverage report           |
-| `make doc`         | Build documentation                      |
-| `make proto`       | Regenerate protobuf code and format      |
-| `make ci`          | Full CI pipeline (format, lint, test)    |
+| Target          | Description                             |
+| --------------- | --------------------------------------- |
+| `make setup`    | One-time dev environment setup via Mise |
+| `make build`    | Build all workspace crates              |
+| `make test`     | Run unit tests                          |
+| `make test-all` | Run unit + integration tests            |
+| `make check`    | Run format check + clippy               |
+| `make coverage` | Run tests with coverage report          |
+| `make doc`      | Build documentation                     |
+| `make proto`    | Regenerate protobuf code and format     |
+| `make ci`       | Full CI pipeline (format, lint, test)   |
 
 ### Running with Local InferaDB
 
-```bash
-# Start local InferaDB
-docker-compose up -d
+Integration tests require a running InferaDB instance. Use the official development environment from [inferadb/deploy](https://github.com/inferadb/deploy):
 
-# Run integration tests
-make test-integration
+```bash
+# Clone the deploy repository (if you haven't already)
+git clone https://github.com/inferadb/deploy
+cd deploy
+
+# Start the development environment
+./scripts/dev-up.sh
+
+# The environment includes:
+# - InferaDB Engine (authorization API)
+# - InferaDB Control (management API)
+# - FoundationDB (storage)
+# - Supporting services
 ```
+
+Once the development environment is running, return to the SDK directory and run integration tests:
+
+```bash
+cd /path/to/inferadb-rust-sdk
+
+# Run integration tests against local InferaDB
+make test-integration
+
+# Or run specific integration tests
+cargo test --test integration --features "rest,insecure" -- --ignored
+```
+
+#### Environment Variables
+
+The integration tests use these environment variables (with defaults for local development):
+
+| Variable               | Default                 | Description                                 |
+| ---------------------- | ----------------------- | ------------------------------------------- |
+| `INFERADB_URL`         | `http://localhost:8080` | InferaDB Engine URL                         |
+| `INFERADB_CONTROL_URL` | `http://localhost:8081` | InferaDB Control URL                        |
+| `INFERADB_CLIENT_ID`   | -                       | Test client ID (created by dev environment) |
+| `INFERADB_PRIVATE_KEY` | -                       | Path to test private key                    |
+
+The dev environment from `inferadb/deploy` automatically configures test credentials.
 
 ## Code Style
 
@@ -100,6 +135,7 @@ make proto
 ```
 
 This command:
+
 1. Touches the proto file to trigger regeneration
 2. Runs `cargo build --features grpc` to invoke tonic-build
 3. Formats the generated code with `make fmt`
@@ -140,6 +176,8 @@ async fn test_check_returns_false_for_denied() {
 
 ### Integration Tests
 
+Integration tests require a running InferaDB instance. See [Running with Local InferaDB](#running-with-local-inferadb) for setup instructions using the [inferadb/deploy](https://github.com/inferadb/deploy) development environment.
+
 Use `#[ignore]` for tests that require a running InferaDB instance:
 
 ```rust
@@ -157,6 +195,7 @@ async fn integration_test_check() {
 Run integration tests with:
 
 ```bash
+# Ensure inferadb/deploy dev environment is running first
 make test-integration
 ```
 
@@ -218,12 +257,12 @@ chore: update dependencies
 For breaking changes:
 
 1. Add `BREAKING CHANGE:` footer to commit message
-2. Update MIGRATION.md with upgrade instructions
+2. Document upgrade instructions in CHANGELOG.md
 3. Bump major version (or minor for 0.x)
 
 ## Reporting Issues
 
-File issues at: <https://github.com/inferadb/rust-sdk/issues>
+File issues at: <https://github.com/inferadb/rust/issues>
 
 ### Bug Reports
 
@@ -246,8 +285,8 @@ Include:
 
 ## Getting Help
 
-- **Questions:** Open a [Discussion](https://github.com/inferadb/rust-sdk/discussions)
-- **Bugs:** Open an [Issue](https://github.com/inferadb/rust-sdk/issues)
+- **Questions:** Open a [Discussion](https://github.com/inferadb/rust/discussions)
+- **Bugs:** Open an [Issue](https://github.com/inferadb/rust/issues)
 - **Security:** Email <security@inferadb.com> (do not open public issues)
 
 ## License

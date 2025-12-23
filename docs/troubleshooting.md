@@ -531,7 +531,7 @@ match vault.check("user:alice", "view", "doc:1").await {
 
 If you're still stuck:
 
-1. Check the [GitHub Issues](https://github.com/inferadb/rust-sdk/issues) for similar problems
+1. Check the [GitHub Issues](https://github.com/inferadb/rust/issues) for similar problems
 2. Open a new issue with:
    - SDK version (`cargo pkgid inferadb`)
    - Rust version (`rustc --version`)

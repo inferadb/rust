@@ -1,0 +1,92 @@
+# Documentation
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - "docs/**/*"
+
+# CI/CD
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**/*"
+
+# Configuration
+config:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.toml"
+          - "**/*.yaml"
+          - "**/*.yml"
+          - "!.github/**/*"
+
+# Dependencies
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/Cargo.toml"
+          - "**/Cargo.lock"
+
+# Testing
+testing:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/tests/**/*"
+          - "**/*_test.rs"
+          - "**/*_tests.rs"
+
+# Source code
+source:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/**/*"
+
+# Client
+client:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/client/**/*"
+          - "src/client.rs"
+
+# Transport
+transport:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/transport/**/*"
+          - "src/grpc/**/*"
+          - "src/rest/**/*"
+
+# Authentication
+auth:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/auth/**/*"
+          - "src/credentials/**/*"
+
+# API
+api:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/api/**/*"
+          - "src/check/**/*"
+          - "src/relationships/**/*"
+          - "src/expand/**/*"
+
+# Derive macros
+macros:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "inferadb-derive/**/*"
+
+# Examples
+examples:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "examples/**/*"
+
+# Proto/gRPC
+proto:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "proto/**/*"
+          - "build.rs"

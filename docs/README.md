@@ -10,7 +10,6 @@ Supplementary documentation for the InferaDB Rust SDK. For the main README and q
 | [Integration Patterns](guides/integration-patterns.md) | Framework integration (Axum, Actix-web, GraphQL, gRPC) |
 | [Error Handling](guides/errors.md)                     | Error types, retries, graceful degradation             |
 | [Testing](guides/testing.md)                           | MockClient, InMemoryClient, TestVault                  |
-| [Migration Guide](guides/migration.md)                 | Migrate from RBAC, SpiceDB, OpenFGA, Oso               |
 
 ## Schema & Design
 
@@ -61,4 +60,3 @@ Supplementary documentation for the InferaDB Rust SDK. For the main README and q
 
 - **[README.md](../README.md)** - Quickstart and installation
 - **[CHANGELOG.md](../CHANGELOG.md)** - Version history
-- **[MIGRATION.md](../MIGRATION.md)** - Upgrade guides

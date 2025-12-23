@@ -1,0 +1,12 @@
+project_name: "InferaDB Rust SDK"
+
+encoding: "utf-8"
+read_only: false
+languages:
+  - rust
+
+initial_prompt: ""
+ignore_all_files_in_gitignore: true
+ignored_paths: []
+excluded_tools: []
+included_optional_tools: []

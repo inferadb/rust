@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability
+    url: https://github.com/inferadb/rust/security/advisories/new
+    about: Report security vulnerabilities privately
+  - name: Questions & Support
+    url: https://github.com/inferadb/rust/discussions
+    about: Ask questions and discuss ideas with the community
+  - name: Documentation
+    url: https://docs.rs/inferadb
+    about: Check out the API documentation
+  - name: Examples
+    url: https://github.com/inferadb/rust/tree/main/examples
+    about: Browse example code
