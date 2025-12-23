@@ -102,6 +102,7 @@ impl TransportClient for MockTransport {
         Ok(CheckResponse {
             allowed,
             decision: Decision::new(allowed),
+            trace: None, // Mock doesn't provide trace data
         })
     }
 
@@ -120,6 +121,7 @@ impl TransportClient for MockTransport {
             results.push(CheckResponse {
                 allowed,
                 decision: Decision::new(allowed),
+                trace: None, // Mock doesn't provide trace data
             });
         }
 
@@ -326,6 +328,7 @@ mod tests {
                 resource: "doc:1".to_string(),
                 context: None,
                 consistency: None,
+                trace: false,
             })
             .await
             .unwrap();
@@ -342,6 +345,7 @@ mod tests {
                 resource: "doc:1".to_string(),
                 context: None,
                 consistency: None,
+                trace: false,
             })
             .await
             .unwrap();
@@ -413,6 +417,7 @@ mod tests {
                 resource: "doc:1".to_string(),
                 context: None,
                 consistency: None,
+                trace: false,
             })
             .await;
 
@@ -426,6 +431,7 @@ mod tests {
                 resource: "doc:1".to_string(),
                 context: None,
                 consistency: None,
+                trace: false,
             })
             .await;
         assert!(result.is_ok());

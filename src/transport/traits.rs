@@ -337,6 +337,8 @@ pub struct CheckRequest {
     pub context: Option<Context>,
     /// Optional consistency requirement.
     pub consistency: Option<ConsistencyToken>,
+    /// Whether to include detailed evaluation trace (for explain).
+    pub trace: bool,
 }
 
 /// Response from an authorization check.
@@ -346,6 +348,58 @@ pub struct CheckResponse {
     pub allowed: bool,
     /// Decision with metadata.
     pub decision: Decision,
+    /// Detailed evaluation trace (only present if trace was requested).
+    pub trace: Option<DecisionTrace>,
+}
+
+/// Detailed trace of an authorization decision.
+#[derive(Debug, Clone)]
+pub struct DecisionTrace {
+    /// Time taken to evaluate in microseconds.
+    pub duration_micros: u64,
+    /// Number of relationships read during evaluation.
+    pub relationships_read: u64,
+    /// Number of relations evaluated.
+    pub relations_evaluated: u64,
+    /// Root node of the evaluation tree.
+    pub root: Option<EvaluationNode>,
+}
+
+/// A node in the evaluation tree.
+#[derive(Debug, Clone)]
+pub struct EvaluationNode {
+    /// Type of this node.
+    pub node_type: EvaluationNodeType,
+    /// Result at this node.
+    pub result: bool,
+    /// Child nodes.
+    pub children: Vec<EvaluationNode>,
+}
+
+/// Type of evaluation node.
+#[derive(Debug, Clone)]
+pub enum EvaluationNodeType {
+    /// Direct relationship check.
+    DirectCheck {
+        resource: String,
+        relation: String,
+        subject: String,
+    },
+    /// Computed userset.
+    ComputedUserset { relation: String },
+    /// Related object userset (tupleset rewrite).
+    RelatedObjectUserset {
+        relationship: String,
+        computed: String,
+    },
+    /// Union of child nodes.
+    Union,
+    /// Intersection of child nodes.
+    Intersection,
+    /// Exclusion (difference) of child nodes.
+    Exclusion,
+    /// WASM module evaluation.
+    WasmModule { module_name: String },
 }
 
 // ============================================================================

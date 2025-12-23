@@ -485,6 +485,7 @@ impl<'a> CheckRequest<'a> {
                     resource: self.resource.into_owned(),
                     context: self.context,
                     consistency: self.consistency,
+                    trace: false,
                 };
                 let response = transport.check(request).await?;
                 return Ok(response.decision);
@@ -506,6 +507,7 @@ impl<'a> CheckRequest<'a> {
                     resource: self.resource.into_owned(),
                     context: self.context,
                     consistency: self.consistency,
+                    trace: false,
                 };
                 let response = transport.check(request).await?;
                 return Ok(response.allowed);
@@ -561,6 +563,7 @@ impl<'a> RequireCheckRequest<'a> {
                     resource: self.inner.resource.clone().into_owned(),
                     context: self.inner.context.clone(),
                     consistency: self.inner.consistency.clone(),
+                    trace: false,
                 };
                 let response = transport.check(request).await.map_err(|_| {
                     AccessDenied::new(
@@ -686,6 +689,7 @@ impl<'a> BatchCheckRequest<'a> {
                         resource: item.resource.clone().into_owned(),
                         context: self.context.clone(),
                         consistency: self.consistency.clone(),
+                        trace: false,
                     })
                     .collect();
                 let responses = transport.check_batch(requests).await?;
@@ -2261,26 +2265,46 @@ impl ExplainPermissionRequest {
             .resource
             .ok_or_else(|| Error::invalid_argument("resource is required"))?;
 
-        // TODO: Implement actual API call via transport
-        // For now, perform a check and return a basic explanation
         #[cfg(feature = "rest")]
         if let Some(transport) = self.vault.transport() {
+            let start = std::time::Instant::now();
+
+            // Request with trace enabled to get detailed explanation
             let request = TransportCheckRequest {
                 subject: subject.clone(),
                 permission: permission.clone(),
                 resource: resource.clone(),
                 context: self.context.clone(),
                 consistency: None,
+                trace: true, // Enable trace for explain
             };
 
             let response = transport.check(request).await?;
+            let evaluation_time = start.elapsed();
 
-            let explanation = if response.allowed {
+            let mut explanation = if response.allowed {
                 PermissionExplanation::allowed(&subject, &permission, &resource)
             } else {
                 PermissionExplanation::denied(&subject, &permission, &resource)
                     .with_denial_reason(DenialReason::no_path())
             };
+
+            // Add trace information if available
+            if let Some(trace) = response.trace {
+                explanation = explanation.with_evaluation_time(
+                    std::time::Duration::from_micros(trace.duration_micros)
+                );
+
+                // Convert evaluation tree to paths
+                if let Some(root) = trace.root {
+                    let paths = Self::extract_paths_from_tree(&root, &subject, &resource);
+                    for path in paths {
+                        explanation = explanation.with_path(path);
+                    }
+                }
+            } else {
+                explanation = explanation.with_evaluation_time(evaluation_time);
+            }
 
             return Ok(explanation);
         }
@@ -2290,6 +2314,84 @@ impl ExplainPermissionRequest {
             PermissionExplanation::denied(&subject, &permission, &resource)
                 .with_denial_reason(DenialReason::no_path()),
         )
+    }
+
+    /// Extracts paths from the evaluation tree.
+    fn extract_paths_from_tree(
+        node: &crate::transport::traits::EvaluationNode,
+        subject: &str,
+        resource: &str,
+    ) -> Vec<Vec<crate::vault::explain::PathNode>> {
+        use crate::transport::traits::EvaluationNodeType;
+        use crate::vault::explain::PathNode;
+
+        let mut paths = Vec::new();
+
+        // Only extract paths from nodes that resulted in true (allowed)
+        if node.result {
+            match &node.node_type {
+                EvaluationNodeType::DirectCheck {
+                    resource: res,
+                    relation,
+                    subject: subj,
+                } => {
+                    // Direct check found - create a path
+                    paths.push(vec![
+                        PathNode::new(subj).with_relation(relation.clone()),
+                        PathNode::new(res),
+                    ]);
+                }
+                EvaluationNodeType::ComputedUserset { relation } => {
+                    // Computed userset - check children for more details
+                    for child in &node.children {
+                        let child_paths = Self::extract_paths_from_tree(child, subject, resource);
+                        for mut path in child_paths {
+                            // Add the computed relation info
+                            if let Some(first) = path.first_mut() {
+                                first.derived_from = Some(format!("computed:{}", relation));
+                            }
+                            paths.push(path);
+                        }
+                    }
+                }
+                EvaluationNodeType::RelatedObjectUserset { relationship, computed } => {
+                    // Tupleset rewrite - check children
+                    for child in &node.children {
+                        let child_paths = Self::extract_paths_from_tree(child, subject, resource);
+                        for mut path in child_paths {
+                            if let Some(first) = path.first_mut() {
+                                first.derived_from = Some(format!("{}#{}", relationship, computed));
+                            }
+                            paths.push(path);
+                        }
+                    }
+                }
+                EvaluationNodeType::Union
+                | EvaluationNodeType::Intersection
+                | EvaluationNodeType::Exclusion => {
+                    // Traverse children
+                    for child in &node.children {
+                        paths.extend(Self::extract_paths_from_tree(child, subject, resource));
+                    }
+                }
+                EvaluationNodeType::WasmModule { module_name } => {
+                    // WASM module - create a simple path indicating WASM was used
+                    paths.push(vec![
+                        PathNode::new(subject).with_derived_from(format!("wasm:{}", module_name)),
+                        PathNode::new(resource),
+                    ]);
+                }
+            }
+        }
+
+        // If no paths found but we have children, check them
+        if paths.is_empty() {
+            for child in &node.children {
+                paths.extend(Self::extract_paths_from_tree(child, subject, resource));
+            }
+        }
+
+        paths
     }
 }
 

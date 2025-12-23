@@ -262,6 +262,7 @@ impl SimulateCompareBuilder {
                 resource: self.resource.clone(),
                 context: None,
                 consistency: None,
+                trace: false,
             };
             let current_response = transport.check(current_request).await?;
             let current_allowed = current_response.allowed;

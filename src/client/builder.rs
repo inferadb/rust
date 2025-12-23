@@ -280,6 +280,7 @@ impl ClientBuilder<HasUrl, HasCredentials> {
             http_client: None,
             #[cfg(feature = "rest")]
             auth_token: parking_lot::RwLock::new(None),
+            shutdown_guard: None,
         };
 
         Ok(Client::from_inner(inner))
@@ -365,6 +366,7 @@ impl ClientBuilder<HasUrl, HasCredentials> {
             }
 
             // Configure TLS certificate verification
+            #[cfg(feature = "insecure")]
             if self.tls_config.skip_verification {
                 builder = builder.danger_accept_invalid_certs(true);
             }
@@ -388,9 +390,128 @@ impl ClientBuilder<HasUrl, HasCredentials> {
             http_client,
             #[cfg(feature = "rest")]
             auth_token: parking_lot::RwLock::new(initial_token),
+            shutdown_guard: None,
         };
 
         Ok(Client::from_inner(inner))
+    }
+
+    /// Builds the client with a shutdown handle.
+    ///
+    /// Returns both the client and a shutdown handle that can be used
+    /// to initiate graceful shutdown.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use tokio::signal;
+    /// use std::time::Duration;
+    ///
+    /// let (client, shutdown_handle) = Client::builder()
+    ///     .url("https://api.inferadb.com")
+    ///     .credentials(credentials)
+    ///     .build_with_shutdown()
+    ///     .await?;
+    ///
+    /// tokio::select! {
+    ///     _ = signal::ctrl_c() => {
+    ///         shutdown_handle.shutdown_timeout(Duration::from_secs(30)).await;
+    ///     }
+    ///     _ = run_server(client) => {}
+    /// }
+    /// ```
+    pub async fn build_with_shutdown(
+        self,
+    ) -> Result<(Client, super::health::ShutdownHandle), Error> {
+        let url = self
+            .url
+            .ok_or_else(|| Error::configuration("URL is required"))?;
+
+        let credentials = self
+            .credentials
+            .ok_or_else(|| Error::configuration("credentials are required"))?;
+
+        // Validate URL
+        let parsed_url = url::Url::parse(&url)
+            .map_err(|e| Error::configuration(format!("invalid URL: {}", e)))?;
+
+        // Ensure HTTPS (unless insecure feature is enabled)
+        #[cfg(not(feature = "insecure"))]
+        if parsed_url.scheme() != "https" {
+            return Err(Error::configuration(
+                "HTTPS is required. Use the 'insecure' feature for development with HTTP.",
+            ));
+        }
+
+        let timeout = self.timeout.unwrap_or(Duration::from_secs(30));
+
+        // Extract bearer token if using Bearer credentials
+        #[cfg(feature = "rest")]
+        let initial_token = credentials.as_bearer().map(|b| b.token().to_string());
+
+        // Create REST transport if feature is enabled
+        #[cfg(feature = "rest")]
+        let transport = {
+            let transport = RestTransport::new(
+                parsed_url.clone(),
+                &self.tls_config,
+                &PoolConfig::default(),
+                self.retry_config.clone(),
+                timeout,
+            )?;
+
+            // Set initial auth token if using Bearer credentials
+            if let Some(ref token) = initial_token {
+                transport.set_auth_token(token.clone());
+            }
+
+            Some(Arc::new(transport) as Arc<dyn crate::transport::TransportClient + Send + Sync>)
+        };
+
+        // Create HTTP client for Control API
+        #[cfg(feature = "rest")]
+        let http_client = {
+            let mut builder = reqwest::Client::builder()
+                .timeout(timeout)
+                .connect_timeout(timeout);
+
+            // Configure TLS if needed
+            if parsed_url.scheme() == "https" {
+                builder = builder.use_rustls_tls();
+            }
+
+            // Configure TLS certificate verification
+            #[cfg(feature = "insecure")]
+            if self.tls_config.skip_verification {
+                builder = builder.danger_accept_invalid_certs(true);
+            }
+
+            Some(builder.build().map_err(|e| {
+                Error::configuration(format!("Failed to create HTTP client: {}", e))
+            })?)
+        };
+
+        // Create shutdown handle and guard
+        let (shutdown_handle, shutdown_guard) = super::health::ShutdownHandle::new();
+
+        let inner = ClientInner {
+            url,
+            credentials,
+            retry_config: self.retry_config,
+            cache_config: self.cache_config,
+            tls_config: self.tls_config,
+            degradation_config: self.degradation_config,
+            timeout,
+            #[cfg(feature = "rest")]
+            transport,
+            #[cfg(feature = "rest")]
+            http_client,
+            #[cfg(feature = "rest")]
+            auth_token: parking_lot::RwLock::new(initial_token),
+            shutdown_guard: Some(shutdown_guard),
+        };
+
+        Ok((Client::from_inner(inner), shutdown_handle))
     }
 }
 
@@ -462,5 +583,27 @@ mod tests {
         assert_eq!(builder.retry_config.max_retries, 0);
         assert!(builder.cache_config.enabled);
         assert_eq!(builder.timeout, Some(Duration::from_secs(60)));
+    }
+
+    #[tokio::test]
+    async fn test_build_with_shutdown() {
+        let result = ClientBuilder::new()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("token"))
+            .build_with_shutdown()
+            .await;
+
+        assert!(result.is_ok());
+        let (client, shutdown_handle) = result.unwrap();
+
+        // Initially not shutting down
+        assert!(!client.is_shutting_down());
+        assert!(!shutdown_handle.is_shutting_down());
+
+        // Initiate shutdown
+        shutdown_handle.shutdown().await;
+
+        // Client should now report shutting down
+        assert!(client.is_shutting_down());
     }
 }

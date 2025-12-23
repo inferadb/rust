@@ -470,6 +470,74 @@ struct EvaluateResponse {
     index: usize,
     #[serde(default)]
     error: Option<String>,
+    #[serde(default)]
+    trace: Option<TraceResponse>,
+}
+
+/// Trace response from the engine API.
+#[derive(Debug, Deserialize)]
+struct TraceResponse {
+    #[serde(default)]
+    duration_micros: u64,
+    #[serde(default)]
+    relationships_read: u64,
+    #[serde(default)]
+    relations_evaluated: u64,
+    #[serde(default)]
+    root: Option<EvaluationNodeResponse>,
+}
+
+/// Evaluation node from the engine API.
+#[derive(Debug, Deserialize)]
+struct EvaluationNodeResponse {
+    #[serde(default)]
+    node_type: Option<NodeTypeResponse>,
+    #[serde(default)]
+    result: bool,
+    #[serde(default)]
+    children: Vec<EvaluationNodeResponse>,
+}
+
+/// Node type from the engine API.
+#[derive(Debug, Deserialize)]
+struct NodeTypeResponse {
+    #[serde(default)]
+    direct_check: Option<DirectCheckResponse>,
+    #[serde(default)]
+    computed_userset: Option<ComputedUsersetResponse>,
+    #[serde(default)]
+    related_object_userset: Option<RelatedObjectUsersetResponse>,
+    #[serde(default)]
+    union: Option<serde_json::Value>,
+    #[serde(default)]
+    intersection: Option<serde_json::Value>,
+    #[serde(default)]
+    exclusion: Option<serde_json::Value>,
+    #[serde(default)]
+    wasm_module: Option<WasmModuleResponse>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DirectCheckResponse {
+    resource: String,
+    relation: String,
+    subject: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputedUsersetResponse {
+    relation: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RelatedObjectUsersetResponse {
+    relationship: String,
+    computed: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct WasmModuleResponse {
+    module_name: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -533,6 +601,61 @@ struct ListSubjectsApiRequest {
 }
 
 // ============================================================================
+// Trace Conversion Helpers
+// ============================================================================
+
+fn convert_trace_response(trace: TraceResponse) -> super::traits::DecisionTrace {
+    super::traits::DecisionTrace {
+        duration_micros: trace.duration_micros,
+        relationships_read: trace.relationships_read,
+        relations_evaluated: trace.relations_evaluated,
+        root: trace.root.map(convert_evaluation_node),
+    }
+}
+
+fn convert_evaluation_node(node: EvaluationNodeResponse) -> super::traits::EvaluationNode {
+    let node_type = if let Some(nt) = node.node_type {
+        if let Some(dc) = nt.direct_check {
+            super::traits::EvaluationNodeType::DirectCheck {
+                resource: dc.resource,
+                relation: dc.relation,
+                subject: dc.subject,
+            }
+        } else if let Some(cu) = nt.computed_userset {
+            super::traits::EvaluationNodeType::ComputedUserset {
+                relation: cu.relation,
+            }
+        } else if let Some(rou) = nt.related_object_userset {
+            super::traits::EvaluationNodeType::RelatedObjectUserset {
+                relationship: rou.relationship,
+                computed: rou.computed,
+            }
+        } else if nt.union.is_some() {
+            super::traits::EvaluationNodeType::Union
+        } else if nt.intersection.is_some() {
+            super::traits::EvaluationNodeType::Intersection
+        } else if nt.exclusion.is_some() {
+            super::traits::EvaluationNodeType::Exclusion
+        } else if let Some(wm) = nt.wasm_module {
+            super::traits::EvaluationNodeType::WasmModule {
+                module_name: wm.module_name,
+            }
+        } else {
+            // Default to union if unknown
+            super::traits::EvaluationNodeType::Union
+        }
+    } else {
+        super::traits::EvaluationNodeType::Union
+    };
+
+    super::traits::EvaluationNode {
+        node_type,
+        result: node.result,
+        children: node.children.into_iter().map(convert_evaluation_node).collect(),
+    }
+}
+
+// ============================================================================
 // TransportClient Implementation
 // ============================================================================
 
@@ -545,7 +668,7 @@ impl TransportClient for RestTransport {
                 resource: request.resource.clone(),
                 permission: request.permission.clone(),
                 context: request.context.map(|c| c.into_value()),
-                trace: None,
+                trace: if request.trace { Some(true) } else { None },
             }],
         };
 
@@ -565,6 +688,7 @@ impl TransportClient for RestTransport {
                 } else {
                     Decision::denied()
                 },
+                trace: response.trace.map(convert_trace_response),
             });
         }
 
@@ -587,7 +711,7 @@ impl TransportClient for RestTransport {
                     resource: r.resource.clone(),
                     permission: r.permission.clone(),
                     context: r.context.clone().map(|c| c.into_value()),
-                    trace: None,
+                    trace: if r.trace { Some(true) } else { None },
                 })
                 .collect(),
         };
@@ -609,6 +733,7 @@ impl TransportClient for RestTransport {
                     } else {
                         Decision::denied()
                     },
+                    trace: response.trace.map(convert_trace_response),
                 });
             }
         }

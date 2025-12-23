@@ -6,9 +6,11 @@
 //!
 //! ## Status
 //!
-//! The gRPC transport is partially implemented. Full implementation requires:
-//! - Proto file definitions for the InferaDB API
-//! - Proto code generation via prost-build/tonic-build
+//! The gRPC transport is a stub implementation. Full implementation requires:
+//! - Adding tonic and prost dependencies to Cargo.toml
+//! - Setting up tonic-build in build.rs to generate code from the proto file at
+//!   `engine/crates/inferadb-engine-api/proto/inferadb.proto`
+//! - Implementing the generated `VaultService` client methods
 //!
 //! ## Usage
 //!
@@ -62,14 +64,13 @@ impl GrpcTransport {
         retry_config: RetryConfig,
         timeout: Duration,
     ) -> Result<Self, Error> {
-        // TODO: Implement full gRPC client initialization when proto files are available
+        // Stub implementation - full gRPC client requires:
+        // 1. Add tonic/prost to Cargo.toml and set up tonic-build in build.rs
+        // 2. Configure tonic channel with TLS settings from _tls_config
+        // 3. Set up connection pooling from _pool_config
+        // 4. Create VaultServiceClient from generated proto code
         //
-        // This would involve:
-        // 1. Configure tonic channel with TLS settings
-        // 2. Set up connection pooling
-        // 3. Create typed gRPC clients from generated proto code
-        //
-        // For now, we return a basic structure that will error on use
+        // Proto file location: engine/crates/inferadb-engine-api/proto/inferadb.proto
 
         Ok(Self {
             base_url,
@@ -337,6 +338,7 @@ mod tests {
                 resource: "doc:1".to_string(),
                 context: None,
                 consistency: None,
+                trace: false,
             })
             .await;
         assert!(check_result.is_err());

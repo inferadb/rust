@@ -389,8 +389,10 @@ impl Client {
     /// }
     /// ```
     pub fn is_shutting_down(&self) -> bool {
-        // TODO: Implement actual shutdown state tracking
-        false
+        self.inner
+            .shutdown_guard
+            .as_ref()
+            .is_some_and(|guard| guard.is_shutting_down())
     }
 }
 

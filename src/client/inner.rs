@@ -14,6 +14,8 @@ use crate::config::{CacheConfig, DegradationConfig, RetryConfig, TlsConfig};
 use crate::error::{Error, ErrorKind};
 use crate::transport::TransportClient;
 
+use super::health::ShutdownGuard;
+
 pub(crate) struct ClientInner {
     /// The InferaDB API URL.
     pub url: String,
@@ -47,6 +49,9 @@ pub(crate) struct ClientInner {
     /// Current auth token for Control API (cached).
     #[cfg(feature = "rest")]
     pub auth_token: parking_lot::RwLock<Option<String>>,
+
+    /// Shutdown guard for graceful shutdown tracking.
+    pub shutdown_guard: Option<ShutdownGuard>,
 }
 
 #[cfg(feature = "rest")]

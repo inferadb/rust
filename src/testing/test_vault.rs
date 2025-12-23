@@ -110,6 +110,7 @@ impl TestVault {
             resource: resource.into(),
             context: None,
             consistency: None,
+            trace: false,
         };
         let response = self.transport.check(request).await?;
         Ok(response.allowed)
@@ -129,6 +130,7 @@ impl TestVault {
             resource: resource.into(),
             context: Some(context),
             consistency: None,
+            trace: false,
         };
         let response = self.transport.check(request).await?;
         Ok(response.allowed)
