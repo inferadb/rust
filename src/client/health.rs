@@ -563,4 +563,89 @@ mod tests {
         assert!(json.contains("\"status\":\"healthy\""));
         assert!(json.contains("\"latency\":10"));
     }
+
+    #[test]
+    fn test_shutdown_handle_default() {
+        let handle = ShutdownHandle::default();
+        assert!(!handle.is_shutting_down());
+    }
+
+    #[test]
+    fn test_shutdown_guard_debug() {
+        let (_handle, guard) = ShutdownHandle::new();
+        let debug = format!("{:?}", guard);
+        assert!(debug.contains("ShutdownGuard"));
+        assert!(debug.contains("is_shutting_down"));
+    }
+
+    #[test]
+    fn test_health_response_display_with_components_and_message() {
+        let mut components = HashMap::new();
+        components.insert(
+            "database".to_string(),
+            ComponentHealth::degraded("High latency").with_latency(Duration::from_millis(100)),
+        );
+        components.insert(
+            "cache".to_string(),
+            ComponentHealth::healthy().with_latency(Duration::from_millis(5)),
+        );
+
+        let response = HealthResponse {
+            status: HealthStatus::Degraded,
+            version: "1.0.0".to_string(),
+            latency: Duration::from_millis(10),
+            components,
+            timestamp: Utc::now(),
+        };
+
+        let display = format!("{}", response);
+        assert!(display.contains("Status:"));
+        assert!(display.contains("Components:"));
+        // Should include message and latency for components
+        assert!(display.contains("Message:") || display.contains("Latency:"));
+    }
+
+    #[test]
+    fn test_health_response_deserialization() {
+        let json = r#"{
+            "status": "healthy",
+            "version": "1.0.0",
+            "latency": 5,
+            "components": {},
+            "timestamp": "2024-01-01T00:00:00Z"
+        }"#;
+
+        let response: HealthResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.status, HealthStatus::Healthy);
+        assert_eq!(response.version, "1.0.0");
+        assert_eq!(response.latency, Duration::from_millis(5));
+    }
+
+    #[test]
+    fn test_component_health_deserialization() {
+        let json = r#"{
+            "status": "healthy",
+            "message": "All good",
+            "latency": 10,
+            "last_check": "2024-01-15T10:00:00Z"
+        }"#;
+
+        let health: ComponentHealth = serde_json::from_str(json).unwrap();
+        assert_eq!(health.status, HealthStatus::Healthy);
+        assert_eq!(health.message.as_deref(), Some("All good"));
+        assert_eq!(health.latency, Some(Duration::from_millis(10)));
+    }
+
+    #[test]
+    fn test_component_health_deserialization_no_latency() {
+        let json = r#"{
+            "status": "degraded",
+            "message": "Some issue",
+            "last_check": "2024-01-15T10:00:00Z"
+        }"#;
+
+        let health: ComponentHealth = serde_json::from_str(json).unwrap();
+        assert_eq!(health.status, HealthStatus::Degraded);
+        assert_eq!(health.latency, None);
+    }
 }

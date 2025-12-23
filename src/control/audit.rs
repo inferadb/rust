@@ -1037,3 +1037,295 @@ mod tests {
         }
     }
 }
+
+#[cfg(all(test, feature = "rest"))]
+mod wiremock_tests {
+    use super::*;
+    use crate::auth::BearerCredentialsConfig;
+    use crate::Client;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn create_mock_client(server: &MockServer) -> Client {
+        Client::builder()
+            .url(&server.uri())
+            .credentials(BearerCredentialsConfig::new("test_token"))
+            .build()
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_get_audit_event() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/audit-logs/evt_abc"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "evt_abc",
+                "organization_id": "org_123",
+                "vault_id": "vlt_456",
+                "timestamp": "2024-01-01T00:00:00Z",
+                "actor": {
+                    "id": "user_123",
+                    "actor_type": "user",
+                    "email": "user@example.com",
+                    "ip_address": "192.168.1.1",
+                    "user_agent": "Mozilla/5.0"
+                },
+                "action": "relationship_write",
+                "resource": "document:readme",
+                "details": {"key": "value"},
+                "request_id": "req_xyz",
+                "outcome": "success"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let audit = AuditLogsClient::new(client, "org_123");
+        let result = audit.get("evt_abc").await;
+
+        assert!(result.is_ok());
+        let event = result.unwrap();
+        assert_eq!(event.id, "evt_abc");
+        assert_eq!(event.organization_id, "org_123");
+        assert_eq!(event.vault_id, Some("vlt_456".to_string()));
+        assert_eq!(event.actor.id, "user_123");
+        assert_eq!(event.action, AuditAction::RelationshipWrite);
+        assert_eq!(event.outcome, AuditOutcome::Success);
+    }
+
+    #[tokio::test]
+    async fn test_list_audit_events() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/audit-logs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [
+                    {
+                        "id": "evt_1",
+                        "organization_id": "org_123",
+                        "timestamp": "2024-01-01T00:00:00Z",
+                        "actor": {
+                            "id": "user_123",
+                            "actor_type": "user"
+                        },
+                        "action": "check",
+                        "outcome": "success"
+                    },
+                    {
+                        "id": "evt_2",
+                        "organization_id": "org_123",
+                        "timestamp": "2024-01-01T01:00:00Z",
+                        "actor": {
+                            "id": "api_client_456",
+                            "actor_type": "api_client"
+                        },
+                        "action": "relationship_write",
+                        "outcome": "success"
+                    }
+                ],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 2
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let audit = AuditLogsClient::new(client, "org_123");
+        let result = audit.list().await;
+
+        assert!(result.is_ok());
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.items[0].id, "evt_1");
+        assert_eq!(page.items[1].actor.actor_type, ActorType::ApiClient);
+    }
+
+    #[tokio::test]
+    async fn test_list_audit_events_with_filters() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/audit-logs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 0
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let audit = AuditLogsClient::new(client, "org_123");
+        let now = chrono::Utc::now();
+        let result = audit
+            .list()
+            .vault("vlt_456")
+            .limit(10)
+            .cursor("cursor_abc")
+            .sort(SortOrder::Descending)
+            .actor("user_123")
+            .action(AuditAction::RelationshipWrite)
+            .resource("document:readme")
+            .after(now - chrono::Duration::hours(24))
+            .before(now)
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_export_to_json_file() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/audit-logs/export"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {
+                    "id": "evt_1",
+                    "organization_id": "org_123",
+                    "timestamp": "2024-01-01T00:00:00Z",
+                    "actor": {
+                        "id": "user_123",
+                        "actor_type": "user"
+                    },
+                    "action": "check",
+                    "outcome": "success"
+                }
+            ])))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let audit = AuditLogsClient::new(client, "org_123");
+
+        let temp_file = std::env::temp_dir().join("test_audit_export.json");
+        let result = audit
+            .export()
+            .format(ExportFormat::Json)
+            .write_to_file(&temp_file)
+            .await;
+
+        assert!(result.is_ok());
+        // Clean up
+        let _ = std::fs::remove_file(&temp_file);
+    }
+
+    #[tokio::test]
+    async fn test_export_to_csv_file() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/audit-logs/export"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {
+                    "id": "evt_1",
+                    "organization_id": "org_123",
+                    "timestamp": "2024-01-01T00:00:00Z",
+                    "actor": {
+                        "id": "user_123",
+                        "actor_type": "user"
+                    },
+                    "action": "check",
+                    "outcome": "success"
+                }
+            ])))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let audit = AuditLogsClient::new(client, "org_123");
+
+        let temp_file = std::env::temp_dir().join("test_audit_export.csv");
+        let result = audit
+            .export()
+            .format(ExportFormat::Csv)
+            .write_to_file(&temp_file)
+            .await;
+
+        assert!(result.is_ok());
+        // Clean up
+        let _ = std::fs::remove_file(&temp_file);
+    }
+
+    #[tokio::test]
+    async fn test_export_with_filters() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/audit-logs/export"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let audit = AuditLogsClient::new(client, "org_123");
+
+        let now = chrono::Utc::now();
+        let temp_file = std::env::temp_dir().join("test_audit_export_filters.json");
+        let result = audit
+            .export()
+            .vault("vlt_456")
+            .after(now - chrono::Duration::hours(24))
+            .before(now)
+            .format(ExportFormat::Json)
+            .write_to_file(&temp_file)
+            .await;
+
+        assert!(result.is_ok());
+        // Clean up
+        let _ = std::fs::remove_file(&temp_file);
+    }
+
+    #[tokio::test]
+    async fn test_export_stream() {
+        use futures::StreamExt;
+
+        let server = MockServer::start().await;
+
+        // First page
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/audit-logs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [
+                    {
+                        "id": "evt_1",
+                        "organization_id": "org_123",
+                        "timestamp": "2024-01-01T00:00:00Z",
+                        "actor": {
+                            "id": "user_123",
+                            "actor_type": "user"
+                        },
+                        "action": "check",
+                        "outcome": "success"
+                    }
+                ],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 1
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let audit = AuditLogsClient::new(client, "org_123");
+
+        let stream = audit.export().stream();
+        let events: Vec<_> = stream.collect().await;
+
+        assert_eq!(events.len(), 1);
+        assert!(events[0].is_ok());
+    }
+
+}

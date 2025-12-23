@@ -97,7 +97,7 @@ jsonwebtoken = { version = "9", default-features = false, features = ["use_pem"]
 [[test]]
 name = "integration"
 path = "tests/integration/main.rs"
-required-features = ["rest"]
+required-features = ["rest", "insecure"]
 
 [features]
 default = ["grpc", "rest", "rustls"]

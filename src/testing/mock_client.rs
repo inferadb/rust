@@ -252,4 +252,18 @@ mod tests {
         // Never call check, so verify should panic
         mock.verify();
     }
+
+    #[tokio::test]
+    async fn test_mock_client_check_with_context() {
+        use crate::types::Context;
+
+        let mock = MockClient::allow_all();
+        let context = Context::new().with("env", "test");
+
+        let result = mock
+            .check_with_context("user:alice", "view", "doc:1", &context)
+            .await
+            .unwrap();
+        assert!(result);
+    }
 }

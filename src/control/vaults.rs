@@ -553,3 +553,190 @@ mod tests {
         let _request = vaults.delete("vlt_abc123").confirm("DELETE vlt_abc123");
     }
 }
+
+#[cfg(all(test, feature = "rest"))]
+mod wiremock_tests {
+    use super::*;
+    use crate::auth::BearerCredentialsConfig;
+    use crate::Client;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn create_mock_client(server: &MockServer) -> Client {
+        Client::builder()
+            .url(&server.uri())
+            .credentials(BearerCredentialsConfig::new("test_token"))
+            .build()
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_list_vaults() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/vaults"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [
+                    {
+                        "id": "vlt_1",
+                        "organization_id": "org_123",
+                        "name": "my-vault",
+                        "display_name": "My Vault",
+                        "description": "Production vault",
+                        "status": "active",
+                        "created_at": "2024-01-01T00:00:00Z",
+                        "updated_at": "2024-01-02T00:00:00Z"
+                    }
+                ],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 1
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let vaults = VaultsClient::new(client, "org_123");
+        let result = vaults.list().await;
+
+        assert!(result.is_ok());
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].name, "my-vault");
+    }
+
+    #[tokio::test]
+    async fn test_list_vaults_with_filters() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/vaults"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 0
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let vaults = VaultsClient::new(client, "org_123");
+        let result = vaults
+            .list()
+            .limit(10)
+            .cursor("cursor_abc")
+            .sort(SortOrder::Descending)
+            .status(VaultStatus::Active)
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_create_vault() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/control/v1/organizations/org_123/vaults"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "vlt_new",
+                "organization_id": "org_123",
+                "name": "new-vault",
+                "display_name": "New Vault",
+                "description": "A new vault",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-01T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let vaults = VaultsClient::new(client, "org_123");
+        let request = CreateVaultRequest::new("new-vault").with_display_name("New Vault");
+        let result = vaults.create(request).await;
+
+        assert!(result.is_ok());
+        let vault = result.unwrap();
+        assert_eq!(vault.name, "new-vault");
+    }
+
+    #[tokio::test]
+    async fn test_get_vault() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_abc"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "vlt_abc",
+                "organization_id": "org_123",
+                "name": "test-vault",
+                "display_name": "Test Vault",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-02T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let vaults = VaultsClient::new(client, "org_123");
+        let result = vaults.get("vlt_abc").await;
+
+        assert!(result.is_ok());
+        let vault = result.unwrap();
+        assert_eq!(vault.id, "vlt_abc");
+    }
+
+    #[tokio::test]
+    async fn test_update_vault() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("PATCH"))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_abc"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "vlt_abc",
+                "organization_id": "org_123",
+                "name": "test-vault",
+                "display_name": "Updated Vault",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-03T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let vaults = VaultsClient::new(client, "org_123");
+        let request = UpdateVaultRequest::default().with_display_name("Updated Vault");
+        let result = vaults.update("vlt_abc", request).await;
+
+        assert!(result.is_ok());
+        let vault = result.unwrap();
+        assert_eq!(vault.display_name, Some("Updated Vault".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_delete_vault() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("DELETE"))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_abc"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let vaults = VaultsClient::new(client, "org_123");
+        let result = vaults.delete("vlt_abc").confirm("DELETE vlt_abc").await;
+
+        assert!(result.is_ok());
+    }
+}

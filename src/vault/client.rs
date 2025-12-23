@@ -3177,4 +3177,274 @@ mod tests {
         let rels = vault.relationships();
         let _cloned = rels.clone();
     }
+
+    // Additional require tests
+    #[tokio::test]
+    async fn test_require_denied_returns_error() {
+        // require() should return Err when access is denied
+        let vault = create_test_vault().await;
+        let result = vault
+            .check("user:bob", "admin", "doc:secret")
+            .require()
+            .await;
+        assert!(result.is_err());
+    }
+
+    // Test detailed check denied
+    #[tokio::test]
+    async fn test_detailed_check_denied() {
+        let vault = create_test_vault().await;
+        let decision = vault
+            .check("user:bob", "admin", "doc:secret")
+            .detailed()
+            .await
+            .unwrap();
+        assert!(!decision.is_allowed());
+    }
+
+    // Test CheckRequest result - authorized
+    #[tokio::test]
+    async fn test_check_request_result_authorized() {
+        let vault = create_test_vault_with_relationships().await;
+        // With relationships, check should return authorized
+        let result = vault.check("user:alice", "view", "doc:1").await;
+        assert!(result.is_ok());
+        assert!(result.unwrap()); // Should be authorized
+    }
+
+    // Test CheckRequest result - denied
+    #[tokio::test]
+    async fn test_check_request_result_denied() {
+        let vault = create_test_vault().await;
+        // Without relationships, check should return denied
+        let result = vault.check("user:alice", "view", "doc:1").await;
+        assert!(result.is_ok());
+        assert!(!result.unwrap()); // Should be denied
+    }
+
+    // Test RequireCheckRequest - when authorized
+    #[tokio::test]
+    async fn test_require_check_request_authorized() {
+        let vault = create_test_vault_with_relationships().await;
+        // With relationships, this should succeed
+        let result = vault.check("user:alice", "view", "doc:1").require().await;
+        assert!(result.is_ok());
+    }
+
+    // Test WriteRelationshipRequest
+    #[tokio::test]
+    async fn test_write_relationship_request() {
+        let vault = create_test_vault().await;
+        let rel = Relationship::new("doc:1", "viewer", "user:alice");
+        let result = vault.relationships().write(rel).await;
+        assert!(result.is_ok());
+        let token = result.unwrap();
+        // Should have a consistency token
+        assert!(!token.value().is_empty());
+    }
+
+    // Test DeleteRelationshipRequest
+    #[tokio::test]
+    async fn test_delete_relationship_request() {
+        let vault = create_test_vault().await;
+        let rel = Relationship::new("doc:1", "viewer", "user:alice");
+        let result = vault.relationships().delete(rel).await;
+        assert!(result.is_ok());
+    }
+
+    // Test SubjectsListBuilder collect
+    #[tokio::test]
+    async fn test_subjects_list_builder_collect() {
+        let vault = create_test_vault().await;
+        let subjects = vault
+            .subjects()
+            .with_permission("view")
+            .on_resource("doc:1")
+            .collect()
+            .await
+            .unwrap();
+        assert!(subjects.is_empty());
+    }
+
+    // Test SubjectsListBuilder with options
+    #[tokio::test]
+    async fn test_subjects_list_builder_with_options() {
+        let vault = create_test_vault().await;
+        let subjects = vault
+            .subjects()
+            .with_permission("edit")
+            .on_resource("doc:2")
+            .subject_type("user")
+            .take(10)
+            .collect()
+            .await
+            .unwrap();
+        assert!(subjects.is_empty());
+    }
+
+    // Test SubjectsListBuilder cursor pagination
+    #[tokio::test]
+    async fn test_subjects_list_cursor() {
+        let vault = create_test_vault().await;
+        let page = vault
+            .subjects()
+            .with_permission("view")
+            .on_resource("doc:1")
+            .cursor(None)
+            .await
+            .unwrap();
+        assert!(!page.has_more());
+        assert!(page.subjects.is_empty());
+    }
+
+    // Test ResourcesListBuilder take
+    #[tokio::test]
+    async fn test_resources_list_take() {
+        let vault = create_test_vault().await;
+        let resources = vault
+            .resources()
+            .accessible_by("user:alice")
+            .with_permission("view")
+            .take(5)
+            .collect()
+            .await
+            .unwrap();
+        assert!(resources.is_empty());
+    }
+
+    // Test ResourcesListBuilder cursor
+    #[tokio::test]
+    async fn test_resources_list_cursor() {
+        let vault = create_test_vault().await;
+        let page = vault
+            .resources()
+            .accessible_by("user:alice")
+            .with_permission("view")
+            .cursor(None)
+            .await
+            .unwrap();
+        assert!(!page.has_more());
+        assert!(page.resources.is_empty());
+    }
+
+    // Test WriteBatchRequest len and is_empty
+    #[tokio::test]
+    async fn test_write_batch_request_len() {
+        let vault = create_test_vault().await;
+        let rels = vec![
+            Relationship::new("doc:1", "viewer", "user:alice"),
+            Relationship::new("doc:2", "editor", "user:bob"),
+        ];
+        let request = vault.relationships().write_batch(rels);
+        assert_eq!(request.len(), 2);
+        assert!(!request.is_empty());
+    }
+
+    // Test empty write batch
+    #[tokio::test]
+    async fn test_write_batch_request_empty() {
+        let vault = create_test_vault().await;
+        let rels: Vec<Relationship> = vec![];
+        let request = vault.relationships().write_batch(rels);
+        assert_eq!(request.len(), 0);
+        assert!(request.is_empty());
+    }
+
+    // Test ResourcesListBuilder streaming
+    #[tokio::test]
+    async fn test_resources_list_builder_stream() {
+        let vault = create_test_vault().await;
+        let stream = vault
+            .resources()
+            .accessible_by("user:alice")
+            .with_permission("view")
+            .stream();
+
+        // Collect results from stream
+        use futures::StreamExt;
+        let results: Vec<Result<String, Error>> = stream.collect().await;
+        // Stream from mock transport returns empty
+        assert!(results.is_empty());
+    }
+
+    // Test SubjectsListBuilder streaming
+    #[tokio::test]
+    async fn test_subjects_list_builder_stream() {
+        let vault = create_test_vault().await;
+        let stream = vault
+            .subjects()
+            .with_permission("view")
+            .on_resource("doc:1")
+            .stream();
+
+        // Collect results from stream
+        use futures::StreamExt;
+        let results: Vec<Result<String, Error>> = stream.collect().await;
+        // Stream from mock transport returns empty
+        assert!(results.is_empty());
+    }
+
+    // Test ResourcesListBuilder with try_next
+    #[tokio::test]
+    async fn test_resources_list_builder_try_next() {
+        let vault = create_test_vault().await;
+        let mut stream = vault
+            .resources()
+            .accessible_by("user:alice")
+            .with_permission("view")
+            .stream();
+
+        // try_next on empty stream should return None
+        let result = stream.try_next().await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    // Test SubjectsListBuilder with try_next
+    #[tokio::test]
+    async fn test_subjects_list_builder_try_next() {
+        let vault = create_test_vault().await;
+        let mut stream = vault
+            .subjects()
+            .with_permission("view")
+            .on_resource("doc:1")
+            .stream();
+
+        // try_next on empty stream should return None
+        let result = stream.try_next().await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    // Test ResourcesListBuilder with resource_type filter
+    #[tokio::test]
+    async fn test_resources_list_with_type_filter() {
+        let vault = create_test_vault().await;
+        let resources = vault
+            .resources()
+            .accessible_by("user:alice")
+            .with_permission("view")
+            .resource_type("document")
+            .take(50)
+            .collect()
+            .await
+            .unwrap();
+        assert!(resources.is_empty());
+    }
+
+    // Test SubjectsListBuilder with subject_type filter
+    #[tokio::test]
+    async fn test_subjects_list_with_type_filter() {
+        let vault = create_test_vault().await;
+        let subjects = vault
+            .subjects()
+            .with_permission("view")
+            .on_resource("doc:1")
+            .subject_type("user")
+            .take(50)
+            .collect()
+            .await
+            .unwrap();
+        assert!(subjects.is_empty());
+    }
 }

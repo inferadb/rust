@@ -1873,4 +1873,304 @@ mod wiremock_tests {
         assert!(responses[0].allowed);
         assert!(!responses[1].allowed);
     }
+
+    #[tokio::test]
+    async fn test_list_relationships_success() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/relationships/list"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(
+                        "data: {\"resource\": \"doc:1\", \"relation\": \"viewer\", \"subject\": \"user:alice\"}\n\n\
+                         data: {\"resource\": \"doc:2\", \"relation\": \"editor\", \"subject\": \"user:bob\"}\n\n"
+                    ),
+            )
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let result = transport
+            .list_relationships(None, None, None, Some(10), None)
+            .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response.relationships.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_list_resources_success() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/resources/list"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(
+                        "data: \"doc:1\"\n\n\
+                         data: \"doc:2\"\n\n"
+                    ),
+            )
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let result = transport
+            .list_resources("user:alice", "view", Some("doc"), Some(10), None)
+            .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response.resources.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_list_subjects_success() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/subjects/list"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(
+                        "data: \"user:alice\"\n\n\
+                         data: \"user:bob\"\n\n"
+                    ),
+            )
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let result = transport
+            .list_subjects("view", "doc:readme", Some("user"), Some(10), None)
+            .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response.subjects.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_check_with_trace() {
+        let server = MockServer::start().await;
+
+        // SSE response with trace data
+        Mock::given(method("POST"))
+            .and(path("/access/v1/evaluate"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(
+                        "data: {\"decision\": \"allow\", \"index\": 0, \"trace\": {\"duration_micros\": 123, \"relationships_read\": 5, \"relations_evaluated\": 3, \"root\": {\"result\": true, \"children\": []}}}\n\n"
+                    ),
+            )
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let request = CheckRequest {
+            subject: "user:alice".to_string(),
+            permission: "view".to_string(),
+            resource: "document:readme".to_string(),
+            context: None,
+            consistency: None,
+            trace: true,
+        };
+
+        let result = transport.check(request).await;
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert!(response.allowed);
+        assert!(response.trace.is_some());
+        let trace = response.trace.unwrap();
+        assert_eq!(trace.duration_micros, 123);
+        assert_eq!(trace.relationships_read, 5);
+    }
+
+    #[tokio::test]
+    async fn test_check_with_trace_node_types() {
+        let server = MockServer::start().await;
+
+        // SSE response with complex trace including different node types
+        Mock::given(method("POST"))
+            .and(path("/access/v1/evaluate"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(
+                        "data: {\"decision\": \"allow\", \"index\": 0, \"trace\": {\"duration_micros\": 100, \"relationships_read\": 2, \"relations_evaluated\": 1, \"root\": {\"result\": true, \"node_type\": {\"direct_check\": {\"resource\": \"doc:1\", \"relation\": \"viewer\", \"subject\": \"user:alice\"}}, \"children\": []}}}\n\n"
+                    ),
+            )
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let request = CheckRequest {
+            subject: "user:alice".to_string(),
+            permission: "view".to_string(),
+            resource: "doc:1".to_string(),
+            context: None,
+            consistency: None,
+            trace: true,
+        };
+
+        let result = transport.check(request).await;
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert!(response.allowed);
+        assert!(response.trace.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_authentication_error() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/evaluate"))
+            .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+                "error": "Invalid or expired token"
+            })))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let request = CheckRequest {
+            subject: "user:alice".to_string(),
+            permission: "view".to_string(),
+            resource: "document:readme".to_string(),
+            context: None,
+            consistency: None,
+            trace: false,
+        };
+
+        let result = transport.check(request).await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err().kind(),
+            ErrorKind::Authentication
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_rest_transport_debug() {
+        let server = MockServer::start().await;
+        let transport = create_test_transport(&server).await;
+        let debug = format!("{:?}", transport);
+        assert!(debug.contains("RestTransport"));
+    }
+
+    #[tokio::test]
+    async fn test_simulate_with_additions_and_removals() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/simulate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "allowed": true,
+                "decision_id": "sim_789"
+            })))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let request = SimulateRequest {
+            subject: "user:alice".to_string(),
+            permission: "edit".to_string(),
+            resource: "document:readme".to_string(),
+            context: None,
+            additions: vec![
+                Relationship::new("document:readme", "editor", "user:alice").into_owned(),
+            ],
+            removals: vec![
+                Relationship::new("document:readme", "viewer", "user:alice").into_owned(),
+            ],
+        };
+
+        let result = transport.simulate(request).await;
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert!(response.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_list_subjects_with_no_limit() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/subjects/list"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string("data: \"user:alice\"\n\n"),
+            )
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let result = transport
+            .list_subjects("view", "doc:readme", None, None, None)
+            .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response.subjects.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_write_with_idempotency_key() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/relationships/write"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "revision": "rev_idem123",
+                "relationships_written": 1
+            })))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let relationship = Relationship::new("document:readme", "viewer", "user:alice");
+        let request = WriteRequest {
+            relationship: relationship.into_owned(),
+            idempotency_key: Some("idem_key_123".to_string()),
+        };
+
+        let result = transport.write(request).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_check_with_consistency() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/evaluate"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string("data: {\"decision\": \"allow\", \"index\": 0}\n\n"),
+            )
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let request = CheckRequest {
+            subject: "user:alice".to_string(),
+            permission: "view".to_string(),
+            resource: "document:readme".to_string(),
+            context: None,
+            consistency: Some(crate::ConsistencyToken::new("token_abc")),
+            trace: false,
+        };
+
+        let result = transport.check(request).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().allowed);
+    }
 }

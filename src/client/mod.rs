@@ -609,3 +609,134 @@ mod tests {
         assert!(!criteria.require_vault);
     }
 }
+
+#[cfg(all(test, feature = "rest"))]
+mod wiremock_tests {
+    use super::*;
+    use crate::auth::BearerCredentialsConfig;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn create_mock_client(server: &MockServer) -> Client {
+        Client::builder()
+            .url(&server.uri())
+            .credentials(BearerCredentialsConfig::new("test_token"))
+            .build()
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_health_check_success() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/livez"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "ok"})))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let result = client.health_check().await;
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_health_check_failure() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/livez"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let result = client.health_check().await;
+        // health_check returns Ok(false) on failure, not Err
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_health_success() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/healthz"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "healthy",
+                "version": "1.0.0",
+                "components": {
+                    "database": {"status": "healthy"},
+                    "cache": {"status": "degraded"}
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let result = client.health().await;
+        assert!(result.is_ok());
+
+        let health = result.unwrap();
+        assert_eq!(health.status, HealthStatus::Healthy);
+        assert_eq!(health.version, "1.0.0");
+        assert_eq!(health.components.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_health_degraded() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/healthz"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "degraded",
+                "version": "1.0.0"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let result = client.health().await;
+        assert!(result.is_ok());
+
+        let health = result.unwrap();
+        assert_eq!(health.status, HealthStatus::Degraded);
+    }
+
+    #[tokio::test]
+    async fn test_health_failure() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/healthz"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let result = client.health().await;
+        assert!(result.is_ok());
+
+        let health = result.unwrap();
+        assert_eq!(health.status, HealthStatus::Unhealthy);
+    }
+
+    #[tokio::test]
+    async fn test_wait_ready_success() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/livez"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "ok"})))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let result = client.wait_ready(std::time::Duration::from_secs(1)).await;
+        assert!(result.is_ok());
+    }
+}

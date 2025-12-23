@@ -501,4 +501,147 @@ mod tests {
         let jwks_client = JwksClient::new(client);
         assert!(format!("{:?}", jwks_client).contains("JwksClient"));
     }
+
+    #[tokio::test]
+    async fn test_jwks_client_clone() {
+        let client = create_test_client().await;
+        let jwks_client = JwksClient::new(client);
+        let cloned = jwks_client.clone();
+        assert!(format!("{:?}", cloned).contains("JwksClient"));
+    }
+}
+
+#[cfg(all(test, feature = "rest"))]
+mod wiremock_tests {
+    use super::*;
+    use crate::auth::BearerCredentialsConfig;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn create_mock_client(server: &MockServer) -> Client {
+        Client::builder()
+            .url(&server.uri())
+            .credentials(BearerCredentialsConfig::new("test_token"))
+            .build()
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_get_jwks() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kty": "OKP",
+                        "crv": "Ed25519",
+                        "x": "base64url_x_value",
+                        "kid": "key_123",
+                        "alg": "EdDSA",
+                        "use": "sig"
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let jwks_client = JwksClient::new(client);
+        let result = jwks_client.get().await;
+
+        assert!(result.is_ok());
+        let jwks = result.unwrap();
+        assert_eq!(jwks.len(), 1);
+        assert!(jwks.find_key("key_123").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_well_known_jwks() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/.well-known/jwks.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kty": "RSA",
+                        "n": "base64url_n_value",
+                        "e": "AQAB",
+                        "kid": "rsa_key_456",
+                        "alg": "RS256"
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let jwks_client = JwksClient::new(client);
+        let result = jwks_client.get_well_known().await;
+
+        assert!(result.is_ok());
+        let jwks = result.unwrap();
+        assert_eq!(jwks.len(), 1);
+        let key = jwks.find_key("rsa_key_456").unwrap();
+        assert!(key.is_rsa());
+    }
+
+    #[tokio::test]
+    async fn test_get_key_found() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kty": "OKP",
+                        "crv": "Ed25519",
+                        "x": "test_x",
+                        "kid": "target_key"
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let jwks_client = JwksClient::new(client);
+        let result = jwks_client.get_key("target_key").await;
+
+        assert!(result.is_ok());
+        let key = result.unwrap();
+        assert!(key.is_some());
+        assert!(key.unwrap().is_ed25519());
+    }
+
+    #[tokio::test]
+    async fn test_get_key_not_found() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [
+                    {
+                        "kty": "OKP",
+                        "crv": "Ed25519",
+                        "x": "test_x",
+                        "kid": "other_key"
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let jwks_client = JwksClient::new(client);
+        let result = jwks_client.get_key("nonexistent_key").await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
 }

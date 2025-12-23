@@ -1311,4 +1311,214 @@ mod tests {
         assert_eq!(new.backoff_multiplier, default.backoff_multiplier);
         assert!((new.jitter - default.jitter).abs() < f64::EPSILON);
     }
+
+    #[tokio::test]
+    async fn test_watch_stream_basic() {
+        use crate::auth::BearerCredentialsConfig;
+        use futures::StreamExt;
+
+        let client = crate::Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build()
+            .await
+            .unwrap();
+
+        let stream = WatchStream::new(
+            client,
+            "org_test".to_string(),
+            "vlt_test".to_string(),
+            vec![],
+            None,
+            false,
+            None,
+        );
+
+        // Stream should be debuggable
+        let debug = format!("{:?}", stream);
+        assert!(debug.contains("WatchStream"));
+
+        // Get shutdown handle
+        let handle = stream.shutdown_handle();
+        assert!(!handle.is_shutdown());
+
+        // Check last revision
+        assert!(stream.last_revision().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_watch_stream_shutdown() {
+        use crate::auth::BearerCredentialsConfig;
+        use futures::StreamExt;
+
+        let client = crate::Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build()
+            .await
+            .unwrap();
+
+        let mut stream = WatchStream::new(
+            client,
+            "org_test".to_string(),
+            "vlt_test".to_string(),
+            vec![],
+            Some(100),
+            true,
+            Some(ReconnectConfig::default()),
+        );
+
+        // Get shutdown handle and trigger shutdown
+        let handle = stream.shutdown_handle();
+        handle.shutdown();
+        assert!(handle.is_shutdown());
+
+        // Stream should complete immediately after shutdown
+        let result = stream.next().await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_watch_stream_with_filters() {
+        use crate::auth::BearerCredentialsConfig;
+        use futures::StreamExt;
+
+        let client = crate::Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build()
+            .await
+            .unwrap();
+
+        let filters = vec![
+            WatchFilter::resource_type("document"),
+            WatchFilter::operations([Operation::Create]),
+        ];
+
+        let mut stream = WatchStream::new(
+            client,
+            "org_test".to_string(),
+            "vlt_test".to_string(),
+            filters,
+            None,
+            false,
+            None,
+        );
+
+        // Shutdown and verify
+        stream.shutdown_handle().shutdown();
+        let result = stream.next().await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_watch_builder_run() {
+        use crate::auth::BearerCredentialsConfig;
+        use crate::transport::mock::MockTransport;
+        use std::sync::Arc;
+
+        let mock_transport = Arc::new(MockTransport::new());
+        let client = crate::Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build_with_transport(mock_transport)
+            .await
+            .unwrap();
+
+        let vault = client.organization("org_test").vault("vlt_test");
+
+        // Build and run watch - test the builder path
+        let result = vault
+            .watch()
+            .filter(WatchFilter::resource_type("document"))
+            .from_revision(100)
+            .resumable()
+            .reconnect(ReconnectConfig::new().max_retries(5))
+            .run()
+            .await;
+
+        assert!(result.is_ok());
+        let stream = result.unwrap();
+        assert_eq!(stream.last_revision(), Some(100));
+    }
+
+    #[tokio::test]
+    async fn test_watch_builder_no_reconnect() {
+        use crate::auth::BearerCredentialsConfig;
+        use crate::transport::mock::MockTransport;
+        use std::sync::Arc;
+
+        let mock_transport = Arc::new(MockTransport::new());
+        let client = crate::Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build_with_transport(mock_transport)
+            .await
+            .unwrap();
+
+        let vault = client.organization("org_test").vault("vlt_test");
+
+        let builder = vault.watch().no_reconnect();
+
+        // Debug output
+        let debug = format!("{:?}", builder);
+        assert!(debug.contains("WatchBuilder"));
+
+        // Check accessors
+        assert!(builder.filters().is_empty());
+        assert!(builder.starting_revision().is_none());
+        assert!(!builder.is_resumable());
+    }
+
+    #[test]
+    fn test_watch_stream_matches_filters() {
+        use crate::auth::BearerCredentialsConfig;
+
+        // Create a simple test with filter matching
+        let rel = Relationship::new("document:readme", "viewer", "user:alice");
+        let event = WatchEvent::new(Operation::Create, rel, 1, chrono::Utc::now());
+
+        // Test that filter matching logic works
+        let filter = WatchFilter::resource_type("document");
+        assert!(filter.matches(&event));
+
+        let filter = WatchFilter::resource_type("folder");
+        assert!(!filter.matches(&event));
+    }
+
+    #[tokio::test]
+    async fn test_watch_builder_full_options() {
+        use crate::auth::BearerCredentialsConfig;
+        use crate::transport::mock::MockTransport;
+        use std::sync::Arc;
+
+        let mock_transport = Arc::new(MockTransport::new());
+        let client = crate::Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build_with_transport(mock_transport)
+            .await
+            .unwrap();
+
+        let vault = client.organization("org_test").vault("vlt_test");
+
+        // Build a watch with all options to test accessors
+        let builder = vault
+            .watch()
+            .filter(WatchFilter::resource_type("doc"))
+            .from_revision(42)
+            .resumable()
+            .reconnect(ReconnectConfig::default());
+
+        // Verify the Debug implementation
+        let debug = format!("{:?}", builder);
+        assert!(debug.contains("WatchBuilder"));
+        assert!(debug.contains("org_test"));
+        assert!(debug.contains("vlt_test"));
+
+        // Verify accessors
+        assert_eq!(builder.filters().len(), 1);
+        assert_eq!(builder.starting_revision(), Some(42));
+        assert!(builder.is_resumable());
+    }
 }

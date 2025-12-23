@@ -570,3 +570,174 @@ mod tests {
         let _request = org.delete().confirm("DELETE org_test");
     }
 }
+
+#[cfg(all(test, feature = "rest"))]
+mod wiremock_tests {
+    use super::*;
+    use crate::auth::BearerCredentialsConfig;
+    use crate::Client;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn create_mock_client(server: &MockServer) -> Client {
+        Client::builder()
+            .url(&server.uri())
+            .credentials(BearerCredentialsConfig::new("test_token"))
+            .build()
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_list_organizations() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [
+                    {
+                        "id": "org_123",
+                        "name": "my-org",
+                        "display_name": "My Organization",
+                        "created_at": "2024-01-01T00:00:00Z",
+                        "updated_at": "2024-01-02T00:00:00Z"
+                    }
+                ],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 1
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let orgs = OrganizationsClient::new(client);
+        let result = orgs.list().await;
+
+        assert!(result.is_ok());
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].name, "my-org");
+    }
+
+    #[tokio::test]
+    async fn test_list_organizations_with_filters() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 0
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let orgs = OrganizationsClient::new(client);
+        let result = orgs.list().limit(10).cursor("cursor_abc").sort(SortOrder::Descending).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_create_organization() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/control/v1/organizations"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "org_new",
+                "name": "new-org",
+                "display_name": "New Organization",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-01T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let orgs = OrganizationsClient::new(client);
+        let request = CreateOrganizationRequest::new("new-org").with_display_name("New Organization");
+        let result = orgs.create(request).await;
+
+        assert!(result.is_ok());
+        let org = result.unwrap();
+        assert_eq!(org.name, "new-org");
+    }
+
+    #[tokio::test]
+    async fn test_get_organization() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_abc"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "org_abc",
+                "name": "test-org",
+                "display_name": "Test Organization",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-02T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let org = OrganizationControlClient::new(client, "org_abc");
+        let result = org.get().await;
+
+        assert!(result.is_ok());
+        let info = result.unwrap();
+        assert_eq!(info.id, "org_abc");
+    }
+
+    #[tokio::test]
+    async fn test_update_organization() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("PATCH"))
+            .and(path("/control/v1/organizations/org_abc"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "org_abc",
+                "name": "test-org",
+                "display_name": "Updated Organization",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-03T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let org = OrganizationControlClient::new(client, "org_abc");
+        let request = UpdateOrganizationRequest::default().with_display_name("Updated Organization");
+        let result = org.update(request).await;
+
+        assert!(result.is_ok());
+        let info = result.unwrap();
+        assert_eq!(info.display_name, Some("Updated Organization".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_delete_organization() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("DELETE"))
+            .and(path("/control/v1/organizations/org_abc"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let org = OrganizationControlClient::new(client, "org_abc");
+        let result = org.delete().confirm("DELETE org_abc").await;
+
+        assert!(result.is_ok());
+    }
+}

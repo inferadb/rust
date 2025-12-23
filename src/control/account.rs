@@ -732,3 +732,257 @@ mod tests {
         assert_eq!(cloned.name, Some("Test".to_string()));
     }
 }
+
+#[cfg(test)]
+#[cfg(feature = "rest")]
+mod wiremock_tests {
+    use super::*;
+    use crate::auth::BearerCredentialsConfig;
+    use crate::Client;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn create_mock_client(server: &MockServer) -> Client {
+        Client::builder()
+            .url(&server.uri())
+            .credentials(BearerCredentialsConfig::new("test_token"))
+            .build()
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_get_account() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/account"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "usr_123",
+                "email": "user@example.com",
+                "name": "Test User",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-01T00:00:00Z",
+                "mfa_enabled": false
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let result = client.account().get().await;
+
+        assert!(result.is_ok());
+        let account = result.unwrap();
+        assert_eq!(account.id, "usr_123");
+        assert_eq!(account.email, "user@example.com");
+    }
+
+    #[tokio::test]
+    async fn test_get_account_unauthorized() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/account"))
+            .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+                "error": "Unauthorized"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let result = client.account().get().await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_update_account() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("PATCH"))
+            .and(path("/control/v1/users/me"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "usr_123",
+                "email": "user@example.com",
+                "name": "Updated Name",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-02T00:00:00Z",
+                "mfa_enabled": false
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let request = UpdateAccountRequest::new().with_name("Updated Name");
+        let result = client.account().update(request).await;
+
+        assert!(result.is_ok());
+        let account = result.unwrap();
+        assert_eq!(account.name, Some("Updated Name".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_change_password() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/control/v1/users/me/password"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let request = ChangePasswordRequest::new("old_pass", "new_pass");
+        let result = client.account().change_password(request).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_list_emails() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/users/emails"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [
+                    {
+                        "address": "primary@example.com",
+                        "verified": true,
+                        "primary": true,
+                        "created_at": "2024-01-01T00:00:00Z"
+                    },
+                    {
+                        "address": "secondary@example.com",
+                        "verified": false,
+                        "primary": false,
+                        "created_at": "2024-01-02T00:00:00Z"
+                    }
+                ],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 2
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let result = client.account().emails().list().await;
+
+        assert!(result.is_ok());
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.items[0].address, "primary@example.com");
+    }
+
+    #[tokio::test]
+    async fn test_add_email() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/control/v1/users/emails"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "address": "new@example.com",
+                "verified": false,
+                "primary": false,
+                "created_at": "2024-01-01T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let result = client.account().emails().add("new@example.com").await;
+
+        assert!(result.is_ok());
+        let email = result.unwrap();
+        assert_eq!(email.address, "new@example.com");
+        assert!(!email.verified);
+    }
+
+    #[tokio::test]
+    async fn test_remove_email() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("DELETE"))
+            .and(path("/control/v1/users/emails/old%40example.com"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let result = client.account().emails().remove("old@example.com").await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_list_sessions() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/users/sessions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [
+                    {
+                        "id": "sess_123",
+                        "ip_address": "192.168.1.1",
+                        "user_agent": "Mozilla/5.0",
+                        "created_at": "2024-01-01T00:00:00Z",
+                        "expires_at": "2024-02-01T00:00:00Z",
+                        "current": true
+                    }
+                ],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 1
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let result = client.account().sessions().list().await;
+
+        assert!(result.is_ok());
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert!(page.items[0].current);
+    }
+
+    #[tokio::test]
+    async fn test_revoke_session() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("DELETE"))
+            .and(path("/control/v1/users/sessions/sess_123"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let result = client.account().sessions().revoke("sess_123").await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_revoke_all_sessions() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/control/v1/users/sessions/revoke-all"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let result = client.account().sessions().revoke_all().await;
+
+        assert!(result.is_ok());
+    }
+}

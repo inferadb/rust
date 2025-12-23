@@ -102,4 +102,24 @@ mod tests {
         let result = client.check("user:alice", "view", "doc:1").await;
         assert!(!result.unwrap());
     }
+
+    #[tokio::test]
+    async fn test_check_with_context() {
+        let client = TestClient { allow_all: true };
+        let context = Context::new().with("env", "test");
+        let result = client
+            .check_with_context("user:alice", "view", "doc:1", &context)
+            .await;
+        assert!(result.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_check_with_context_deny() {
+        let client = TestClient { allow_all: false };
+        let context = Context::new().with("env", "prod");
+        let result = client
+            .check_with_context("user:alice", "view", "doc:1", &context)
+            .await;
+        assert!(!result.unwrap());
+    }
 }

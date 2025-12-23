@@ -947,3 +947,259 @@ mod tests {
         assert_eq!(cloned.role, Some(OrgRole::Viewer));
     }
 }
+
+#[cfg(all(test, feature = "rest"))]
+mod wiremock_tests {
+    use super::*;
+    use crate::auth::BearerCredentialsConfig;
+    use crate::Client;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn create_mock_client(server: &MockServer) -> Client {
+        Client::builder()
+            .url(&server.uri())
+            .credentials(BearerCredentialsConfig::new("test_token"))
+            .build()
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_list_members() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/members"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [
+                    {
+                        "user_id": "user_1",
+                        "organization_id": "org_123",
+                        "email": "user@example.com",
+                        "name": "Test User",
+                        "role": "owner",
+                        "status": "active",
+                        "joined_at": "2024-01-01T00:00:00Z"
+                    }
+                ],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 1
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let members = MembersClient::new(client, "org_123");
+        let result = members.list().await;
+
+        assert!(result.is_ok());
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].role, OrgRole::Owner);
+    }
+
+    #[tokio::test]
+    async fn test_list_members_with_filters() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/members"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 0
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let members = MembersClient::new(client, "org_123");
+        let result = members
+            .list()
+            .limit(10)
+            .cursor("cursor_abc")
+            .sort(SortOrder::Descending)
+            .role(OrgRole::Admin)
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_member() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/members/user_abc"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "user_id": "user_abc",
+                "organization_id": "org_123",
+                "email": "user@example.com",
+                "name": "Test User",
+                "role": "admin",
+                "status": "active",
+                "joined_at": "2024-01-01T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let members = MembersClient::new(client, "org_123");
+        let result = members.get("user_abc").await;
+
+        assert!(result.is_ok());
+        let member = result.unwrap();
+        assert_eq!(member.user_id, "user_abc");
+        assert_eq!(member.role, OrgRole::Admin);
+    }
+
+    #[tokio::test]
+    async fn test_invite_member() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/control/v1/organizations/org_123/invitations"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "inv_new",
+                "organization_id": "org_123",
+                "email": "new@example.com",
+                "role": "member",
+                "status": "pending",
+                "created_at": "2024-01-01T00:00:00Z",
+                "expires_at": "2024-01-08T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let members = MembersClient::new(client, "org_123");
+        let request = InviteMemberRequest::new("new@example.com", OrgRole::Member);
+        let result = members.invite(request).await;
+
+        assert!(result.is_ok());
+        let invitation = result.unwrap();
+        assert_eq!(invitation.email, "new@example.com");
+    }
+
+    #[tokio::test]
+    async fn test_update_member() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("PATCH"))
+            .and(path("/control/v1/organizations/org_123/members/user_abc"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "user_id": "user_abc",
+                "organization_id": "org_123",
+                "email": "user@example.com",
+                "name": "Test User",
+                "role": "admin",
+                "status": "active",
+                "joined_at": "2024-01-01T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let members = MembersClient::new(client, "org_123");
+        let request = UpdateMemberRequest::new().with_role(OrgRole::Admin);
+        let result = members.update("user_abc", request).await;
+
+        assert!(result.is_ok());
+        let member = result.unwrap();
+        assert_eq!(member.role, OrgRole::Admin);
+    }
+
+    #[tokio::test]
+    async fn test_remove_member() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("DELETE"))
+            .and(path("/control/v1/organizations/org_123/members/user_abc"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let members = MembersClient::new(client, "org_123");
+        let result = members.remove("user_abc").await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_list_invitations() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/invitations"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [
+                    {
+                        "id": "inv_1",
+                        "organization_id": "org_123",
+                        "email": "invite@example.com",
+                        "role": "member",
+                        "status": "pending",
+                        "created_at": "2024-01-01T00:00:00Z",
+                        "expires_at": "2024-01-08T00:00:00Z"
+                    }
+                ],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 1
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let invitations = InvitationsClient::new(client, "org_123");
+        let result = invitations.list().await;
+
+        assert!(result.is_ok());
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_revoke_invitation() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("DELETE"))
+            .and(path("/control/v1/organizations/org_123/invitations/inv_abc"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let invitations = InvitationsClient::new(client, "org_123");
+        let result = invitations.revoke("inv_abc").await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_resend_invitation() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/control/v1/organizations/org_123/invitations/inv_abc/resend"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("null"))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let invitations = InvitationsClient::new(client, "org_123");
+        let result = invitations.resend("inv_abc").await;
+
+        assert!(result.is_ok());
+    }
+}

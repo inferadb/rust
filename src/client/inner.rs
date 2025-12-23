@@ -231,3 +231,163 @@ impl ClientInner {
         }
     }
 }
+
+#[cfg(all(test, feature = "rest"))]
+mod tests {
+    use super::*;
+    use crate::auth::BearerCredentialsConfig;
+    use reqwest::StatusCode;
+
+    fn create_test_inner() -> ClientInner {
+        let token = "test_token";
+        ClientInner {
+            url: "https://api.example.com".to_string(),
+            credentials: BearerCredentialsConfig::new(token).into(),
+            retry_config: RetryConfig::default(),
+            cache_config: CacheConfig::default(),
+            tls_config: TlsConfig::default(),
+            degradation_config: DegradationConfig::default(),
+            timeout: Duration::from_secs(30),
+            transport: None,
+            http_client: Some(reqwest::Client::new()),
+            auth_token: parking_lot::RwLock::new(Some(token.to_string())),
+            shutdown_guard: None,
+        }
+    }
+
+    fn create_test_inner_no_token() -> ClientInner {
+        ClientInner {
+            url: "https://api.example.com".to_string(),
+            credentials: BearerCredentialsConfig::new("test").into(),
+            retry_config: RetryConfig::default(),
+            cache_config: CacheConfig::default(),
+            tls_config: TlsConfig::default(),
+            degradation_config: DegradationConfig::default(),
+            timeout: Duration::from_secs(30),
+            transport: None,
+            http_client: Some(reqwest::Client::new()),
+            auth_token: parking_lot::RwLock::new(None),
+            shutdown_guard: None,
+        }
+    }
+
+    fn create_test_inner_no_http_client() -> ClientInner {
+        ClientInner {
+            url: "https://api.example.com".to_string(),
+            credentials: BearerCredentialsConfig::new("test").into(),
+            retry_config: RetryConfig::default(),
+            cache_config: CacheConfig::default(),
+            tls_config: TlsConfig::default(),
+            degradation_config: DegradationConfig::default(),
+            timeout: Duration::from_secs(30),
+            transport: None,
+            http_client: None,
+            auth_token: parking_lot::RwLock::new(None),
+            shutdown_guard: None,
+        }
+    }
+
+    #[test]
+    fn test_build_url_valid() {
+        let inner = create_test_inner();
+        let url = inner.build_url("/api/v1/test").unwrap();
+        assert_eq!(url.as_str(), "https://api.example.com/api/v1/test");
+    }
+
+    #[test]
+    fn test_build_headers_with_token() {
+        let inner = create_test_inner();
+        let headers = inner.build_headers().unwrap();
+        assert!(headers.contains_key("authorization"));
+        assert!(headers.contains_key("content-type"));
+        assert!(headers.contains_key("accept"));
+    }
+
+    #[test]
+    fn test_build_headers_no_token() {
+        let inner = create_test_inner_no_token();
+        let headers = inner.build_headers().unwrap();
+        assert!(!headers.contains_key("authorization"));
+        assert!(headers.contains_key("content-type"));
+    }
+
+    #[test]
+    fn test_http_client_available() {
+        let inner = create_test_inner();
+        assert!(inner.http_client().is_ok());
+    }
+
+    #[test]
+    fn test_http_client_not_available() {
+        let inner = create_test_inner_no_http_client();
+        let result = inner.http_client();
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err().kind(), ErrorKind::Configuration));
+    }
+
+    #[test]
+    fn test_map_status_error_400() {
+        let inner = create_test_inner();
+        let error = inner.map_status_error(StatusCode::BAD_REQUEST, "Invalid input");
+        assert!(matches!(error.kind(), ErrorKind::InvalidArgument));
+        assert!(error.to_string().contains("Invalid input"));
+    }
+
+    #[test]
+    fn test_map_status_error_401() {
+        let inner = create_test_inner();
+        let error = inner.map_status_error(StatusCode::UNAUTHORIZED, "");
+        assert!(matches!(error.kind(), ErrorKind::Authentication));
+    }
+
+    #[test]
+    fn test_map_status_error_403() {
+        let inner = create_test_inner();
+        let error = inner.map_status_error(StatusCode::FORBIDDEN, "");
+        assert!(matches!(error.kind(), ErrorKind::PermissionDenied));
+    }
+
+    #[test]
+    fn test_map_status_error_404() {
+        let inner = create_test_inner();
+        let error = inner.map_status_error(StatusCode::NOT_FOUND, "Resource xyz");
+        assert!(matches!(error.kind(), ErrorKind::NotFound));
+        assert!(error.to_string().contains("xyz"));
+    }
+
+    #[test]
+    fn test_map_status_error_409() {
+        let inner = create_test_inner();
+        let error = inner.map_status_error(StatusCode::CONFLICT, "Already exists");
+        assert!(matches!(error.kind(), ErrorKind::Conflict));
+    }
+
+    #[test]
+    fn test_map_status_error_429() {
+        let inner = create_test_inner();
+        let error = inner.map_status_error(StatusCode::TOO_MANY_REQUESTS, "");
+        assert!(matches!(error.kind(), ErrorKind::RateLimited));
+    }
+
+    #[test]
+    fn test_map_status_error_500() {
+        let inner = create_test_inner();
+        let error = inner.map_status_error(StatusCode::INTERNAL_SERVER_ERROR, "Oops");
+        assert!(matches!(error.kind(), ErrorKind::Internal));
+    }
+
+    #[test]
+    fn test_map_status_error_503() {
+        let inner = create_test_inner();
+        let error = inner.map_status_error(StatusCode::SERVICE_UNAVAILABLE, "Down");
+        assert!(matches!(error.kind(), ErrorKind::Internal));
+    }
+
+    #[test]
+    fn test_map_status_error_unknown() {
+        let inner = create_test_inner();
+        let error = inner.map_status_error(StatusCode::IM_A_TEAPOT, "I'm a teapot");
+        assert!(matches!(error.kind(), ErrorKind::Transport));
+        assert!(error.to_string().contains("418"));
+    }
+}

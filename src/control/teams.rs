@@ -713,3 +713,256 @@ mod tests {
         assert_eq!(cloned.name, Some("NewName".to_string()));
     }
 }
+
+#[cfg(all(test, feature = "rest"))]
+mod wiremock_tests {
+    use super::*;
+    use crate::auth::BearerCredentialsConfig;
+    use crate::Client;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn create_mock_client(server: &MockServer) -> Client {
+        Client::builder()
+            .url(&server.uri())
+            .credentials(BearerCredentialsConfig::new("test_token"))
+            .build()
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_list_teams() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/teams"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [
+                    {
+                        "id": "team_1",
+                        "organization_id": "org_123",
+                        "name": "Engineering",
+                        "description": "Backend team",
+                        "member_count": 5,
+                        "created_at": "2024-01-01T00:00:00Z",
+                        "updated_at": "2024-01-02T00:00:00Z"
+                    }
+                ],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 1
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let teams = TeamsClient::new(client, "org_123");
+        let result = teams.list().await;
+
+        assert!(result.is_ok());
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].name, "Engineering");
+    }
+
+    #[tokio::test]
+    async fn test_list_teams_with_filters() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/teams"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 0
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let teams = TeamsClient::new(client, "org_123");
+        let result = teams.list().limit(10).cursor("cursor_abc").sort(SortOrder::Descending).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_create_team() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/control/v1/organizations/org_123/teams"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "team_new",
+                "organization_id": "org_123",
+                "name": "New Team",
+                "description": "A new team",
+                "member_count": 0,
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-01T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let teams = TeamsClient::new(client, "org_123");
+        let result = teams.create(CreateTeamRequest::new("New Team").with_description("A new team")).await;
+
+        assert!(result.is_ok());
+        let team = result.unwrap();
+        assert_eq!(team.name, "New Team");
+    }
+
+    #[tokio::test]
+    async fn test_get_team() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/teams/team_abc"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "team_abc",
+                "organization_id": "org_123",
+                "name": "Test Team",
+                "description": "Test",
+                "member_count": 3,
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-02T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let teams = TeamsClient::new(client, "org_123");
+        let result = teams.get("team_abc").await;
+
+        assert!(result.is_ok());
+        let team = result.unwrap();
+        assert_eq!(team.id, "team_abc");
+    }
+
+    #[tokio::test]
+    async fn test_update_team() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("PATCH"))
+            .and(path("/control/v1/organizations/org_123/teams/team_abc"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "team_abc",
+                "organization_id": "org_123",
+                "name": "Updated Team",
+                "description": "Updated description",
+                "member_count": 3,
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-03T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let teams = TeamsClient::new(client, "org_123");
+        let result = teams.update("team_abc", UpdateTeamRequest::new().with_name("Updated Team")).await;
+
+        assert!(result.is_ok());
+        let team = result.unwrap();
+        assert_eq!(team.name, "Updated Team");
+    }
+
+    #[tokio::test]
+    async fn test_delete_team() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("DELETE"))
+            .and(path("/control/v1/organizations/org_123/teams/team_abc"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let teams = TeamsClient::new(client, "org_123");
+        let result = teams.delete("team_abc").await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_add_member() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/control/v1/organizations/org_123/teams/team_abc/members"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("null"))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let teams = TeamsClient::new(client, "org_123");
+        let result = teams.add_member("team_abc", "user_xyz").await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_remove_member() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("DELETE"))
+            .and(path("/control/v1/organizations/org_123/teams/team_abc/members/user_xyz"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let teams = TeamsClient::new(client, "org_123");
+        let result = teams.remove_member("team_abc", "user_xyz").await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_list_members() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/teams/team_abc/members"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [
+                    {
+                        "user_id": "user_1",
+                        "email": "user1@example.com",
+                        "name": "User One",
+                        "role": "owner",
+                        "joined_at": "2024-01-01T00:00:00Z"
+                    },
+                    {
+                        "user_id": "user_2",
+                        "email": "user2@example.com",
+                        "role": "member",
+                        "joined_at": "2024-01-02T00:00:00Z"
+                    }
+                ],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 2
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let teams = TeamsClient::new(client, "org_123");
+        let result = teams.list_members("team_abc").await;
+
+        assert!(result.is_ok());
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.items[0].role, TeamRole::Owner);
+    }
+
+}

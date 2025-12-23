@@ -890,3 +890,290 @@ mod tests {
         assert!(cloned.is_breaking);
     }
 }
+
+#[cfg(all(test, feature = "rest"))]
+mod wiremock_tests {
+    use super::*;
+    use crate::auth::BearerCredentialsConfig;
+    use crate::Client;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn create_mock_client(server: &MockServer) -> Client {
+        Client::builder()
+            .url(&server.uri())
+            .credentials(BearerCredentialsConfig::new("test_token"))
+            .build()
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_get_active_schema() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/active"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "sch_abc",
+                "vault_id": "vlt_456",
+                "version": "2",
+                "content": "entity User {}",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00Z",
+                "activated_at": "2024-01-02T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let schemas = SchemasClient::new(client, "org_123", "vlt_456");
+        let result = schemas.get_active().await;
+
+        assert!(result.is_ok());
+        let schema = result.unwrap();
+        assert_eq!(schema.version, "2");
+        assert!(schema.status.is_active());
+    }
+
+    #[tokio::test]
+    async fn test_list_schemas() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [
+                    {
+                        "id": "sch_1",
+                        "vault_id": "vlt_456",
+                        "version": "1",
+                        "content": "entity User {}",
+                        "status": "inactive",
+                        "created_at": "2024-01-01T00:00:00Z"
+                    },
+                    {
+                        "id": "sch_2",
+                        "vault_id": "vlt_456",
+                        "version": "2",
+                        "content": "entity User {} entity Doc {}",
+                        "status": "active",
+                        "created_at": "2024-01-02T00:00:00Z",
+                        "activated_at": "2024-01-02T01:00:00Z"
+                    }
+                ],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 2
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let schemas = SchemasClient::new(client, "org_123", "vlt_456");
+        let result = schemas.list().await;
+
+        assert!(result.is_ok());
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_list_schemas_with_filters() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 0
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let schemas = SchemasClient::new(client, "org_123", "vlt_456");
+        let result = schemas
+            .list()
+            .limit(10)
+            .cursor("cursor_abc")
+            .sort(SortOrder::Descending)
+            .status(SchemaStatus::Active)
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_schema_by_version() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "sch_1",
+                "vault_id": "vlt_456",
+                "version": "1",
+                "content": "entity User {}",
+                "status": "inactive",
+                "created_at": "2024-01-01T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let schemas = SchemasClient::new(client, "org_123", "vlt_456");
+        let result = schemas.get("1").await;
+
+        assert!(result.is_ok());
+        let schema = result.unwrap();
+        assert_eq!(schema.version, "1");
+    }
+
+    #[tokio::test]
+    async fn test_push_schema() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "schema": {
+                    "id": "sch_new",
+                    "vault_id": "vlt_456",
+                    "version": "3",
+                    "content": "entity NewUser {}",
+                    "status": "inactive",
+                    "created_at": "2024-01-03T00:00:00Z"
+                },
+                "validation": {
+                    "is_valid": true,
+                    "errors": [],
+                    "warnings": []
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let schemas = SchemasClient::new(client, "org_123", "vlt_456");
+        let result = schemas.push("entity NewUser {}").await;
+
+        assert!(result.is_ok());
+        let push_result = result.unwrap();
+        assert_eq!(push_result.schema.version, "3");
+        assert!(push_result.validation.is_valid());
+    }
+
+    #[tokio::test]
+    async fn test_validate_schema() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/validate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "is_valid": true,
+                "errors": [],
+                "warnings": [
+                    {
+                        "line": 1,
+                        "column": 1,
+                        "message": "Consider adding relations",
+                        "code": "W001"
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let schemas = SchemasClient::new(client, "org_123", "vlt_456");
+        let result = schemas.validate("entity User {}").await;
+
+        assert!(result.is_ok());
+        let validation = result.unwrap();
+        assert!(validation.is_valid());
+        assert_eq!(validation.warnings.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_activate_schema() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/2/activate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "sch_2",
+                "vault_id": "vlt_456",
+                "version": "2",
+                "content": "entity User {}",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00Z",
+                "activated_at": "2024-01-02T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let schemas = SchemasClient::new(client, "org_123", "vlt_456");
+        let result = schemas.activate("2").await;
+
+        assert!(result.is_ok());
+        let schema = result.unwrap();
+        assert!(schema.status.is_active());
+    }
+
+    #[tokio::test]
+    async fn test_delete_schema() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("DELETE"))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/1"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let schemas = SchemasClient::new(client, "org_123", "vlt_456");
+        let result = schemas.delete("1").await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_diff_schemas() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/diff"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "from_version": "1",
+                "to_version": "2",
+                "changes": [
+                    {
+                        "change_type": "entity_added",
+                        "description": "Added Document entity",
+                        "entity_type": "Document",
+                        "is_breaking": false
+                    }
+                ],
+                "is_backward_compatible": true
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let schemas = SchemasClient::new(client, "org_123", "vlt_456");
+        let result = schemas.diff("1", "2").await;
+
+        assert!(result.is_ok());
+        let diff = result.unwrap();
+        assert_eq!(diff.changes.len(), 1);
+        assert!(diff.is_backward_compatible);
+    }
+}

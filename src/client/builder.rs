@@ -822,8 +822,11 @@ mod tests {
             .credentials(BearerCredentialsConfig::new("token"))
             .tls_config(TlsConfig::default());
 
-        // Default TLS config does not skip verification
-        assert!(!builder.tls_config.skip_verification);
+        // Default TLS config has no custom certificates
+        assert!(builder.tls_config.ca_cert_file.is_none());
+        assert!(builder.tls_config.ca_cert_pem.is_none());
+        assert!(builder.tls_config.client_cert_file.is_none());
+        assert!(builder.tls_config.client_key_file.is_none());
     }
 
     #[test]

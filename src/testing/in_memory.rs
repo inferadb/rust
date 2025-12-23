@@ -230,6 +230,28 @@ mod tests {
         assert!(!result);
     }
 
+    #[tokio::test]
+    async fn test_in_memory_client_check_with_context() {
+        let client = InMemoryClient::new();
+        client.write(Relationship::new("doc:1", "viewer", "user:alice"));
+
+        let context = Context::new().with("env", "test");
+
+        // Match: context is ignored for now
+        let result = client
+            .check_with_context("user:alice", "viewer", "doc:1", &context)
+            .await
+            .unwrap();
+        assert!(result);
+
+        // No match
+        let result = client
+            .check_with_context("user:bob", "viewer", "doc:1", &context)
+            .await
+            .unwrap();
+        assert!(!result);
+    }
+
     #[test]
     fn test_in_memory_client_clone() {
         let client = InMemoryClient::new();

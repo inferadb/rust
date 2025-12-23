@@ -333,4 +333,23 @@ mod tests {
         let config: BearerCredentialsConfig = String::from("owned_token").into();
         assert_eq!(config.token(), "owned_token");
     }
+
+    #[test]
+    fn test_credentials_debug_client_credentials() {
+        let key = Ed25519PrivateKey::generate();
+        let creds: Credentials = ClientCredentialsConfig::new("client_id", key).into();
+        let debug = format!("{:?}", creds);
+        assert!(debug.contains("ClientCredentials"));
+        assert!(debug.contains("client_id"));
+        assert!(debug.contains("REDACTED"));
+    }
+
+    #[test]
+    fn test_credentials_debug_bearer() {
+        let creds: Credentials = BearerCredentialsConfig::new("secret").into();
+        let debug = format!("{:?}", creds);
+        assert!(debug.contains("Bearer"));
+        assert!(debug.contains("REDACTED"));
+        assert!(!debug.contains("secret"));
+    }
 }

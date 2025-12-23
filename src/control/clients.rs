@@ -950,3 +950,305 @@ mod tests {
         assert_eq!(cloned.public_key, "key");
     }
 }
+
+#[cfg(all(test, feature = "rest"))]
+mod wiremock_tests {
+    use super::*;
+    use crate::auth::BearerCredentialsConfig;
+    use crate::Client;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn create_mock_client(server: &MockServer) -> Client {
+        Client::builder()
+            .url(&server.uri())
+            .credentials(BearerCredentialsConfig::new("test_token"))
+            .build()
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_list_api_clients() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/clients"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [
+                    {
+                        "id": "cli_1",
+                        "name": "my-client",
+                        "description": "Test client",
+                        "status": "active",
+                        "created_at": "2024-01-01T00:00:00Z",
+                        "updated_at": "2024-01-02T00:00:00Z",
+                        "permissions": ["read:vaults"],
+                        "rate_limit": 100
+                    }
+                ],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 1
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let clients = ApiClientsClient::new(client, "org_123");
+        let result = clients.list().await;
+
+        assert!(result.is_ok());
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].name, "my-client");
+    }
+
+    #[tokio::test]
+    async fn test_list_api_clients_with_filters() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/clients"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 0
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let clients = ApiClientsClient::new(client, "org_123");
+        let result = clients
+            .list()
+            .limit(10)
+            .cursor("cursor_abc")
+            .sort(SortOrder::Descending)
+            .status(ClientStatus::Active)
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_api_client() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/clients/cli_abc"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "cli_abc",
+                "name": "test-client",
+                "description": "Test client",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-02T00:00:00Z",
+                "permissions": ["read:vaults", "write:relationships"],
+                "rate_limit": null
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let clients = ApiClientsClient::new(client, "org_123");
+        let result = clients.get("cli_abc").await;
+
+        assert!(result.is_ok());
+        let api_client = result.unwrap();
+        assert_eq!(api_client.id, "cli_abc");
+        assert_eq!(api_client.status, ClientStatus::Active);
+    }
+
+    #[tokio::test]
+    async fn test_create_api_client() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/control/v1/organizations/org_123/clients"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "cli_new",
+                "name": "new-client",
+                "description": "New client",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-01T00:00:00Z",
+                "permissions": [],
+                "rate_limit": null
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let clients = ApiClientsClient::new(client, "org_123");
+        let request = CreateApiClientRequest::new("new-client").with_description("New client");
+        let result = clients.create(request).await;
+
+        assert!(result.is_ok());
+        let api_client = result.unwrap();
+        assert_eq!(api_client.name, "new-client");
+    }
+
+    #[tokio::test]
+    async fn test_update_api_client() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("PATCH"))
+            .and(path("/control/v1/organizations/org_123/clients/cli_abc"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "cli_abc",
+                "name": "updated-client",
+                "description": "Updated",
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-03T00:00:00Z",
+                "permissions": [],
+                "rate_limit": 200
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let clients = ApiClientsClient::new(client, "org_123");
+        let request = UpdateApiClientRequest::new().with_name("updated-client");
+        let result = clients.update("cli_abc", request).await;
+
+        assert!(result.is_ok());
+        let api_client = result.unwrap();
+        assert_eq!(api_client.name, "updated-client");
+    }
+
+    #[tokio::test]
+    async fn test_delete_api_client() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("DELETE"))
+            .and(path("/control/v1/organizations/org_123/clients/cli_abc"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let clients = ApiClientsClient::new(client, "org_123");
+        let result = clients.delete("cli_abc").await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_list_certificates() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/control/v1/organizations/org_123/clients/cli_abc/certificates"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "items": [
+                    {
+                        "id": "cert_1",
+                        "fingerprint": "sha256:abc123",
+                        "algorithm": "Ed25519",
+                        "active": true,
+                        "created_at": "2024-01-01T00:00:00Z",
+                        "expires_at": "2025-01-01T00:00:00Z"
+                    }
+                ],
+                "page_info": {
+                    "has_next": false,
+                    "next_cursor": null,
+                    "total_count": 1
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let clients = ApiClientsClient::new(client, "org_123");
+        let certs = clients.certificates("cli_abc");
+        let result = certs.list().await;
+
+        assert!(result.is_ok());
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert!(page.items[0].active);
+    }
+
+    #[tokio::test]
+    async fn test_add_certificate() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/control/v1/organizations/org_123/clients/cli_abc/certificates"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "cert_new",
+                "fingerprint": "sha256:newkey",
+                "algorithm": "Ed25519",
+                "active": true,
+                "created_at": "2024-01-01T00:00:00Z",
+                "expires_at": "2025-01-01T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let clients = ApiClientsClient::new(client, "org_123");
+        let certs = clients.certificates("cli_abc");
+        let request = AddCertificateRequest::new("public_key_pem_here");
+        let result = certs.add(request).await;
+
+        assert!(result.is_ok());
+        let cert = result.unwrap();
+        assert!(cert.active);
+    }
+
+    #[tokio::test]
+    async fn test_revoke_certificate() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("DELETE"))
+            .and(path("/control/v1/organizations/org_123/clients/cli_abc/certificates/cert_123"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let clients = ApiClientsClient::new(client, "org_123");
+        let certs = clients.certificates("cli_abc");
+        let result = certs.revoke("cert_123").await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_rotate_certificate() {
+        let server = MockServer::start().await;
+
+        // rotate() posts to /certificates (adds new cert, server handles grace period)
+        Mock::given(method("POST"))
+            .and(path("/control/v1/organizations/org_123/clients/cli_abc/certificates"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "cert_rotated",
+                "fingerprint": "sha256:rotated",
+                "algorithm": "Ed25519",
+                "active": true,
+                "created_at": "2024-01-02T00:00:00Z",
+                "expires_at": "2025-01-02T00:00:00Z"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = create_mock_client(&server).await;
+        let clients = ApiClientsClient::new(client, "org_123");
+        let certs = clients.certificates("cli_abc");
+        let request = RotateCertificateRequest::new("new_public_key_pem");
+        let result = certs.rotate(request).await;
+
+        assert!(result.is_ok());
+        let cert = result.unwrap();
+        assert_eq!(cert.id, "cert_rotated");
+    }
+}

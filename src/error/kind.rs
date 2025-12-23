@@ -521,4 +521,59 @@ mod tests {
         // 409 is not explicitly mapped, falls back to InvalidArgument
         assert_eq!(ErrorKind::from_http_status(409), ErrorKind::InvalidArgument);
     }
+
+    #[cfg(feature = "grpc")]
+    #[test]
+    fn test_from_grpc_code() {
+        use tonic::Code;
+
+        // Test all gRPC code mappings
+        assert_eq!(ErrorKind::from_grpc_code(Code::Ok), ErrorKind::Unknown);
+        assert_eq!(ErrorKind::from_grpc_code(Code::Cancelled), ErrorKind::Cancelled);
+        assert_eq!(ErrorKind::from_grpc_code(Code::Unknown), ErrorKind::Unknown);
+        assert_eq!(
+            ErrorKind::from_grpc_code(Code::InvalidArgument),
+            ErrorKind::InvalidArgument
+        );
+        assert_eq!(
+            ErrorKind::from_grpc_code(Code::DeadlineExceeded),
+            ErrorKind::Timeout
+        );
+        assert_eq!(ErrorKind::from_grpc_code(Code::NotFound), ErrorKind::NotFound);
+        assert_eq!(
+            ErrorKind::from_grpc_code(Code::AlreadyExists),
+            ErrorKind::InvalidArgument
+        );
+        assert_eq!(
+            ErrorKind::from_grpc_code(Code::PermissionDenied),
+            ErrorKind::Forbidden
+        );
+        assert_eq!(
+            ErrorKind::from_grpc_code(Code::ResourceExhausted),
+            ErrorKind::RateLimited
+        );
+        assert_eq!(
+            ErrorKind::from_grpc_code(Code::FailedPrecondition),
+            ErrorKind::SchemaViolation
+        );
+        assert_eq!(ErrorKind::from_grpc_code(Code::Aborted), ErrorKind::Internal);
+        assert_eq!(
+            ErrorKind::from_grpc_code(Code::OutOfRange),
+            ErrorKind::InvalidArgument
+        );
+        assert_eq!(
+            ErrorKind::from_grpc_code(Code::Unimplemented),
+            ErrorKind::Protocol
+        );
+        assert_eq!(ErrorKind::from_grpc_code(Code::Internal), ErrorKind::Internal);
+        assert_eq!(
+            ErrorKind::from_grpc_code(Code::Unavailable),
+            ErrorKind::Unavailable
+        );
+        assert_eq!(ErrorKind::from_grpc_code(Code::DataLoss), ErrorKind::Internal);
+        assert_eq!(
+            ErrorKind::from_grpc_code(Code::Unauthenticated),
+            ErrorKind::Unauthorized
+        );
+    }
 }
