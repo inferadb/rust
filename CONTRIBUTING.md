@@ -42,6 +42,7 @@ make help
 | `make check`       | Run format check + clippy                |
 | `make coverage`    | Run tests with coverage report           |
 | `make doc`         | Build documentation                      |
+| `make proto`       | Regenerate protobuf code and format      |
 | `make ci`          | Full CI pipeline (format, lint, test)    |
 
 ### Running with Local InferaDB
@@ -79,6 +80,35 @@ make doc
 - All public items must have documentation
 - No `unwrap()` or `expect()` in library code (except in tests)
 - Prefer `?` operator over explicit `match` for error handling
+
+## gRPC Code Generation
+
+The SDK uses [tonic](https://github.com/hyperium/tonic) for gRPC support. Protobuf definitions are in `proto/inferadb.proto` and generated Rust code lives in `src/transport/proto/`.
+
+### When to Regenerate
+
+Regenerate protobuf code when:
+
+- The `proto/inferadb.proto` file is updated
+- Upgrading tonic or prost versions
+- Generated code gets out of sync
+
+### How to Regenerate
+
+```bash
+make proto
+```
+
+This command:
+1. Touches the proto file to trigger regeneration
+2. Runs `cargo build --features grpc` to invoke tonic-build
+3. Formats the generated code with `make fmt`
+
+### Notes
+
+- Generated code is committed to the repository for reproducible builds
+- The `build.rs` script handles code generation via tonic-build
+- Only the gRPC client is generated (no server code)
 
 ## Testing Guidelines
 

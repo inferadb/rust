@@ -4,6 +4,7 @@
 .PHONY: help build test test-unit test-integration test-all check clean
 .PHONY: coverage coverage-html
 .PHONY: fmt fmt-check lint clippy doc doc-open doc-check
+.PHONY: proto
 .PHONY: setup ci
 
 # Default target
@@ -35,6 +36,9 @@ help: ## Show this help message
 	@echo ""
 	@echo "$(GREEN)Documentation:$(RESET)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '^doc' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-20s$(RESET) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(GREEN)Code Generation:$(RESET)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '^proto' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-20s$(RESET) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(GREEN)Other:$(RESET)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '^(setup|ci)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-20s$(RESET) %s\n", $$1, $$2}'
@@ -103,6 +107,17 @@ doc-open: ## Build and open documentation in browser
 doc-check: ## Check documentation for warnings/errors
 	RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 	@echo "$(GREEN)Documentation check passed!$(RESET)"
+
+#───────────────────────────────────────────────────────────────────────────────
+# Code Generation
+#───────────────────────────────────────────────────────────────────────────────
+
+proto: ## Regenerate protobuf code and format
+	@echo "$(BLUE)Regenerating protobuf code...$(RESET)"
+	@touch proto/inferadb.proto
+	cargo build --features grpc
+	$(MAKE) fmt
+	@echo "$(GREEN)Protobuf code regenerated and formatted!$(RESET)"
 
 #───────────────────────────────────────────────────────────────────────────────
 # Setup & CI
