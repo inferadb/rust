@@ -197,8 +197,15 @@ impl Client {
     /// }
     /// ```
     pub async fn health_check(&self) -> Result<bool, crate::Error> {
-        // TODO: Implement actual health check via transport
-        // For now, return true as a placeholder
+        #[cfg(feature = "rest")]
+        {
+            // Use the liveness probe endpoint
+            return match self.inner.control_get::<serde_json::Value>("/livez").await {
+                Ok(_) => Ok(true),
+                Err(_) => Ok(false),
+            };
+        }
+        #[cfg(not(feature = "rest"))]
         Ok(true)
     }
 
@@ -216,10 +223,78 @@ impl Client {
     /// ```
     pub async fn health(&self) -> Result<HealthResponse, crate::Error> {
         use std::collections::HashMap;
-        use std::time::Duration;
 
-        // TODO: Implement actual health check via transport
-        // For now, return a placeholder response
+        #[cfg(feature = "rest")]
+        {
+            let start = std::time::Instant::now();
+
+            // Try to get detailed health from /healthz
+            #[derive(serde::Deserialize)]
+            struct ServerHealth {
+                status: Option<String>,
+                version: Option<String>,
+                #[serde(default)]
+                components: HashMap<String, serde_json::Value>,
+            }
+
+            match self.inner.control_get::<ServerHealth>("/healthz").await {
+                Ok(server_health) => {
+                    let latency = start.elapsed();
+                    let status = match server_health.status.as_deref() {
+                        Some("healthy") | Some("ok") => HealthStatus::Healthy,
+                        Some("degraded") => HealthStatus::Degraded,
+                        _ => HealthStatus::Unhealthy,
+                    };
+
+                    let components = server_health
+                        .components
+                        .into_iter()
+                        .map(|(name, value)| {
+                            let component_status = value
+                                .get("status")
+                                .and_then(|s| s.as_str())
+                                .map(|s| match s {
+                                    "healthy" | "ok" => HealthStatus::Healthy,
+                                    "degraded" => HealthStatus::Degraded,
+                                    _ => HealthStatus::Unhealthy,
+                                })
+                                .unwrap_or(HealthStatus::Healthy);
+                            (
+                                name,
+                                ComponentHealth {
+                                    status: component_status,
+                                    message: None,
+                                    latency: None,
+                                    last_check: chrono::Utc::now(),
+                                },
+                            )
+                        })
+                        .collect();
+
+                    Ok(HealthResponse {
+                        status,
+                        version: server_health
+                            .version
+                            .unwrap_or_else(|| "unknown".to_string()),
+                        latency,
+                        components,
+                        timestamp: chrono::Utc::now(),
+                    })
+                }
+                Err(_) => {
+                    // Fall back to simple health check
+                    Ok(HealthResponse {
+                        status: HealthStatus::Unhealthy,
+                        version: "unknown".to_string(),
+                        latency: start.elapsed(),
+                        components: HashMap::new(),
+                        timestamp: chrono::Utc::now(),
+                    })
+                }
+            }
+        }
+
+        #[cfg(not(feature = "rest"))]
         Ok(HealthResponse {
             status: HealthStatus::Healthy,
             version: env!("CARGO_PKG_VERSION").to_string(),

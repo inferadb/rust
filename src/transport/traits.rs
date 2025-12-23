@@ -369,6 +369,36 @@ pub struct WriteResponse {
 }
 
 // ============================================================================
+// Simulate Request/Response
+// ============================================================================
+
+/// Request for a simulated authorization check.
+#[derive(Debug, Clone)]
+pub struct SimulateRequest {
+    /// Subject to check (e.g., "user:alice").
+    pub subject: String,
+    /// Permission to check (e.g., "view").
+    pub permission: String,
+    /// Resource to check (e.g., "document:readme").
+    pub resource: String,
+    /// Optional ABAC context.
+    pub context: Option<Context>,
+    /// Hypothetical relationships to add for the simulation.
+    pub additions: Vec<Relationship<'static>>,
+    /// Hypothetical relationships to remove for the simulation.
+    pub removals: Vec<Relationship<'static>>,
+}
+
+/// Response from a simulated authorization check.
+#[derive(Debug, Clone)]
+pub struct SimulateResponse {
+    /// Whether access would be allowed in the simulated state.
+    pub allowed: bool,
+    /// Decision with metadata.
+    pub decision: Decision,
+}
+
+// ============================================================================
 // Transport Trait
 // ============================================================================
 
@@ -431,6 +461,9 @@ pub trait TransportClient: Send + Sync {
 
     /// Checks if the transport is healthy.
     async fn health_check(&self) -> Result<(), Error>;
+
+    /// Performs a simulated authorization check with hypothetical changes.
+    async fn simulate(&self, request: SimulateRequest) -> Result<SimulateResponse, Error>;
 }
 
 /// Response from listing relationships.

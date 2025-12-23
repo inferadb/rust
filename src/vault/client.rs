@@ -69,7 +69,7 @@ impl VaultClient {
 
     /// Returns the transport client, if available.
     #[cfg(feature = "rest")]
-    fn transport(&self) -> Option<&std::sync::Arc<dyn TransportClient + Send + Sync>> {
+    pub(super) fn transport(&self) -> Option<&std::sync::Arc<dyn TransportClient + Send + Sync>> {
         self.client.transport()
     }
 

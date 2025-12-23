@@ -75,7 +75,7 @@ impl TeamsClient {
     /// ```
     #[cfg(feature = "rest")]
     pub async fn create(&self, request: CreateTeamRequest) -> Result<TeamInfo, Error> {
-        let path = format!("/v1/organizations/{}/teams", self.organization_id);
+        let path = format!("/control/v1/organizations/{}/teams", self.organization_id);
         self.client.inner().control_post(&path, &request).await
     }
 
@@ -97,7 +97,7 @@ impl TeamsClient {
     #[cfg(feature = "rest")]
     pub async fn get(&self, team_id: impl Into<String>) -> Result<TeamInfo, Error> {
         let path = format!(
-            "/v1/organizations/{}/teams/{}",
+            "/control/v1/organizations/{}/teams/{}",
             self.organization_id,
             team_id.into()
         );
@@ -128,7 +128,7 @@ impl TeamsClient {
         request: UpdateTeamRequest,
     ) -> Result<TeamInfo, Error> {
         let path = format!(
-            "/v1/organizations/{}/teams/{}",
+            "/control/v1/organizations/{}/teams/{}",
             self.organization_id,
             team_id.into()
         );
@@ -157,7 +157,7 @@ impl TeamsClient {
     #[cfg(feature = "rest")]
     pub async fn delete(&self, team_id: impl Into<String>) -> Result<(), Error> {
         let path = format!(
-            "/v1/organizations/{}/teams/{}",
+            "/control/v1/organizations/{}/teams/{}",
             self.organization_id,
             team_id.into()
         );
@@ -190,7 +190,7 @@ impl TeamsClient {
             user_id: String,
         }
         let path = format!(
-            "/v1/organizations/{}/teams/{}/members",
+            "/control/v1/organizations/{}/teams/{}/members",
             self.organization_id,
             team_id.into()
         );
@@ -229,7 +229,7 @@ impl TeamsClient {
         user_id: impl Into<String>,
     ) -> Result<(), Error> {
         let path = format!(
-            "/v1/organizations/{}/teams/{}/members/{}",
+            "/control/v1/organizations/{}/teams/{}/members/{}",
             self.organization_id,
             team_id.into(),
             user_id.into()
@@ -424,7 +424,7 @@ impl ListTeamsRequest {
 
     #[cfg(feature = "rest")]
     async fn execute(self) -> Result<Page<TeamInfo>, Error> {
-        let mut path = format!("/v1/organizations/{}/teams", self.organization_id);
+        let mut path = format!("/control/v1/organizations/{}/teams", self.organization_id);
         let mut query_parts = Vec::new();
 
         if let Some(limit) = self.limit {
@@ -489,7 +489,7 @@ impl ListTeamMembersRequest {
     #[cfg(feature = "rest")]
     async fn execute(self) -> Result<Page<TeamMemberInfo>, Error> {
         let mut path = format!(
-            "/v1/organizations/{}/teams/{}/members",
+            "/control/v1/organizations/{}/teams/{}/members",
             self.organization_id, self.team_id
         );
         let mut query_parts = Vec::new();
@@ -566,129 +566,4 @@ mod tests {
         assert_eq!(req.description, Some("New description".to_string()));
     }
 
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_teams_client_accessors() {
-        let client = create_test_client().await;
-        let teams = TeamsClient::new(client, "org_test");
-        assert_eq!(teams.organization_id(), "org_test");
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_teams_client_debug() {
-        let client = create_test_client().await;
-        let teams = TeamsClient::new(client, "org_test");
-        let debug = format!("{:?}", teams);
-        assert!(debug.contains("TeamsClient"));
-        assert!(debug.contains("org_test"));
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_teams_list() {
-        let client = create_test_client().await;
-        let teams = TeamsClient::new(client, "org_test");
-        let page = teams.list().await.unwrap();
-        assert!(page.items.is_empty());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_teams_list_with_options() {
-        let client = create_test_client().await;
-        let teams = TeamsClient::new(client, "org_test");
-        let page = teams
-            .list()
-            .limit(10)
-            .cursor("cursor123")
-            .sort(SortOrder::Descending)
-            .await
-            .unwrap();
-        assert!(page.items.is_empty());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_teams_create() {
-        let client = create_test_client().await;
-        let teams = TeamsClient::new(client, "org_test");
-        let request = CreateTeamRequest::new("Engineering").with_description("Backend team");
-        let info = teams.create(request).await.unwrap();
-        assert_eq!(info.name, "Engineering");
-        assert_eq!(info.description, Some("Backend team".to_string()));
-        assert_eq!(info.organization_id, "org_test");
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_teams_get() {
-        let client = create_test_client().await;
-        let teams = TeamsClient::new(client, "org_test");
-        let info = teams.get("team_abc123").await.unwrap();
-        assert_eq!(info.id, "team_abc123");
-        assert_eq!(info.organization_id, "org_test");
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_teams_update() {
-        let client = create_test_client().await;
-        let teams = TeamsClient::new(client, "org_test");
-        let request = UpdateTeamRequest::new()
-            .with_name("New Name")
-            .with_description("New description");
-        let info = teams.update("team_abc123", request).await.unwrap();
-        assert_eq!(info.id, "team_abc123");
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_teams_delete() {
-        let client = create_test_client().await;
-        let teams = TeamsClient::new(client, "org_test");
-        let result = teams.delete("team_abc123").await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_teams_add_member() {
-        let client = create_test_client().await;
-        let teams = TeamsClient::new(client, "org_test");
-        let result = teams.add_member("team_abc123", "user_xyz").await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_teams_remove_member() {
-        let client = create_test_client().await;
-        let teams = TeamsClient::new(client, "org_test");
-        let result = teams.remove_member("team_abc123", "user_xyz").await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_teams_list_members() {
-        let client = create_test_client().await;
-        let teams = TeamsClient::new(client, "org_test");
-        let page = teams.list_members("team_abc123").await.unwrap();
-        assert!(page.items.is_empty());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_teams_list_members_with_options() {
-        let client = create_test_client().await;
-        let teams = TeamsClient::new(client, "org_test");
-        let page = teams
-            .list_members("team_abc123")
-            .limit(10)
-            .cursor("cursor123")
-            .await
-            .unwrap();
-        assert!(page.items.is_empty());
-    }
 }

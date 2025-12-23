@@ -46,7 +46,8 @@ pub use traits::{
 
 // Internal re-exports (used when transport is integrated with client)
 pub(crate) use traits::{
-    CheckRequest as TransportCheckRequest, TransportClient, WriteRequest as TransportWriteRequest,
+    CheckRequest as TransportCheckRequest, SimulateRequest as TransportSimulateRequest,
+    TransportClient, WriteRequest as TransportWriteRequest,
 };
 
 // Re-export REST transport

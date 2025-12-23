@@ -70,18 +70,19 @@ impl ApiClientsClient {
     /// ```
     pub async fn get(&self, client_id: impl Into<String>) -> Result<ApiClient, Error> {
         let client_id = client_id.into();
-        // TODO: Implement actual API call via transport
-        let _ = (&self.client, &self.organization_id);
-        Ok(ApiClient {
-            id: client_id,
-            name: "API Client".to_string(),
-            description: None,
-            status: ClientStatus::Active,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            permissions: vec![],
-            rate_limit: None,
-        })
+        #[cfg(feature = "rest")]
+        {
+            let path = format!(
+                "/control/v1/organizations/{}/clients/{}",
+                self.organization_id, client_id
+            );
+            return self.client.inner().control_get(&path).await;
+        }
+        #[cfg(not(feature = "rest"))]
+        {
+            let _ = client_id;
+            Err(Error::configuration("REST feature is required"))
+        }
     }
 
     /// Creates a new API client.
@@ -96,18 +97,19 @@ impl ApiClientsClient {
     ///     .await?;
     /// ```
     pub async fn create(&self, request: CreateApiClientRequest) -> Result<ApiClient, Error> {
-        // TODO: Implement actual API call via transport
-        let _ = (&self.client, &self.organization_id);
-        Ok(ApiClient {
-            id: format!("cli_{}", uuid::Uuid::new_v4()),
-            name: request.name,
-            description: request.description,
-            status: ClientStatus::Active,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            permissions: request.permissions.unwrap_or_default(),
-            rate_limit: request.rate_limit,
-        })
+        #[cfg(feature = "rest")]
+        {
+            let path = format!(
+                "/control/v1/organizations/{}/clients",
+                self.organization_id
+            );
+            return self.client.inner().control_post(&path, &request).await;
+        }
+        #[cfg(not(feature = "rest"))]
+        {
+            let _ = request;
+            Err(Error::configuration("REST feature is required"))
+        }
     }
 
     /// Updates an API client.
@@ -126,9 +128,19 @@ impl ApiClientsClient {
         request: UpdateApiClientRequest,
     ) -> Result<ApiClient, Error> {
         let client_id = client_id.into();
-        // TODO: Implement actual API call via transport
-        let _ = (&self.client, &self.organization_id, &request);
-        self.get(client_id).await
+        #[cfg(feature = "rest")]
+        {
+            let path = format!(
+                "/control/v1/organizations/{}/clients/{}",
+                self.organization_id, client_id
+            );
+            return self.client.inner().control_patch(&path, &request).await;
+        }
+        #[cfg(not(feature = "rest"))]
+        {
+            let _ = (client_id, request);
+            Err(Error::configuration("REST feature is required"))
+        }
     }
 
     /// Deletes an API client.
@@ -141,9 +153,20 @@ impl ApiClientsClient {
     /// org.clients().delete("cli_abc123").await?;
     /// ```
     pub async fn delete(&self, client_id: impl Into<String>) -> Result<(), Error> {
-        let _ = (&self.client, &self.organization_id, client_id.into());
-        // TODO: Implement actual API call via transport
-        Ok(())
+        let client_id = client_id.into();
+        #[cfg(feature = "rest")]
+        {
+            let path = format!(
+                "/control/v1/organizations/{}/clients/{}",
+                self.organization_id, client_id
+            );
+            return self.client.inner().control_delete(&path).await;
+        }
+        #[cfg(not(feature = "rest"))]
+        {
+            let _ = client_id;
+            Err(Error::configuration("REST feature is required"))
+        }
     }
 
     /// Returns a client for managing certificates for a specific API client.
@@ -173,11 +196,11 @@ impl ApiClientsClient {
     /// ```
     pub async fn suspend(&self, client_id: impl Into<String>) -> Result<ApiClient, Error> {
         let client_id = client_id.into();
-        // TODO: Implement actual API call via transport
-        let _ = (&self.client, &self.organization_id);
-        let mut api_client = self.get(&client_id).await?;
-        api_client.status = ClientStatus::Suspended;
-        Ok(api_client)
+        self.update(
+            &client_id,
+            UpdateApiClientRequest::new().with_status(ClientStatus::Suspended),
+        )
+        .await
     }
 
     /// Reactivates a suspended API client.
@@ -189,11 +212,11 @@ impl ApiClientsClient {
     /// ```
     pub async fn reactivate(&self, client_id: impl Into<String>) -> Result<ApiClient, Error> {
         let client_id = client_id.into();
-        // TODO: Implement actual API call via transport
-        let _ = (&self.client, &self.organization_id);
-        let mut api_client = self.get(&client_id).await?;
-        api_client.status = ClientStatus::Active;
-        Ok(api_client)
+        self.update(
+            &client_id,
+            UpdateApiClientRequest::new().with_status(ClientStatus::Active),
+        )
+        .await
     }
 }
 
@@ -322,13 +345,20 @@ impl CreateApiClientRequest {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UpdateApiClientRequest {
     /// New name.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// New description.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// New permissions.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub permissions: Option<Vec<String>>,
     /// New rate limit.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub rate_limit: Option<u32>,
+    /// New status (for suspend/reactivate operations).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<ClientStatus>,
 }
 
 impl UpdateApiClientRequest {
@@ -362,6 +392,13 @@ impl UpdateApiClientRequest {
     #[must_use]
     pub fn with_rate_limit(mut self, rate_limit: u32) -> Self {
         self.rate_limit = Some(rate_limit);
+        self
+    }
+
+    /// Sets the status.
+    #[must_use]
+    pub fn with_status(mut self, status: ClientStatus) -> Self {
+        self.status = Some(status);
         self
     }
 }
@@ -405,17 +442,42 @@ impl ListApiClientsRequest {
         self
     }
 
+    #[cfg(feature = "rest")]
     async fn execute(self) -> Result<Page<ApiClient>, Error> {
-        // TODO: Implement actual API call via transport
-        let _ = (
-            self.client,
-            self.organization_id,
-            self.limit,
-            self.cursor,
-            self.sort,
-            self.status,
+        let mut path = format!(
+            "/control/v1/organizations/{}/clients",
+            self.organization_id
         );
-        Ok(Page::default())
+
+        let mut query_params = Vec::new();
+        if let Some(limit) = self.limit {
+            query_params.push(format!("limit={}", limit));
+        }
+        if let Some(ref cursor) = self.cursor {
+            query_params.push(format!("cursor={}", cursor));
+        }
+        if let Some(ref sort) = self.sort {
+            query_params.push(format!("sort={}", sort.as_str()));
+        }
+        if let Some(ref status) = self.status {
+            let status_str = match status {
+                ClientStatus::Active => "active",
+                ClientStatus::Suspended => "suspended",
+                ClientStatus::Revoked => "revoked",
+            };
+            query_params.push(format!("status={}", status_str));
+        }
+        if !query_params.is_empty() {
+            path.push('?');
+            path.push_str(&query_params.join("&"));
+        }
+
+        self.client.inner().control_get(&path).await
+    }
+
+    #[cfg(not(feature = "rest"))]
+    async fn execute(self) -> Result<Page<ApiClient>, Error> {
+        Err(Error::configuration("REST feature is required for control API"))
     }
 }
 
@@ -465,9 +527,16 @@ impl CertificatesClient {
     /// }
     /// ```
     pub async fn list(&self) -> Result<Page<ClientCertificate>, Error> {
-        // TODO: Implement actual API call via transport
-        let _ = (&self.client, &self.organization_id, &self.client_id);
-        Ok(Page::default())
+        #[cfg(feature = "rest")]
+        {
+            let path = format!(
+                "/control/v1/organizations/{}/clients/{}/certificates",
+                self.organization_id, self.client_id
+            );
+            return self.client.inner().control_get(&path).await;
+        }
+        #[cfg(not(feature = "rest"))]
+        Err(Error::configuration("REST feature is required"))
     }
 
     /// Adds a new certificate to the API client.
@@ -481,16 +550,19 @@ impl CertificatesClient {
     ///     .await?;
     /// ```
     pub async fn add(&self, request: AddCertificateRequest) -> Result<ClientCertificate, Error> {
-        // TODO: Implement actual API call via transport
-        let _ = (&self.client, &self.organization_id, &self.client_id);
-        Ok(ClientCertificate {
-            id: format!("crt_{}", uuid::Uuid::new_v4()),
-            fingerprint: "sha256:placeholder".to_string(),
-            algorithm: request.algorithm.unwrap_or_else(|| "Ed25519".to_string()),
-            created_at: chrono::Utc::now(),
-            expires_at: request.expires_at,
-            active: true,
-        })
+        #[cfg(feature = "rest")]
+        {
+            let path = format!(
+                "/control/v1/organizations/{}/clients/{}/certificates",
+                self.organization_id, self.client_id
+            );
+            return self.client.inner().control_post(&path, &request).await;
+        }
+        #[cfg(not(feature = "rest"))]
+        {
+            let _ = request;
+            Err(Error::configuration("REST feature is required"))
+        }
     }
 
     /// Rotates the certificate (adds new, schedules old for removal).
@@ -511,16 +583,21 @@ impl CertificatesClient {
         &self,
         request: RotateCertificateRequest,
     ) -> Result<ClientCertificate, Error> {
-        // TODO: Implement actual API call via transport
-        let _ = (&self.client, &self.organization_id, &self.client_id);
-        Ok(ClientCertificate {
-            id: format!("crt_{}", uuid::Uuid::new_v4()),
-            fingerprint: "sha256:placeholder".to_string(),
-            algorithm: request.algorithm.unwrap_or_else(|| "Ed25519".to_string()),
-            created_at: chrono::Utc::now(),
-            expires_at: None,
-            active: true,
-        })
+        // Rotation is implemented as adding a new certificate.
+        // The server handles the grace period for the old certificate.
+        #[cfg(feature = "rest")]
+        {
+            let path = format!(
+                "/control/v1/organizations/{}/clients/{}/certificates",
+                self.organization_id, self.client_id
+            );
+            return self.client.inner().control_post(&path, &request).await;
+        }
+        #[cfg(not(feature = "rest"))]
+        {
+            let _ = request;
+            Err(Error::configuration("REST feature is required"))
+        }
     }
 
     /// Revokes a certificate.
@@ -536,14 +613,20 @@ impl CertificatesClient {
     ///     .await?;
     /// ```
     pub async fn revoke(&self, certificate_id: impl Into<String>) -> Result<(), Error> {
-        let _ = (
-            &self.client,
-            &self.organization_id,
-            &self.client_id,
-            certificate_id.into(),
-        );
-        // TODO: Implement actual API call via transport
-        Ok(())
+        let certificate_id = certificate_id.into();
+        #[cfg(feature = "rest")]
+        {
+            let path = format!(
+                "/control/v1/organizations/{}/clients/{}/certificates/{}",
+                self.organization_id, self.client_id, certificate_id
+            );
+            return self.client.inner().control_delete(&path).await;
+        }
+        #[cfg(not(feature = "rest"))]
+        {
+            let _ = certificate_id;
+            Err(Error::configuration("REST feature is required"))
+        }
     }
 }
 
@@ -710,127 +793,6 @@ mod tests {
         assert_eq!(req.public_key, "PEM_DATA");
         assert_eq!(req.algorithm, Some("Ed25519".to_string()));
         assert_eq!(req.grace_period_secs, Some(3600));
-    }
-
-    #[tokio::test]
-    async fn test_api_clients_client_list() {
-        let client = create_test_client().await;
-        let clients = ApiClientsClient::new(client, "org_test");
-        let page = clients.list().await.unwrap();
-        assert!(page.items.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_api_clients_client_list_with_options() {
-        let client = create_test_client().await;
-        let clients = ApiClientsClient::new(client, "org_test");
-        let page = clients
-            .list()
-            .limit(10)
-            .cursor("cursor123")
-            .sort(SortOrder::Descending)
-            .status(ClientStatus::Active)
-            .await
-            .unwrap();
-        assert!(page.items.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_api_clients_client_get() {
-        let client = create_test_client().await;
-        let clients = ApiClientsClient::new(client, "org_test");
-        let api_client = clients.get("cli_abc123").await.unwrap();
-        assert_eq!(api_client.id, "cli_abc123");
-    }
-
-    #[tokio::test]
-    async fn test_api_clients_client_create() {
-        let client = create_test_client().await;
-        let clients = ApiClientsClient::new(client, "org_test");
-        let api_client = clients
-            .create(CreateApiClientRequest::new("my-service"))
-            .await
-            .unwrap();
-        assert_eq!(api_client.name, "my-service");
-        assert!(api_client.status.is_active());
-    }
-
-    #[tokio::test]
-    async fn test_api_clients_client_update() {
-        let client = create_test_client().await;
-        let clients = ApiClientsClient::new(client, "org_test");
-        let api_client = clients
-            .update(
-                "cli_abc123",
-                UpdateApiClientRequest::new().with_description("Updated"),
-            )
-            .await
-            .unwrap();
-        assert_eq!(api_client.id, "cli_abc123");
-    }
-
-    #[tokio::test]
-    async fn test_api_clients_client_delete() {
-        let client = create_test_client().await;
-        let clients = ApiClientsClient::new(client, "org_test");
-        let result = clients.delete("cli_abc123").await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_api_clients_client_suspend() {
-        let client = create_test_client().await;
-        let clients = ApiClientsClient::new(client, "org_test");
-        let api_client = clients.suspend("cli_abc123").await.unwrap();
-        assert!(api_client.status.is_suspended());
-    }
-
-    #[tokio::test]
-    async fn test_api_clients_client_reactivate() {
-        let client = create_test_client().await;
-        let clients = ApiClientsClient::new(client, "org_test");
-        let api_client = clients.reactivate("cli_abc123").await.unwrap();
-        assert!(api_client.status.is_active());
-    }
-
-    #[tokio::test]
-    async fn test_certificates_client_list() {
-        let client = create_test_client().await;
-        let clients = ApiClientsClient::new(client, "org_test");
-        let certs = clients.certificates("cli_abc123");
-        let page = certs.list().await.unwrap();
-        assert!(page.items.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_certificates_client_add() {
-        let client = create_test_client().await;
-        let clients = ApiClientsClient::new(client, "org_test");
-        let certs = clients.certificates("cli_abc123");
-        let cert = certs.add(AddCertificateRequest::new("PEM")).await.unwrap();
-        assert!(!cert.id.is_empty());
-        assert!(cert.active);
-    }
-
-    #[tokio::test]
-    async fn test_certificates_client_rotate() {
-        let client = create_test_client().await;
-        let clients = ApiClientsClient::new(client, "org_test");
-        let certs = clients.certificates("cli_abc123");
-        let cert = certs
-            .rotate(RotateCertificateRequest::new("PEM"))
-            .await
-            .unwrap();
-        assert!(!cert.id.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_certificates_client_revoke() {
-        let client = create_test_client().await;
-        let clients = ApiClientsClient::new(client, "org_test");
-        let certs = clients.certificates("cli_abc123");
-        let result = certs.revoke("crt_xyz789").await;
-        assert!(result.is_ok());
     }
 
     #[tokio::test]

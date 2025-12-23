@@ -39,10 +39,15 @@ impl JwksClient {
     /// let jwks = client.jwks().get().await?;
     /// println!("Found {} keys", jwks.keys.len());
     /// ```
+    #[cfg(feature = "rest")]
     pub async fn get(&self) -> Result<Jwks, Error> {
-        // TODO: Implement actual API call via transport
-        let _ = &self.client;
-        Ok(Jwks { keys: vec![] })
+        self.client.inner().control_get("/control/v1/jwks").await
+    }
+
+    /// Gets the JWKS for the current organization.
+    #[cfg(not(feature = "rest"))]
+    pub async fn get(&self) -> Result<Jwks, Error> {
+        Err(Error::configuration("REST feature is required for JWKS"))
     }
 
     /// Gets the JWKS from the well-known endpoint.
@@ -54,10 +59,15 @@ impl JwksClient {
     /// ```rust,ignore
     /// let jwks = client.jwks().get_well_known().await?;
     /// ```
+    #[cfg(feature = "rest")]
     pub async fn get_well_known(&self) -> Result<Jwks, Error> {
-        // TODO: Implement actual API call via transport
-        let _ = &self.client;
-        Ok(Jwks { keys: vec![] })
+        self.client.inner().control_get("/.well-known/jwks.json").await
+    }
+
+    /// Gets the JWKS from the well-known endpoint.
+    #[cfg(not(feature = "rest"))]
+    pub async fn get_well_known(&self) -> Result<Jwks, Error> {
+        Err(Error::configuration("REST feature is required for JWKS"))
     }
 
     /// Gets a specific key by ID.
@@ -480,30 +490,6 @@ mod tests {
 
         let parsed: Jwks = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_jwks_client_get() {
-        let client = create_test_client().await;
-        let jwks_client = JwksClient::new(client);
-        let jwks = jwks_client.get().await.unwrap();
-        assert!(jwks.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_jwks_client_get_well_known() {
-        let client = create_test_client().await;
-        let jwks_client = JwksClient::new(client);
-        let jwks = jwks_client.get_well_known().await.unwrap();
-        assert!(jwks.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_jwks_client_get_key() {
-        let client = create_test_client().await;
-        let jwks_client = JwksClient::new(client);
-        let key = jwks_client.get_key("nonexistent").await.unwrap();
-        assert!(key.is_none());
     }
 
     #[tokio::test]

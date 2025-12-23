@@ -91,7 +91,7 @@ impl AuditLogsClient {
     pub async fn get(&self, event_id: impl Into<String>) -> Result<AuditEvent, Error> {
         let event_id = event_id.into();
         let path = format!(
-            "/v1/organizations/{}/audit-logs/{}",
+            "/control/v1/organizations/{}/audit-logs/{}",
             self.organization_id, event_id
         );
         self.client.inner().control_get(&path).await
@@ -446,7 +446,7 @@ impl ListAuditLogsRequest {
 
     #[cfg(feature = "rest")]
     async fn execute(self) -> Result<Page<AuditEvent>, Error> {
-        let mut path = format!("/v1/organizations/{}/audit-logs", self.organization_id);
+        let mut path = format!("/control/v1/organizations/{}/audit-logs", self.organization_id);
 
         let mut query_params = Vec::new();
         if let Some(ref vault_id) = self.vault_id {
@@ -548,7 +548,7 @@ impl ExportAuditLogsRequest {
         use std::io::Write;
 
         let mut api_path = format!(
-            "/v1/organizations/{}/audit-logs/export",
+            "/control/v1/organizations/{}/audit-logs/export",
             self.organization_id
         );
 
@@ -662,7 +662,7 @@ impl ExportAuditLogsRequest {
                     return None;
                 }
 
-                let mut path = format!("/v1/organizations/{}/audit-logs", org_id);
+                let mut path = format!("/control/v1/organizations/{}/audit-logs", org_id);
                 let mut query_params = Vec::new();
 
                 if let Some(ref vault_id) = vault_id {
@@ -786,88 +786,4 @@ mod tests {
         assert_eq!(ExportFormat::default(), ExportFormat::Json);
     }
 
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_audit_logs_client_accessors() {
-        let client = create_test_client().await;
-        let audit = AuditLogsClient::new(client, "org_test");
-        assert_eq!(audit.organization_id(), "org_test");
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_audit_logs_client_debug() {
-        let client = create_test_client().await;
-        let audit = AuditLogsClient::new(client, "org_test");
-        let debug = format!("{:?}", audit);
-        assert!(debug.contains("AuditLogsClient"));
-        assert!(debug.contains("org_test"));
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_audit_logs_list() {
-        let client = create_test_client().await;
-        let audit = AuditLogsClient::new(client, "org_test");
-        let page = audit.list().await.unwrap();
-        assert!(page.items.is_empty());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_audit_logs_list_with_options() {
-        let client = create_test_client().await;
-        let audit = AuditLogsClient::new(client, "org_test");
-        let now = chrono::Utc::now();
-        let page = audit
-            .list()
-            .vault("vlt_abc123")
-            .limit(10)
-            .cursor("cursor123")
-            .sort(SortOrder::Descending)
-            .actor("user_xyz")
-            .action(AuditAction::Check)
-            .resource("doc:1")
-            .after(now - chrono::Duration::hours(1))
-            .before(now)
-            .await
-            .unwrap();
-        assert!(page.items.is_empty());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_audit_logs_get() {
-        let client = create_test_client().await;
-        let audit = AuditLogsClient::new(client, "org_test");
-        let event = audit.get("evt_abc123").await.unwrap();
-        assert_eq!(event.id, "evt_abc123");
-        assert_eq!(event.organization_id, "org_test");
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_audit_logs_export() {
-        let client = create_test_client().await;
-        let audit = AuditLogsClient::new(client, "org_test");
-        let now = chrono::Utc::now();
-        let export = audit
-            .export()
-            .vault("vlt_abc123")
-            .after(now - chrono::Duration::hours(1))
-            .before(now)
-            .format(ExportFormat::Csv);
-
-        // Check that stream returns an iterator
-        let _stream = export.stream();
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_audit_logs_export_to_file() {
-        let client = create_test_client().await;
-        let audit = AuditLogsClient::new(client, "org_test");
-        let result = audit.export().write_to_file("/tmp/audit.json").await;
-        assert!(result.is_ok());
-    }
 }

@@ -191,10 +191,33 @@ pub struct SimulateCheckBuilder {
 
 impl SimulateCheckBuilder {
     async fn execute(self) -> Result<SimulationResult, Error> {
-        // TODO: Implement actual API call via transport that supports simulation
-        // For now, return a placeholder result showing the simulation parameters
-        let _ = &self.vault; // Mark as used
+        #[cfg(feature = "rest")]
+        if let Some(transport) = self.vault.transport() {
+            use crate::transport::TransportSimulateRequest;
 
+            let request = TransportSimulateRequest {
+                subject: self.subject.clone(),
+                permission: self.permission.clone(),
+                resource: self.resource.clone(),
+                context: None,
+                additions: self.additions.clone(),
+                removals: self.removals.clone(),
+            };
+
+            let response = transport.simulate(request).await?;
+
+            return Ok(SimulationResult {
+                allowed: response.allowed,
+                subject: self.subject,
+                permission: self.permission,
+                resource: self.resource,
+                hypothetical_additions: self.additions.iter().map(|r| r.to_string()).collect(),
+                hypothetical_removals: self.removals.iter().map(|r| r.to_string()).collect(),
+                explanation: None,
+            });
+        }
+
+        // Fallback when transport is not available
         Ok(SimulationResult {
             allowed: false,
             subject: self.subject,
@@ -228,26 +251,59 @@ pub struct SimulateCompareBuilder {
 
 impl SimulateCompareBuilder {
     async fn execute(self) -> Result<SimulationDiff, Error> {
-        // TODO: Implement actual comparison by running both current and simulated checks
-        let _ = &self.vault; // Mark as used
+        #[cfg(feature = "rest")]
+        if let Some(transport) = self.vault.transport() {
+            use crate::transport::{TransportCheckRequest, TransportSimulateRequest};
 
-        // Placeholder values
-        let current_allowed = false;
-        let simulated_allowed = false;
+            // Run current check (without hypothetical changes)
+            let current_request = TransportCheckRequest {
+                subject: self.subject.clone(),
+                permission: self.permission.clone(),
+                resource: self.resource.clone(),
+                context: None,
+                consistency: None,
+            };
+            let current_response = transport.check(current_request).await?;
+            let current_allowed = current_response.allowed;
 
-        let change = match (current_allowed, simulated_allowed) {
-            (true, true) | (false, false) => SimulationChange::NoChange,
-            (false, true) => SimulationChange::NowAllowed,
-            (true, false) => SimulationChange::NowDenied,
-        };
+            // Run simulated check (with hypothetical changes)
+            let simulate_request = TransportSimulateRequest {
+                subject: self.subject.clone(),
+                permission: self.permission.clone(),
+                resource: self.resource.clone(),
+                context: None,
+                additions: self.additions.clone(),
+                removals: self.removals.clone(),
+            };
+            let simulated_response = transport.simulate(simulate_request).await?;
+            let simulated_allowed = simulated_response.allowed;
 
+            let change = match (current_allowed, simulated_allowed) {
+                (true, true) | (false, false) => SimulationChange::NoChange,
+                (false, true) => SimulationChange::NowAllowed,
+                (true, false) => SimulationChange::NowDenied,
+            };
+
+            return Ok(SimulationDiff {
+                subject: self.subject,
+                permission: self.permission,
+                resource: self.resource,
+                current_allowed,
+                simulated_allowed,
+                change,
+                hypothetical_additions: self.additions.iter().map(|r| r.to_string()).collect(),
+                hypothetical_removals: self.removals.iter().map(|r| r.to_string()).collect(),
+            });
+        }
+
+        // Fallback when transport is not available
         Ok(SimulationDiff {
             subject: self.subject,
             permission: self.permission,
             resource: self.resource,
-            current_allowed,
-            simulated_allowed,
-            change,
+            current_allowed: false,
+            simulated_allowed: false,
+            change: SimulationChange::NoChange,
             hypothetical_additions: self.additions.iter().map(|r| r.to_string()).collect(),
             hypothetical_removals: self.removals.iter().map(|r| r.to_string()).collect(),
         })

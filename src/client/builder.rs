@@ -329,6 +329,10 @@ impl ClientBuilder<HasUrl, HasCredentials> {
 
         let timeout = self.timeout.unwrap_or(Duration::from_secs(30));
 
+        // Extract bearer token if using Bearer credentials
+        #[cfg(feature = "rest")]
+        let initial_token = credentials.as_bearer().map(|b| b.token().to_string());
+
         // Create REST transport if feature is enabled
         #[cfg(feature = "rest")]
         let transport = {
@@ -339,6 +343,12 @@ impl ClientBuilder<HasUrl, HasCredentials> {
                 self.retry_config.clone(),
                 timeout,
             )?;
+
+            // Set initial auth token if using Bearer credentials
+            if let Some(ref token) = initial_token {
+                transport.set_auth_token(token.clone());
+            }
+
             Some(Arc::new(transport) as Arc<dyn crate::transport::TransportClient + Send + Sync>)
         };
 
@@ -352,6 +362,11 @@ impl ClientBuilder<HasUrl, HasCredentials> {
             // Configure TLS if needed
             if parsed_url.scheme() == "https" {
                 builder = builder.use_rustls_tls();
+            }
+
+            // Configure TLS certificate verification
+            if self.tls_config.skip_verification {
+                builder = builder.danger_accept_invalid_certs(true);
             }
 
             Some(builder.build().map_err(|e| {
@@ -372,7 +387,7 @@ impl ClientBuilder<HasUrl, HasCredentials> {
             #[cfg(feature = "rest")]
             http_client,
             #[cfg(feature = "rest")]
-            auth_token: parking_lot::RwLock::new(None),
+            auth_token: parking_lot::RwLock::new(initial_token),
         };
 
         Ok(Client::from_inner(inner))

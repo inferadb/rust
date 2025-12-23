@@ -45,18 +45,14 @@ impl AccountClient {
     /// println!("Email: {}", account.email);
     /// println!("MFA enabled: {}", account.mfa_enabled);
     /// ```
+    #[cfg(feature = "rest")]
     pub async fn get(&self) -> Result<Account, Error> {
-        // TODO: Implement actual API call via transport
-        let _ = &self.client;
-        Ok(Account {
-            id: "usr_placeholder".to_string(),
-            email: "user@example.com".to_string(),
-            name: None,
-            status: AccountStatus::Active,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            mfa_enabled: false,
-        })
+        self.client.inner().control_get("/control/v1/account").await
+    }
+
+    #[cfg(not(feature = "rest"))]
+    pub async fn get(&self) -> Result<Account, Error> {
+        Err(Error::configuration("REST feature is required for account API"))
     }
 
     /// Updates the current user's account.
@@ -69,9 +65,19 @@ impl AccountClient {
     ///     .await?;
     /// ```
     pub async fn update(&self, request: UpdateAccountRequest) -> Result<Account, Error> {
-        // TODO: Implement actual API call via transport
-        let _ = (&self.client, &request);
-        self.get().await
+        #[cfg(feature = "rest")]
+        {
+            return self
+                .client
+                .inner()
+                .control_patch("/control/v1/users/me", &request)
+                .await;
+        }
+        #[cfg(not(feature = "rest"))]
+        {
+            let _ = request;
+            Err(Error::configuration("REST feature is required"))
+        }
     }
 
     /// Returns a client for managing email addresses.
@@ -101,9 +107,21 @@ impl AccountClient {
     ///     .await?;
     /// ```
     pub async fn change_password(&self, request: ChangePasswordRequest) -> Result<(), Error> {
-        // TODO: Implement actual API call via transport
-        let _ = (&self.client, &request);
-        Ok(())
+        #[cfg(feature = "rest")]
+        {
+            // Password changes may return an empty response or the updated account
+            let _: serde_json::Value = self
+                .client
+                .inner()
+                .control_post("/control/v1/users/me/password", &request)
+                .await?;
+            Ok(())
+        }
+        #[cfg(not(feature = "rest"))]
+        {
+            let _ = request;
+            Err(Error::configuration("REST feature is required"))
+        }
     }
 }
 
@@ -242,9 +260,16 @@ impl EmailsClient {
     /// }
     /// ```
     pub async fn list(&self) -> Result<Page<Email>, Error> {
-        // TODO: Implement actual API call via transport
-        let _ = &self.client;
-        Ok(Page::default())
+        #[cfg(feature = "rest")]
+        {
+            return self
+                .client
+                .inner()
+                .control_get("/control/v1/users/emails")
+                .await;
+        }
+        #[cfg(not(feature = "rest"))]
+        Err(Error::configuration("REST feature is required"))
     }
 
     /// Adds a new email address to the account.
@@ -259,14 +284,26 @@ impl EmailsClient {
     /// ```
     pub async fn add(&self, address: impl Into<String>) -> Result<Email, Error> {
         let address = address.into();
-        // TODO: Implement actual API call via transport
-        let _ = &self.client;
-        Ok(Email {
-            address,
-            verified: false,
-            primary: false,
-            created_at: chrono::Utc::now(),
-        })
+        #[cfg(feature = "rest")]
+        {
+            #[derive(serde::Serialize)]
+            struct AddEmailRequest {
+                email: String,
+            }
+            return self
+                .client
+                .inner()
+                .control_post(
+                    "/control/v1/users/emails",
+                    &AddEmailRequest { email: address },
+                )
+                .await;
+        }
+        #[cfg(not(feature = "rest"))]
+        {
+            let _ = address;
+            Err(Error::configuration("REST feature is required"))
+        }
     }
 
     /// Removes an email address from the account.
@@ -279,9 +316,19 @@ impl EmailsClient {
     /// client.account().emails().remove("oldemail@example.com").await?;
     /// ```
     pub async fn remove(&self, address: impl Into<String>) -> Result<(), Error> {
-        let _ = (&self.client, address.into());
-        // TODO: Implement actual API call via transport
-        Ok(())
+        let address = address.into();
+        #[cfg(feature = "rest")]
+        {
+            // URL-encode the email address for the path
+            let encoded = urlencoding::encode(&address);
+            let path = format!("/control/v1/users/emails/{}", encoded);
+            return self.client.inner().control_delete(&path).await;
+        }
+        #[cfg(not(feature = "rest"))]
+        {
+            let _ = address;
+            Err(Error::configuration("REST feature is required"))
+        }
     }
 
     /// Sets an email address as the primary email.
@@ -294,9 +341,28 @@ impl EmailsClient {
     /// client.account().emails().set_primary("newemail@example.com").await?;
     /// ```
     pub async fn set_primary(&self, address: impl Into<String>) -> Result<(), Error> {
-        let _ = (&self.client, address.into());
-        // TODO: Implement actual API call via transport
-        Ok(())
+        let address = address.into();
+        #[cfg(feature = "rest")]
+        {
+            #[derive(serde::Serialize)]
+            struct SetPrimaryRequest {
+                primary: bool,
+            }
+            // URL-encode the email address for the path
+            let encoded = urlencoding::encode(&address);
+            let path = format!("/control/v1/users/emails/{}", encoded);
+            let _: Email = self
+                .client
+                .inner()
+                .control_patch(&path, &SetPrimaryRequest { primary: true })
+                .await?;
+            Ok(())
+        }
+        #[cfg(not(feature = "rest"))]
+        {
+            let _ = address;
+            Err(Error::configuration("REST feature is required"))
+        }
     }
 
     /// Resends the verification email for an unverified address.
@@ -307,9 +373,20 @@ impl EmailsClient {
     /// client.account().emails().resend_verification("unverified@example.com").await?;
     /// ```
     pub async fn resend_verification(&self, address: impl Into<String>) -> Result<(), Error> {
-        let _ = (&self.client, address.into());
-        // TODO: Implement actual API call via transport
-        Ok(())
+        let address = address.into();
+        #[cfg(feature = "rest")]
+        {
+            // URL-encode the email address for the path
+            let encoded = urlencoding::encode(&address);
+            let path = format!("/control/v1/users/emails/{}/resend-verification", encoded);
+            let _: serde_json::Value = self.client.inner().control_post_empty(&path).await?;
+            Ok(())
+        }
+        #[cfg(not(feature = "rest"))]
+        {
+            let _ = address;
+            Err(Error::configuration("REST feature is required"))
+        }
     }
 }
 
@@ -355,9 +432,16 @@ impl SessionsClient {
     /// }
     /// ```
     pub async fn list(&self) -> Result<Page<Session>, Error> {
-        // TODO: Implement actual API call via transport
-        let _ = &self.client;
-        Ok(Page::default())
+        #[cfg(feature = "rest")]
+        {
+            return self
+                .client
+                .inner()
+                .control_get("/control/v1/users/sessions")
+                .await;
+        }
+        #[cfg(not(feature = "rest"))]
+        Err(Error::configuration("REST feature is required"))
     }
 
     /// Revokes a specific session.
@@ -368,9 +452,17 @@ impl SessionsClient {
     /// client.account().sessions().revoke("ses_abc123").await?;
     /// ```
     pub async fn revoke(&self, session_id: impl Into<String>) -> Result<(), Error> {
-        let _ = (&self.client, session_id.into());
-        // TODO: Implement actual API call via transport
-        Ok(())
+        let session_id = session_id.into();
+        #[cfg(feature = "rest")]
+        {
+            let path = format!("/control/v1/users/sessions/{}", session_id);
+            return self.client.inner().control_delete(&path).await;
+        }
+        #[cfg(not(feature = "rest"))]
+        {
+            let _ = session_id;
+            Err(Error::configuration("REST feature is required"))
+        }
     }
 
     /// Revokes all sessions except the current one.
@@ -382,9 +474,17 @@ impl SessionsClient {
     /// client.account().sessions().revoke_all_others().await?;
     /// ```
     pub async fn revoke_all_others(&self) -> Result<(), Error> {
-        // TODO: Implement actual API call via transport
-        let _ = &self.client;
-        Ok(())
+        #[cfg(feature = "rest")]
+        {
+            let _: serde_json::Value = self
+                .client
+                .inner()
+                .control_post_empty("/control/v1/users/sessions/revoke-others")
+                .await?;
+            Ok(())
+        }
+        #[cfg(not(feature = "rest"))]
+        Err(Error::configuration("REST feature is required"))
     }
 
     /// Revokes all sessions including the current one.
@@ -398,9 +498,17 @@ impl SessionsClient {
     /// client.account().sessions().revoke_all().await?;
     /// ```
     pub async fn revoke_all(&self) -> Result<(), Error> {
-        // TODO: Implement actual API call via transport
-        let _ = &self.client;
-        Ok(())
+        #[cfg(feature = "rest")]
+        {
+            let _: serde_json::Value = self
+                .client
+                .inner()
+                .control_post_empty("/control/v1/users/sessions/revoke-all")
+                .await?;
+            Ok(())
+        }
+        #[cfg(not(feature = "rest"))]
+        Err(Error::configuration("REST feature is required"))
     }
 }
 
@@ -457,110 +565,6 @@ mod tests {
         let req = ChangePasswordRequest::new("old", "new");
         assert_eq!(req.current_password, "old");
         assert_eq!(req.new_password, "new");
-    }
-
-    #[tokio::test]
-    async fn test_account_client_get() {
-        let client = create_test_client().await;
-        let account = AccountClient::new(client);
-        let info = account.get().await.unwrap();
-        assert!(!info.id.is_empty());
-        assert!(info.status.is_active());
-    }
-
-    #[tokio::test]
-    async fn test_account_client_update() {
-        let client = create_test_client().await;
-        let account = AccountClient::new(client);
-        let request = UpdateAccountRequest::new().with_name("Test User");
-        let info = account.update(request).await.unwrap();
-        assert!(!info.id.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_account_client_change_password() {
-        let client = create_test_client().await;
-        let account = AccountClient::new(client);
-        let request = ChangePasswordRequest::new("old", "new");
-        let result = account.change_password(request).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_emails_client_list() {
-        let client = create_test_client().await;
-        let account = AccountClient::new(client);
-        let emails = account.emails().list().await.unwrap();
-        assert!(emails.items.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_emails_client_add() {
-        let client = create_test_client().await;
-        let account = AccountClient::new(client);
-        let email = account.emails().add("test@example.com").await.unwrap();
-        assert_eq!(email.address, "test@example.com");
-        assert!(!email.verified);
-        assert!(!email.primary);
-    }
-
-    #[tokio::test]
-    async fn test_emails_client_remove() {
-        let client = create_test_client().await;
-        let account = AccountClient::new(client);
-        let result = account.emails().remove("test@example.com").await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_emails_client_set_primary() {
-        let client = create_test_client().await;
-        let account = AccountClient::new(client);
-        let result = account.emails().set_primary("test@example.com").await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_emails_client_resend_verification() {
-        let client = create_test_client().await;
-        let account = AccountClient::new(client);
-        let result = account
-            .emails()
-            .resend_verification("test@example.com")
-            .await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_sessions_client_list() {
-        let client = create_test_client().await;
-        let account = AccountClient::new(client);
-        let sessions = account.sessions().list().await.unwrap();
-        assert!(sessions.items.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_sessions_client_revoke() {
-        let client = create_test_client().await;
-        let account = AccountClient::new(client);
-        let result = account.sessions().revoke("ses_abc123").await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_sessions_client_revoke_all_others() {
-        let client = create_test_client().await;
-        let account = AccountClient::new(client);
-        let result = account.sessions().revoke_all_others().await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_sessions_client_revoke_all() {
-        let client = create_test_client().await;
-        let account = AccountClient::new(client);
-        let result = account.sessions().revoke_all().await;
-        assert!(result.is_ok());
     }
 
     #[tokio::test]

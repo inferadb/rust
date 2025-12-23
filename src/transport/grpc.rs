@@ -24,8 +24,8 @@ use url::Url;
 use crate::config::{RetryConfig, TlsConfig};
 use crate::transport::traits::{
     CheckRequest, CheckResponse, GrpcStats, ListRelationshipsResponse, ListResourcesResponse,
-    ListSubjectsResponse, PoolConfig, Transport, TransportClient, TransportStats, WriteRequest,
-    WriteResponse,
+    ListSubjectsResponse, PoolConfig, SimulateRequest, SimulateResponse, Transport,
+    TransportClient, TransportStats, WriteRequest, WriteResponse,
 };
 use crate::types::Relationship;
 use crate::Error;
@@ -262,6 +262,15 @@ impl TransportClient for GrpcTransport {
 
     async fn health_check(&self) -> Result<(), Error> {
         // Health check also returns unimplemented for now
+        Err(Self::unimplemented_error())
+    }
+
+    async fn simulate(&self, _request: SimulateRequest) -> Result<SimulateResponse, Error> {
+        let mut stats = self.stats.write();
+        stats.requests_sent += 1;
+        stats.requests_failed += 1;
+        drop(stats);
+
         Err(Self::unimplemented_error())
     }
 }

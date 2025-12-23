@@ -77,7 +77,7 @@ impl MembersClient {
     #[cfg(feature = "rest")]
     pub async fn get(&self, user_id: impl Into<String>) -> Result<MemberInfo, Error> {
         let path = format!(
-            "/v1/organizations/{}/members/{}",
+            "/control/v1/organizations/{}/members/{}",
             self.organization_id,
             user_id.into()
         );
@@ -103,7 +103,7 @@ impl MembersClient {
     /// ```
     #[cfg(feature = "rest")]
     pub async fn invite(&self, request: InviteMemberRequest) -> Result<InvitationInfo, Error> {
-        let path = format!("/v1/organizations/{}/invitations", self.organization_id);
+        let path = format!("/control/v1/organizations/{}/invitations", self.organization_id);
         self.client.inner().control_post(&path, &request).await
     }
 
@@ -131,7 +131,7 @@ impl MembersClient {
         request: UpdateMemberRequest,
     ) -> Result<MemberInfo, Error> {
         let path = format!(
-            "/v1/organizations/{}/members/{}",
+            "/control/v1/organizations/{}/members/{}",
             self.organization_id,
             user_id.into()
         );
@@ -160,7 +160,7 @@ impl MembersClient {
     #[cfg(feature = "rest")]
     pub async fn remove(&self, user_id: impl Into<String>) -> Result<(), Error> {
         let path = format!(
-            "/v1/organizations/{}/members/{}",
+            "/control/v1/organizations/{}/members/{}",
             self.organization_id,
             user_id.into()
         );
@@ -243,7 +243,7 @@ impl InvitationsClient {
     #[cfg(feature = "rest")]
     pub async fn get(&self, invitation_id: impl Into<String>) -> Result<InvitationInfo, Error> {
         let path = format!(
-            "/v1/organizations/{}/invitations/{}",
+            "/control/v1/organizations/{}/invitations/{}",
             self.organization_id,
             invitation_id.into()
         );
@@ -268,7 +268,7 @@ impl InvitationsClient {
     #[cfg(feature = "rest")]
     pub async fn resend(&self, invitation_id: impl Into<String>) -> Result<(), Error> {
         let path = format!(
-            "/v1/organizations/{}/invitations/{}/resend",
+            "/control/v1/organizations/{}/invitations/{}/resend",
             self.organization_id,
             invitation_id.into()
         );
@@ -293,7 +293,7 @@ impl InvitationsClient {
     #[cfg(feature = "rest")]
     pub async fn revoke(&self, invitation_id: impl Into<String>) -> Result<(), Error> {
         let path = format!(
-            "/v1/organizations/{}/invitations/{}",
+            "/control/v1/organizations/{}/invitations/{}",
             self.organization_id,
             invitation_id.into()
         );
@@ -545,7 +545,7 @@ impl ListMembersRequest {
 
     #[cfg(feature = "rest")]
     async fn execute(self) -> Result<Page<MemberInfo>, Error> {
-        let mut path = format!("/v1/organizations/{}/members", self.organization_id);
+        let mut path = format!("/control/v1/organizations/{}/members", self.organization_id);
         let mut query_parts = Vec::new();
 
         if let Some(limit) = self.limit {
@@ -619,7 +619,7 @@ impl ListInvitationsRequest {
 
     #[cfg(feature = "rest")]
     async fn execute(self) -> Result<Page<InvitationInfo>, Error> {
-        let mut path = format!("/v1/organizations/{}/invitations", self.organization_id);
+        let mut path = format!("/control/v1/organizations/{}/invitations", self.organization_id);
         let mut query_parts = Vec::new();
 
         if let Some(limit) = self.limit {
@@ -727,161 +727,5 @@ mod tests {
 
         assert_eq!(req.role, Some(OrgRole::Admin));
         assert_eq!(req.status, Some(MemberStatus::Suspended));
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_members_client_accessors() {
-        let client = create_test_client().await;
-        let members = MembersClient::new(client, "org_test");
-        assert_eq!(members.organization_id(), "org_test");
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_members_client_debug() {
-        let client = create_test_client().await;
-        let members = MembersClient::new(client, "org_test");
-        let debug = format!("{:?}", members);
-        assert!(debug.contains("MembersClient"));
-        assert!(debug.contains("org_test"));
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_members_list() {
-        let client = create_test_client().await;
-        let members = MembersClient::new(client, "org_test");
-        let page = members.list().await.unwrap();
-        assert!(page.items.is_empty());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_members_list_with_options() {
-        let client = create_test_client().await;
-        let members = MembersClient::new(client, "org_test");
-        let page = members
-            .list()
-            .limit(10)
-            .cursor("cursor123")
-            .sort(SortOrder::Ascending)
-            .role(OrgRole::Admin)
-            .await
-            .unwrap();
-        assert!(page.items.is_empty());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_members_get() {
-        let client = create_test_client().await;
-        let members = MembersClient::new(client, "org_test");
-        let info = members.get("user_abc123").await.unwrap();
-        assert_eq!(info.user_id, "user_abc123");
-        assert_eq!(info.organization_id, "org_test");
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_members_update() {
-        let client = create_test_client().await;
-        let members = MembersClient::new(client, "org_test");
-        let request = UpdateMemberRequest::new()
-            .with_role(OrgRole::Admin)
-            .with_status(MemberStatus::Suspended);
-        let info = members.update("user_abc123", request).await.unwrap();
-        assert_eq!(info.user_id, "user_abc123");
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_members_remove() {
-        let client = create_test_client().await;
-        let members = MembersClient::new(client, "org_test");
-        let result = members.remove("user_abc123").await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_members_invite() {
-        let client = create_test_client().await;
-        let members = MembersClient::new(client, "org_test");
-        let request =
-            InviteMemberRequest::new("alice@example.com", OrgRole::Member).with_message("Welcome!");
-        let info = members.invite(request).await.unwrap();
-        assert_eq!(info.email, "alice@example.com");
-        assert_eq!(info.role, OrgRole::Member);
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_invitations_client_accessors() {
-        let client = create_test_client().await;
-        let invitations = InvitationsClient::new(client, "org_test");
-        assert_eq!(invitations.organization_id(), "org_test");
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_invitations_client_debug() {
-        let client = create_test_client().await;
-        let invitations = InvitationsClient::new(client, "org_test");
-        let debug = format!("{:?}", invitations);
-        assert!(debug.contains("InvitationsClient"));
-        assert!(debug.contains("org_test"));
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_invitations_list() {
-        let client = create_test_client().await;
-        let invitations = InvitationsClient::new(client, "org_test");
-        let page = invitations.list().await.unwrap();
-        assert!(page.items.is_empty());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_invitations_list_with_options() {
-        let client = create_test_client().await;
-        let invitations = InvitationsClient::new(client, "org_test");
-        let page = invitations
-            .list()
-            .limit(10)
-            .cursor("cursor123")
-            .status(InvitationStatus::Pending)
-            .await
-            .unwrap();
-        assert!(page.items.is_empty());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_invitations_get() {
-        let client = create_test_client().await;
-        let invitations = InvitationsClient::new(client, "org_test");
-        let info = invitations.get("inv_abc123").await.unwrap();
-        assert_eq!(info.id, "inv_abc123");
-        assert_eq!(info.organization_id, "org_test");
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_invitations_revoke() {
-        let client = create_test_client().await;
-        let invitations = InvitationsClient::new(client, "org_test");
-        let result = invitations.revoke("inv_abc123").await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running server"]
-    async fn test_invitations_resend() {
-        let client = create_test_client().await;
-        let invitations = InvitationsClient::new(client, "org_test");
-        let result = invitations.resend("inv_abc123").await;
-        assert!(result.is_ok());
     }
 }

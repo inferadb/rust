@@ -10,7 +10,8 @@ use parking_lot::RwLock;
 
 use super::traits::{
     CheckRequest, CheckResponse, ListRelationshipsResponse, ListResourcesResponse,
-    ListSubjectsResponse, Transport, TransportClient, TransportStats, WriteRequest, WriteResponse,
+    ListSubjectsResponse, SimulateRequest, SimulateResponse, Transport, TransportClient,
+    TransportStats, WriteRequest, WriteResponse,
 };
 use crate::types::{ConsistencyToken, Decision, Relationship};
 use crate::Error;
@@ -272,6 +273,37 @@ impl TransportClient for MockTransport {
     async fn health_check(&self) -> Result<(), Error> {
         self.check_failure()?;
         Ok(())
+    }
+
+    async fn simulate(&self, request: SimulateRequest) -> Result<SimulateResponse, Error> {
+        self.increment_requests();
+        self.check_failure()?;
+
+        // Build a temporary relationship set with additions and without removals
+        let current_relationships = self.relationships.read();
+        let mut simulated_relationships: Vec<_> = current_relationships
+            .iter()
+            .filter(|rel| {
+                !request
+                    .removals
+                    .iter()
+                    .any(|r| r.to_string() == rel.to_string())
+            })
+            .cloned()
+            .collect();
+        simulated_relationships.extend(request.additions.clone());
+
+        // Check if the subject has the permission on the resource in the simulated state
+        let allowed = simulated_relationships.iter().any(|rel| {
+            rel.resource() == request.resource
+                && rel.relation() == request.permission
+                && rel.subject() == request.subject
+        });
+
+        Ok(SimulateResponse {
+            allowed,
+            decision: Decision::new(allowed),
+        })
     }
 }
 

@@ -18,8 +18,8 @@ use crate::config::{RetryConfig, TlsConfig};
 use crate::error::ErrorKind;
 use crate::transport::traits::{
     CheckRequest, CheckResponse, ListRelationshipsResponse, ListResourcesResponse,
-    ListSubjectsResponse, PoolConfig, RestStats, Transport, TransportClient, TransportStats,
-    WriteRequest, WriteResponse,
+    ListSubjectsResponse, PoolConfig, RestStats, SimulateRequest, SimulateResponse, Transport,
+    TransportClient, TransportStats, WriteRequest, WriteResponse,
 };
 use crate::types::{ConsistencyToken, Decision, Relationship};
 use crate::Error;
@@ -843,6 +843,66 @@ impl TransportClient for RestTransport {
                 format!("Health check failed with status {}", response.status()),
             ))
         }
+    }
+
+    async fn simulate(&self, request: SimulateRequest) -> Result<SimulateResponse, Error> {
+        #[derive(Serialize)]
+        struct SimulateApiRequest {
+            subject: String,
+            permission: String,
+            resource: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            context: Option<serde_json::Value>,
+            #[serde(skip_serializing_if = "Vec::is_empty")]
+            additions: Vec<RelationshipDto>,
+            #[serde(skip_serializing_if = "Vec::is_empty")]
+            removals: Vec<RelationshipDto>,
+        }
+
+        #[derive(Deserialize)]
+        struct SimulateApiResponse {
+            allowed: bool,
+            #[serde(default)]
+            decision_id: Option<String>,
+        }
+
+        let context_value = request.context.map(|ctx| {
+            serde_json::to_value(ctx)
+                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()))
+        });
+
+        let api_request = SimulateApiRequest {
+            subject: request.subject,
+            permission: request.permission,
+            resource: request.resource,
+            context: context_value,
+            additions: request
+                .additions
+                .iter()
+                .map(|r| RelationshipDto {
+                    resource: r.resource().to_string(),
+                    relation: r.relation().to_string(),
+                    subject: r.subject().to_string(),
+                })
+                .collect(),
+            removals: request
+                .removals
+                .iter()
+                .map(|r| RelationshipDto {
+                    resource: r.resource().to_string(),
+                    relation: r.relation().to_string(),
+                    subject: r.subject().to_string(),
+                })
+                .collect(),
+        };
+
+        let api_response: SimulateApiResponse =
+            self.post("/access/v1/simulate", &api_request).await?;
+
+        Ok(SimulateResponse {
+            allowed: api_response.allowed,
+            decision: Decision::new(api_response.allowed),
+        })
     }
 }
 

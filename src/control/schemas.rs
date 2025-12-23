@@ -73,7 +73,7 @@ impl SchemasClient {
     #[cfg(feature = "rest")]
     pub async fn get_active(&self) -> Result<SchemaInfo, Error> {
         let path = format!(
-            "/v1/organizations/{}/vaults/{}/schemas/active",
+            "/control/v1/organizations/{}/vaults/{}/schemas/active",
             self.organization_id, self.vault_id
         );
         self.client.inner().control_get(&path).await
@@ -120,7 +120,7 @@ impl SchemasClient {
     pub async fn get(&self, version: impl Into<String>) -> Result<SchemaInfo, Error> {
         let version = version.into();
         let path = format!(
-            "/v1/organizations/{}/vaults/{}/schemas/{}",
+            "/control/v1/organizations/{}/vaults/{}/schemas/{}",
             self.organization_id, self.vault_id, version
         );
         self.client.inner().control_get(&path).await
@@ -156,7 +156,7 @@ impl SchemasClient {
     #[cfg(feature = "rest")]
     pub async fn push(&self, content: impl Into<String>) -> Result<PushSchemaResult, Error> {
         let path = format!(
-            "/v1/organizations/{}/vaults/{}/schemas",
+            "/control/v1/organizations/{}/vaults/{}/schemas",
             self.organization_id, self.vault_id
         );
         let body = PushSchemaRequest {
@@ -189,7 +189,7 @@ impl SchemasClient {
     #[cfg(feature = "rest")]
     pub async fn validate(&self, content: impl Into<String>) -> Result<ValidationResult, Error> {
         let path = format!(
-            "/v1/organizations/{}/vaults/{}/schemas/validate",
+            "/control/v1/organizations/{}/vaults/{}/schemas/validate",
             self.organization_id, self.vault_id
         );
         let body = ValidateSchemaRequest {
@@ -220,7 +220,7 @@ impl SchemasClient {
     pub async fn activate(&self, version: impl Into<String>) -> Result<SchemaInfo, Error> {
         let version = version.into();
         let path = format!(
-            "/v1/organizations/{}/vaults/{}/schemas/{}/activate",
+            "/control/v1/organizations/{}/vaults/{}/schemas/{}/activate",
             self.organization_id, self.vault_id, version
         );
         self.client.inner().control_post_empty(&path).await
@@ -248,7 +248,7 @@ impl SchemasClient {
     pub async fn delete(&self, version: impl Into<String>) -> Result<(), Error> {
         let version = version.into();
         let path = format!(
-            "/v1/organizations/{}/vaults/{}/schemas/{}",
+            "/control/v1/organizations/{}/vaults/{}/schemas/{}",
             self.organization_id, self.vault_id, version
         );
         self.client.inner().control_delete(&path).await
@@ -282,7 +282,7 @@ impl SchemasClient {
         let from = from_version.into();
         let to = to_version.into();
         let path = format!(
-            "/v1/organizations/{}/vaults/{}/schemas/diff?from={}&to={}",
+            "/control/v1/organizations/{}/vaults/{}/schemas/diff?from={}&to={}",
             self.organization_id, self.vault_id, from, to
         );
         self.client.inner().control_get(&path).await
@@ -532,7 +532,7 @@ impl ListSchemasRequest {
     #[cfg(feature = "rest")]
     async fn execute(self) -> Result<Page<SchemaInfo>, Error> {
         let mut path = format!(
-            "/v1/organizations/{}/vaults/{}/schemas",
+            "/control/v1/organizations/{}/vaults/{}/schemas",
             self.organization_id, self.vault_id
         );
 
