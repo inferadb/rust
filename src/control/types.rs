@@ -121,4 +121,10 @@ mod tests {
         assert!(SortOrder::Descending.is_descending());
         assert_eq!(SortOrder::default(), SortOrder::Ascending);
     }
+
+    #[test]
+    fn test_sort_order_as_str() {
+        assert_eq!(SortOrder::Ascending.as_str(), "asc");
+        assert_eq!(SortOrder::Descending.as_str(), "desc");
+    }
 }

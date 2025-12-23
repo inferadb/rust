@@ -1046,4 +1046,44 @@ mod tests {
         assert!(diff.current_allowed);
         assert!(diff.simulated_allowed);
     }
+
+    #[test]
+    fn test_simulation_diff_summary_no_change_allowed() {
+        // Test NoChange summary when current_allowed is true
+        let diff = SimulationDiff {
+            subject: "user:alice".to_string(),
+            permission: "view".to_string(),
+            resource: "doc:1".to_string(),
+            current_allowed: true,
+            simulated_allowed: true,
+            change: SimulationChange::NoChange,
+            hypothetical_additions: vec![],
+            hypothetical_removals: vec![],
+        };
+
+        let summary = diff.summary();
+        assert!(summary.contains("No change"));
+        assert!(summary.contains("can"));
+        assert!(summary.contains("view"));
+    }
+
+    #[test]
+    fn test_simulation_diff_summary_no_change_denied() {
+        // Test NoChange summary when current_allowed is false
+        let diff = SimulationDiff {
+            subject: "user:bob".to_string(),
+            permission: "edit".to_string(),
+            resource: "doc:2".to_string(),
+            current_allowed: false,
+            simulated_allowed: false,
+            change: SimulationChange::NoChange,
+            hypothetical_additions: vec![],
+            hypothetical_removals: vec![],
+        };
+
+        let summary = diff.summary();
+        assert!(summary.contains("No change"));
+        assert!(summary.contains("cannot"));
+        assert!(summary.contains("edit"));
+    }
 }

@@ -821,4 +821,132 @@ mod tests {
         let req = UpdateApiClientRequest::new().with_status(ClientStatus::Suspended);
         assert_eq!(req.status, Some(ClientStatus::Suspended));
     }
+
+    // Additional tests for Clone implementations and serde
+    #[tokio::test]
+    async fn test_api_clients_client_clone() {
+        let client = create_test_client().await;
+        let clients = ApiClientsClient::new(client, "org_test");
+        let cloned = clients.clone();
+        assert!(format!("{:?}", cloned).contains("ApiClientsClient"));
+    }
+
+    #[tokio::test]
+    async fn test_certificates_client_clone() {
+        let client = create_test_client().await;
+        let clients = ApiClientsClient::new(client, "org_test");
+        let certs = clients.certificates("cli_abc123");
+        let cloned = certs.clone();
+        assert!(format!("{:?}", cloned).contains("CertificatesClient"));
+    }
+
+    #[test]
+    fn test_api_client_serde() {
+        let json = r#"{
+            "id": "cli_abc123",
+            "name": "my-service",
+            "description": "Test service",
+            "status": "active",
+            "permissions": ["read:vaults"],
+            "rate_limit": 100,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let api_client: ApiClient = serde_json::from_str(json).unwrap();
+        assert_eq!(api_client.id, "cli_abc123");
+        assert_eq!(api_client.name, "my-service");
+        assert_eq!(api_client.status, ClientStatus::Active);
+        assert_eq!(api_client.rate_limit, Some(100));
+    }
+
+    #[test]
+    fn test_api_client_clone() {
+        let api_client = ApiClient {
+            id: "cli_123".to_string(),
+            name: "test".to_string(),
+            description: None,
+            status: ClientStatus::Revoked,
+            permissions: vec![],
+            rate_limit: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let cloned = api_client.clone();
+        assert_eq!(cloned.id, "cli_123");
+        assert_eq!(cloned.status, ClientStatus::Revoked);
+    }
+
+    #[test]
+    fn test_client_certificate_serde() {
+        let json = r#"{
+            "id": "cert_abc123",
+            "fingerprint": "SHA256:abc123",
+            "algorithm": "Ed25519",
+            "created_at": "2024-01-01T00:00:00Z",
+            "expires_at": "2025-01-01T00:00:00Z",
+            "active": true
+        }"#;
+        let cert: ClientCertificate = serde_json::from_str(json).unwrap();
+        assert_eq!(cert.id, "cert_abc123");
+        assert_eq!(cert.algorithm, "Ed25519");
+        assert!(cert.active);
+    }
+
+    #[test]
+    fn test_client_certificate_clone() {
+        let cert = ClientCertificate {
+            id: "cert_123".to_string(),
+            fingerprint: "SHA256:fp".to_string(),
+            algorithm: "Ed25519".to_string(),
+            created_at: chrono::Utc::now(),
+            expires_at: Some(chrono::Utc::now()),
+            active: false,
+        };
+        let cloned = cert.clone();
+        assert_eq!(cloned.id, "cert_123");
+        assert!(!cloned.active);
+    }
+
+    #[test]
+    fn test_client_status_serde() {
+        let statuses = vec![
+            (ClientStatus::Active, "\"active\""),
+            (ClientStatus::Suspended, "\"suspended\""),
+            (ClientStatus::Revoked, "\"revoked\""),
+        ];
+        for (status, expected) in statuses {
+            let json = serde_json::to_string(&status).unwrap();
+            assert_eq!(json, expected);
+            let parsed: ClientStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, status);
+        }
+    }
+
+    #[test]
+    fn test_create_api_client_request_clone() {
+        let req = CreateApiClientRequest::new("test");
+        let cloned = req.clone();
+        assert_eq!(cloned.name, "test");
+    }
+
+    #[test]
+    fn test_update_api_client_request_clone() {
+        let req = UpdateApiClientRequest::new().with_name("new");
+        let cloned = req.clone();
+        assert_eq!(cloned.name, Some("new".to_string()));
+    }
+
+    #[test]
+    fn test_add_certificate_request_clone() {
+        let req = AddCertificateRequest::new("key");
+        let cloned = req.clone();
+        assert_eq!(cloned.public_key, "key");
+    }
+
+    #[test]
+    fn test_rotate_certificate_request_clone() {
+        let req = RotateCertificateRequest::new("key");
+        let cloned = req.clone();
+        assert_eq!(cloned.public_key, "key");
+    }
 }

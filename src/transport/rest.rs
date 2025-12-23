@@ -1661,4 +1661,216 @@ mod wiremock_tests {
             ErrorKind::RateLimited
         ));
     }
+
+    #[tokio::test]
+    async fn test_internal_server_error() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/evaluate"))
+            .respond_with(ResponseTemplate::new(500).set_body_json(serde_json::json!({
+                "error": "Internal server error"
+            })))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let request = CheckRequest {
+            subject: "user:alice".to_string(),
+            permission: "view".to_string(),
+            resource: "document:readme".to_string(),
+            context: None,
+            consistency: None,
+            trace: false,
+        };
+
+        let result = transport.check(request).await;
+        assert!(result.is_err());
+        // 500-599 errors are mapped to ServiceUnavailable in rest.rs
+        assert!(matches!(
+            result.unwrap_err().kind(),
+            ErrorKind::ServiceUnavailable
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_forbidden_error() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/evaluate"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+                "error": "Forbidden"
+            })))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let request = CheckRequest {
+            subject: "user:alice".to_string(),
+            permission: "view".to_string(),
+            resource: "document:readme".to_string(),
+            context: None,
+            consistency: None,
+            trace: false,
+        };
+
+        let result = transport.check(request).await;
+        assert!(result.is_err());
+        // 403 is mapped to PermissionDenied in rest.rs
+        assert!(matches!(
+            result.unwrap_err().kind(),
+            ErrorKind::PermissionDenied
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_write_conflict() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/relationships/write"))
+            .respond_with(ResponseTemplate::new(409).set_body_json(serde_json::json!({
+                "error": "Relationship already exists"
+            })))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let relationship = Relationship::new("document:readme", "viewer", "user:alice");
+        let request = WriteRequest {
+            relationship: relationship.into_owned(),
+            idempotency_key: None,
+        };
+
+        let result = transport.write(request).await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err().kind(),
+            ErrorKind::Conflict
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_service_unavailable() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/healthz"))
+            .respond_with(ResponseTemplate::new(503).set_body_json(serde_json::json!({
+                "error": "Service unavailable"
+            })))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let result = transport.health_check().await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err().kind(),
+            ErrorKind::ServiceUnavailable
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_bad_request() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/evaluate"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                "error": "Invalid request format"
+            })))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let request = CheckRequest {
+            subject: "".to_string(), // Invalid
+            permission: "view".to_string(),
+            resource: "document:readme".to_string(),
+            context: None,
+            consistency: None,
+            trace: false,
+        };
+
+        let result = transport.check(request).await;
+        assert!(result.is_err());
+        // 400 errors are mapped to InvalidRequest in rest.rs
+        assert!(matches!(
+            result.unwrap_err().kind(),
+            ErrorKind::InvalidRequest
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_simulate_denied() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/simulate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "allowed": false,
+                "decision_id": "sim_456"
+            })))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let request = SimulateRequest {
+            subject: "user:bob".to_string(),
+            permission: "edit".to_string(),
+            resource: "document:readme".to_string(),
+            context: None,
+            additions: vec![],
+            removals: vec![],
+        };
+
+        let result = transport.simulate(request).await;
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert!(!response.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_check_batch_success() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/evaluate"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string("data: {\"decision\": \"allow\", \"index\": 0}\n\ndata: {\"decision\": \"deny\", \"index\": 1}\n\n"),
+            )
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let requests = vec![
+            CheckRequest {
+                subject: "user:alice".to_string(),
+                permission: "view".to_string(),
+                resource: "doc:1".to_string(),
+                context: None,
+                consistency: None,
+                trace: false,
+            },
+            CheckRequest {
+                subject: "user:bob".to_string(),
+                permission: "edit".to_string(),
+                resource: "doc:2".to_string(),
+                context: None,
+                consistency: None,
+                trace: false,
+            },
+        ];
+
+        let result = transport.check_batch(requests).await;
+        assert!(result.is_ok());
+        let responses = result.unwrap();
+        assert_eq!(responses.len(), 2);
+        assert!(responses[0].allowed);
+        assert!(!responses[1].allowed);
+    }
 }

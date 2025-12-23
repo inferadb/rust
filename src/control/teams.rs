@@ -610,4 +610,106 @@ mod tests {
 
         // Just verify the builder compiles and returns a request
     }
+
+    // Additional tests for Clone implementations and serde
+    #[tokio::test]
+    async fn test_teams_client_clone() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+        let cloned = teams.clone();
+        assert_eq!(cloned.organization_id(), "org_test");
+    }
+
+    #[test]
+    fn test_team_info_serde() {
+        let json = r#"{
+            "id": "team_abc123",
+            "organization_id": "org_test",
+            "name": "Engineering",
+            "description": "Backend team",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+            "member_count": 5
+        }"#;
+        let team: TeamInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(team.id, "team_abc123");
+        assert_eq!(team.name, "Engineering");
+        assert_eq!(team.description, Some("Backend team".to_string()));
+        assert_eq!(team.member_count, 5);
+    }
+
+    #[test]
+    fn test_team_info_clone() {
+        let team = TeamInfo {
+            id: "team_123".to_string(),
+            organization_id: "org_123".to_string(),
+            name: "Test Team".to_string(),
+            description: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            member_count: 0,
+        };
+        let cloned = team.clone();
+        assert_eq!(cloned.id, "team_123");
+        assert_eq!(cloned.name, "Test Team");
+    }
+
+    #[test]
+    fn test_team_member_info_serde() {
+        let json = r#"{
+            "user_id": "user_abc123",
+            "email": "test@example.com",
+            "name": "Alice",
+            "role": "admin",
+            "joined_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let member: TeamMemberInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(member.user_id, "user_abc123");
+        assert_eq!(member.email, "test@example.com");
+        assert_eq!(member.role, TeamRole::Admin);
+    }
+
+    #[test]
+    fn test_team_member_info_clone() {
+        let member = TeamMemberInfo {
+            user_id: "user_123".to_string(),
+            email: "test@test.com".to_string(),
+            name: Some("Test".to_string()),
+            role: TeamRole::Owner,
+            joined_at: chrono::Utc::now(),
+        };
+        let cloned = member.clone();
+        assert_eq!(cloned.user_id, "user_123");
+        assert_eq!(cloned.role, TeamRole::Owner);
+    }
+
+    #[test]
+    fn test_team_role_serde() {
+        let roles = vec![
+            (TeamRole::Owner, "\"owner\""),
+            (TeamRole::Admin, "\"admin\""),
+            (TeamRole::Member, "\"member\""),
+        ];
+        for (role, expected) in roles {
+            let json = serde_json::to_string(&role).unwrap();
+            assert_eq!(json, expected);
+            let parsed: TeamRole = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, role);
+        }
+    }
+
+    #[test]
+    fn test_create_team_request_clone() {
+        let req = CreateTeamRequest::new("Test").with_description("Desc");
+        let cloned = req.clone();
+        assert_eq!(cloned.name, "Test");
+        assert_eq!(cloned.description, Some("Desc".to_string()));
+    }
+
+    #[test]
+    fn test_update_team_request_clone() {
+        let req = UpdateTeamRequest::new().with_name("NewName");
+        let cloned = req.clone();
+        assert_eq!(cloned.name, Some("NewName".to_string()));
+    }
 }

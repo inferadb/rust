@@ -785,4 +785,108 @@ mod tests {
         assert_eq!(diff.to_version, "2");
         assert!(diff.is_backward_compatible);
     }
+
+    // Additional tests for uncovered code paths
+    #[test]
+    fn test_schema_status_activating() {
+        assert_eq!(SchemaStatus::Activating.to_string(), "activating");
+        assert!(!SchemaStatus::Activating.is_active());
+    }
+
+    #[tokio::test]
+    async fn test_schemas_client_clone() {
+        let client = create_test_client().await;
+        let schemas = SchemasClient::new(client, "org_test", "vlt_abc123");
+        let cloned = schemas.clone();
+        assert_eq!(cloned.organization_id(), "org_test");
+        assert_eq!(cloned.vault_id(), "vlt_abc123");
+    }
+
+    #[test]
+    fn test_schema_info_clone() {
+        let info = SchemaInfo {
+            id: "sch_123".to_string(),
+            vault_id: "vlt_abc".to_string(),
+            version: "1".to_string(),
+            content: "entity user {}".to_string(),
+            status: SchemaStatus::Active,
+            created_at: chrono::Utc::now(),
+            activated_at: Some(chrono::Utc::now()),
+        };
+        let cloned = info.clone();
+        assert_eq!(cloned.id, "sch_123");
+        assert_eq!(cloned.version, "1");
+    }
+
+    #[test]
+    fn test_push_schema_result_clone() {
+        let result = PushSchemaResult {
+            schema: SchemaInfo {
+                id: "sch_123".to_string(),
+                vault_id: "vlt_abc".to_string(),
+                version: "1".to_string(),
+                content: "entity user {}".to_string(),
+                status: SchemaStatus::Inactive,
+                created_at: chrono::Utc::now(),
+                activated_at: None,
+            },
+            validation: ValidationResult {
+                is_valid: true,
+                errors: vec![],
+                warnings: vec![],
+            },
+        };
+        let cloned = result.clone();
+        assert_eq!(cloned.schema.id, "sch_123");
+        assert!(cloned.validation.is_valid());
+    }
+
+    #[test]
+    fn test_validation_issue_clone() {
+        let issue = ValidationIssue {
+            line: 10,
+            column: 5,
+            message: "test error".to_string(),
+            code: "E001".to_string(),
+        };
+        let cloned = issue.clone();
+        assert_eq!(cloned.line, 10);
+        assert_eq!(cloned.column, 5);
+        assert_eq!(cloned.message, "test error");
+    }
+
+    #[test]
+    fn test_schema_diff_clone() {
+        let diff = SchemaDiff {
+            from_version: "1".to_string(),
+            to_version: "2".to_string(),
+            changes: vec![SchemaChange {
+                change_type: SchemaChangeType::EntityAdded,
+                description: "Added User entity".to_string(),
+                entity_type: Some("User".to_string()),
+                relation: None,
+                permission: None,
+                is_breaking: false,
+            }],
+            is_backward_compatible: true,
+        };
+        let cloned = diff.clone();
+        assert_eq!(cloned.from_version, "1");
+        assert_eq!(cloned.changes.len(), 1);
+    }
+
+    #[test]
+    fn test_schema_change_clone() {
+        let change = SchemaChange {
+            change_type: SchemaChangeType::RelationRemoved,
+            description: "Removed viewer relation".to_string(),
+            entity_type: Some("Document".to_string()),
+            relation: Some("viewer".to_string()),
+            permission: None,
+            is_breaking: true,
+        };
+        let cloned = change.clone();
+        assert_eq!(cloned.change_type, SchemaChangeType::RelationRemoved);
+        assert!(cloned.is_breaking);
+    }
 }

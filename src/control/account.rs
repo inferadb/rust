@@ -578,4 +578,157 @@ mod tests {
         assert!(format!("{:?}", account.emails()).contains("EmailsClient"));
         assert!(format!("{:?}", account.sessions()).contains("SessionsClient"));
     }
+
+    // Additional tests for Clone implementations
+    #[tokio::test]
+    async fn test_account_client_clone() {
+        let client = create_test_client().await;
+        let account = AccountClient::new(client);
+        let _cloned = account.clone();
+    }
+
+    #[tokio::test]
+    async fn test_emails_client_clone() {
+        let client = create_test_client().await;
+        let account = AccountClient::new(client);
+        let emails = account.emails();
+        let _cloned = emails.clone();
+    }
+
+    #[tokio::test]
+    async fn test_sessions_client_clone() {
+        let client = create_test_client().await;
+        let account = AccountClient::new(client);
+        let sessions = account.sessions();
+        let _cloned = sessions.clone();
+    }
+
+    // Test Account type serialization
+    #[test]
+    fn test_account_serde() {
+        let json = r#"{
+            "id": "usr_abc123",
+            "email": "test@example.com",
+            "name": "Test User",
+            "status": "active",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+            "mfa_enabled": false
+        }"#;
+        let account: Account = serde_json::from_str(json).unwrap();
+        assert_eq!(account.id, "usr_abc123");
+        assert_eq!(account.email, "test@example.com");
+        assert_eq!(account.name, Some("Test User".to_string()));
+        assert!(account.status.is_active());
+        assert!(!account.mfa_enabled);
+    }
+
+    #[test]
+    fn test_account_clone() {
+        let account = Account {
+            id: "usr_abc123".to_string(),
+            email: "test@example.com".to_string(),
+            name: Some("Test".to_string()),
+            status: AccountStatus::Active,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            mfa_enabled: true,
+        };
+        let cloned = account.clone();
+        assert_eq!(cloned.id, "usr_abc123");
+        assert!(cloned.mfa_enabled);
+    }
+
+    // Test Email type
+    #[test]
+    fn test_email_serde() {
+        let json = r#"{
+            "address": "test@example.com",
+            "verified": true,
+            "primary": true,
+            "created_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let email: Email = serde_json::from_str(json).unwrap();
+        assert_eq!(email.address, "test@example.com");
+        assert!(email.verified);
+        assert!(email.primary);
+    }
+
+    #[test]
+    fn test_email_clone() {
+        let email = Email {
+            address: "test@example.com".to_string(),
+            verified: false,
+            primary: false,
+            created_at: chrono::Utc::now(),
+        };
+        let cloned = email.clone();
+        assert_eq!(cloned.address, "test@example.com");
+        assert!(!cloned.verified);
+    }
+
+    // Test Session type
+    #[test]
+    fn test_session_serde() {
+        let json = r#"{
+            "id": "ses_abc123",
+            "created_at": "2024-01-01T00:00:00Z",
+            "expires_at": "2024-02-01T00:00:00Z",
+            "ip_address": "192.168.1.1",
+            "user_agent": "Mozilla/5.0",
+            "current": true
+        }"#;
+        let session: Session = serde_json::from_str(json).unwrap();
+        assert_eq!(session.id, "ses_abc123");
+        assert!(session.current);
+        assert_eq!(session.ip_address, Some("192.168.1.1".to_string()));
+        assert_eq!(session.user_agent, Some("Mozilla/5.0".to_string()));
+    }
+
+    #[test]
+    fn test_session_clone() {
+        let session = Session {
+            id: "ses_abc".to_string(),
+            created_at: chrono::Utc::now(),
+            expires_at: chrono::Utc::now(),
+            ip_address: None,
+            user_agent: None,
+            current: false,
+        };
+        let cloned = session.clone();
+        assert_eq!(cloned.id, "ses_abc");
+        assert!(!cloned.current);
+    }
+
+    // Test UpdateAccountRequest serialization
+    #[test]
+    fn test_update_account_request_serde() {
+        let req = UpdateAccountRequest::new().with_name("New Name");
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("New Name"));
+    }
+
+    // Test ChangePasswordRequest serialization
+    #[test]
+    fn test_change_password_request_serde() {
+        let req = ChangePasswordRequest::new("old_pass", "new_pass");
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("old_pass"));
+        assert!(json.contains("new_pass"));
+    }
+
+    #[test]
+    fn test_change_password_request_clone() {
+        let req = ChangePasswordRequest::new("old", "new");
+        let cloned = req.clone();
+        assert_eq!(cloned.current_password, "old");
+        assert_eq!(cloned.new_password, "new");
+    }
+
+    #[test]
+    fn test_update_account_request_clone() {
+        let req = UpdateAccountRequest::new().with_name("Test");
+        let cloned = req.clone();
+        assert_eq!(cloned.name, Some("Test".to_string()));
+    }
 }

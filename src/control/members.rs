@@ -797,4 +797,153 @@ mod tests {
 
         // Just verify the builder compiles and returns a request
     }
+
+    // Additional tests for Clone implementations and serde
+    #[tokio::test]
+    async fn test_members_client_clone() {
+        let client = create_test_client().await;
+        let members = MembersClient::new(client, "org_test");
+        let cloned = members.clone();
+        assert_eq!(cloned.organization_id(), "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_invitations_client_clone() {
+        let client = create_test_client().await;
+        let invitations = InvitationsClient::new(client, "org_test");
+        let cloned = invitations.clone();
+        assert_eq!(cloned.organization_id(), "org_test");
+    }
+
+    #[test]
+    fn test_member_info_serde() {
+        let json = r#"{
+            "user_id": "user_xyz",
+            "organization_id": "org_test",
+            "email": "test@example.com",
+            "name": "Alice",
+            "role": "admin",
+            "status": "active",
+            "joined_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let member: MemberInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(member.user_id, "user_xyz");
+        assert_eq!(member.email, "test@example.com");
+        assert_eq!(member.role, OrgRole::Admin);
+        assert_eq!(member.status, MemberStatus::Active);
+    }
+
+    #[test]
+    fn test_member_info_clone() {
+        let member = MemberInfo {
+            user_id: "user_123".to_string(),
+            organization_id: "org_123".to_string(),
+            email: "test@test.com".to_string(),
+            name: Some("Test".to_string()),
+            role: OrgRole::Owner,
+            status: MemberStatus::Active,
+            joined_at: chrono::Utc::now(),
+        };
+        let cloned = member.clone();
+        assert_eq!(cloned.user_id, "user_123");
+        assert_eq!(cloned.role, OrgRole::Owner);
+    }
+
+    #[test]
+    fn test_invitation_info_serde() {
+        let json = r#"{
+            "id": "inv_abc123",
+            "organization_id": "org_test",
+            "email": "invited@example.com",
+            "role": "member",
+            "status": "pending",
+            "created_at": "2024-01-01T00:00:00Z",
+            "expires_at": "2024-02-01T00:00:00Z"
+        }"#;
+        let inv: InvitationInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(inv.id, "inv_abc123");
+        assert_eq!(inv.email, "invited@example.com");
+        assert_eq!(inv.role, OrgRole::Member);
+        assert_eq!(inv.status, InvitationStatus::Pending);
+    }
+
+    #[test]
+    fn test_invitation_info_clone() {
+        let inv = InvitationInfo {
+            id: "inv_123".to_string(),
+            organization_id: "org_123".to_string(),
+            email: "test@test.com".to_string(),
+            role: OrgRole::Billing,
+            status: InvitationStatus::Accepted,
+            created_at: chrono::Utc::now(),
+            expires_at: chrono::Utc::now(),
+        };
+        let cloned = inv.clone();
+        assert_eq!(cloned.id, "inv_123");
+        assert_eq!(cloned.role, OrgRole::Billing);
+        assert_eq!(cloned.status, InvitationStatus::Accepted);
+    }
+
+    #[test]
+    fn test_org_role_serde() {
+        let roles = vec![
+            (OrgRole::Owner, "\"owner\""),
+            (OrgRole::Admin, "\"admin\""),
+            (OrgRole::Member, "\"member\""),
+            (OrgRole::Billing, "\"billing\""),
+            (OrgRole::Viewer, "\"viewer\""),
+        ];
+        for (role, expected) in roles {
+            let json = serde_json::to_string(&role).unwrap();
+            assert_eq!(json, expected);
+            let parsed: OrgRole = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, role);
+        }
+    }
+
+    #[test]
+    fn test_member_status_serde() {
+        let statuses = vec![
+            (MemberStatus::Active, "\"active\""),
+            (MemberStatus::Suspended, "\"suspended\""),
+            (MemberStatus::Deactivated, "\"deactivated\""),
+        ];
+        for (status, expected) in statuses {
+            let json = serde_json::to_string(&status).unwrap();
+            assert_eq!(json, expected);
+            let parsed: MemberStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, status);
+        }
+    }
+
+    #[test]
+    fn test_invitation_status_serde() {
+        let statuses = vec![
+            (InvitationStatus::Pending, "\"pending\""),
+            (InvitationStatus::Accepted, "\"accepted\""),
+            (InvitationStatus::Expired, "\"expired\""),
+            (InvitationStatus::Revoked, "\"revoked\""),
+        ];
+        for (status, expected) in statuses {
+            let json = serde_json::to_string(&status).unwrap();
+            assert_eq!(json, expected);
+            let parsed: InvitationStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, status);
+        }
+    }
+
+    #[test]
+    fn test_invite_member_request_clone() {
+        let req = InviteMemberRequest::new("test@test.com", OrgRole::Admin);
+        let cloned = req.clone();
+        assert_eq!(cloned.email, "test@test.com");
+        assert_eq!(cloned.role, OrgRole::Admin);
+    }
+
+    #[test]
+    fn test_update_member_request_clone() {
+        let req = UpdateMemberRequest::new().with_role(OrgRole::Viewer);
+        let cloned = req.clone();
+        assert_eq!(cloned.role, Some(OrgRole::Viewer));
+    }
 }

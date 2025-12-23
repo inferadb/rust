@@ -416,6 +416,13 @@ mod tests {
     }
 
     #[test]
+    fn test_context_with_capacity() {
+        let ctx = Context::with_capacity(10);
+        assert!(ctx.is_empty());
+        assert_eq!(ctx.len(), 0);
+    }
+
+    #[test]
     fn test_context_with() {
         let ctx = Context::new()
             .with("env", "prod")

@@ -3042,4 +3042,139 @@ mod tests {
             .unwrap();
         assert!(!explanation.allowed);
     }
+
+    // DeleteWhereBuilder tests
+    #[tokio::test]
+    async fn test_delete_where_no_filter_error() {
+        let vault = create_test_vault().await;
+        let result = vault.relationships().delete_where().await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("at least one filter"));
+    }
+
+    #[tokio::test]
+    async fn test_delete_where_with_resource() {
+        let vault = create_test_vault().await;
+        let result = vault
+            .relationships()
+            .delete_where()
+            .resource("doc:1")
+            .await
+            .unwrap();
+        assert_eq!(result.deleted_count(), 0);
+        assert!(!result.any_deleted());
+    }
+
+    #[tokio::test]
+    async fn test_delete_where_with_relation() {
+        let vault = create_test_vault().await;
+        let result = vault
+            .relationships()
+            .delete_where()
+            .relation("viewer")
+            .await
+            .unwrap();
+        assert_eq!(result.deleted_count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_delete_where_with_subject() {
+        let vault = create_test_vault().await;
+        let result = vault
+            .relationships()
+            .delete_where()
+            .subject("user:alice")
+            .await
+            .unwrap();
+        assert!(!result.any_deleted());
+    }
+
+    #[tokio::test]
+    async fn test_delete_where_with_all_filters() {
+        let vault = create_test_vault().await;
+        let result = vault
+            .relationships()
+            .delete_where()
+            .resource("doc:1")
+            .relation("viewer")
+            .subject("user:alice")
+            .await
+            .unwrap();
+        assert_eq!(result.deleted_count(), 0);
+    }
+
+    // DeleteWhereResult tests
+    #[test]
+    fn test_delete_where_result_any_deleted() {
+        let result = DeleteWhereResult { deleted_count: 5 };
+        assert!(result.any_deleted());
+        assert_eq!(result.deleted_count(), 5);
+
+        let empty_result = DeleteWhereResult { deleted_count: 0 };
+        assert!(!empty_result.any_deleted());
+    }
+
+    // VaultClient clone test
+    #[tokio::test]
+    async fn test_vault_client_clone() {
+        let vault = create_test_vault().await;
+        let cloned = vault.clone();
+        assert_eq!(cloned.organization_id(), vault.organization_id());
+        assert_eq!(cloned.vault_id(), vault.vault_id());
+    }
+
+    // simulate() and watch() accessor tests
+    #[tokio::test]
+    async fn test_vault_simulate_accessor() {
+        let vault = create_test_vault().await;
+        let _simulate = vault.simulate();
+    }
+
+    #[tokio::test]
+    async fn test_vault_watch_accessor() {
+        let vault = create_test_vault().await;
+        let _watch = vault.watch();
+    }
+
+    // BatchCheckItem clone test
+    #[test]
+    fn test_batch_check_item_clone() {
+        let item = BatchCheckItem::new("user:alice", "view", "doc:1");
+        let cloned = item.clone();
+        assert_eq!(cloned.subject(), "user:alice");
+        assert_eq!(cloned.permission(), "view");
+        assert_eq!(cloned.resource(), "doc:1");
+    }
+
+    // BatchCheckResult debug test
+    #[test]
+    fn test_batch_check_result_debug() {
+        let result = BatchCheckResult {
+            results: vec![true, false],
+            decisions: None,
+            consistency_token: None,
+        };
+        let debug = format!("{:?}", result);
+        assert!(debug.contains("BatchCheckResult"));
+    }
+
+    // BatchCheckResult clone test
+    #[test]
+    fn test_batch_check_result_clone() {
+        let result = BatchCheckResult {
+            results: vec![true, false],
+            decisions: None,
+            consistency_token: Some(ConsistencyToken::new("token")),
+        };
+        let cloned = result.clone();
+        assert_eq!(cloned.results, result.results);
+    }
+
+    // RelationshipsClient clone test
+    #[tokio::test]
+    async fn test_relationships_client_clone() {
+        let vault = create_test_vault().await;
+        let rels = vault.relationships();
+        let _cloned = rels.clone();
+    }
 }

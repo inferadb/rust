@@ -886,4 +886,154 @@ mod tests {
 
         // Just verify the builder compiles and returns a request
     }
+
+    // Additional tests for Clone implementations and serde
+    #[tokio::test]
+    async fn test_audit_logs_client_clone() {
+        let client = create_test_client().await;
+        let audit = AuditLogsClient::new(client, "org_test");
+        let cloned = audit.clone();
+        assert_eq!(cloned.organization_id(), "org_test");
+    }
+
+    #[test]
+    fn test_actor_info_serde() {
+        let json = r#"{
+            "id": "user_abc123",
+            "actor_type": "user",
+            "email": "test@example.com",
+            "ip_address": "192.168.1.1",
+            "user_agent": "Mozilla/5.0"
+        }"#;
+        let actor: ActorInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(actor.id, "user_abc123");
+        assert_eq!(actor.actor_type, ActorType::User);
+        assert_eq!(actor.email, Some("test@example.com".to_string()));
+        assert_eq!(actor.ip_address, Some("192.168.1.1".to_string()));
+    }
+
+    #[test]
+    fn test_actor_info_clone() {
+        let actor = ActorInfo {
+            id: "user_123".to_string(),
+            actor_type: ActorType::ApiClient,
+            email: None,
+            ip_address: None,
+            user_agent: None,
+        };
+        let cloned = actor.clone();
+        assert_eq!(cloned.id, "user_123");
+        assert_eq!(cloned.actor_type, ActorType::ApiClient);
+    }
+
+    #[test]
+    fn test_audit_event_serde() {
+        let json = r#"{
+            "id": "evt_abc123",
+            "organization_id": "org_test",
+            "vault_id": "vlt_test",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "actor": {
+                "id": "user_123",
+                "actor_type": "user",
+                "email": null,
+                "ip_address": null,
+                "user_agent": null
+            },
+            "action": "check",
+            "resource": "document:readme",
+            "details": {"key": "value"},
+            "request_id": "req_123",
+            "outcome": "success"
+        }"#;
+        let event: AuditEvent = serde_json::from_str(json).unwrap();
+        assert_eq!(event.id, "evt_abc123");
+        assert_eq!(event.organization_id, "org_test");
+        assert_eq!(event.vault_id, Some("vlt_test".to_string()));
+        assert_eq!(event.action, AuditAction::Check);
+        assert_eq!(event.outcome, AuditOutcome::Success);
+        assert_eq!(event.resource, Some("document:readme".to_string()));
+    }
+
+    #[test]
+    fn test_audit_event_clone() {
+        let event = AuditEvent {
+            id: "evt_123".to_string(),
+            organization_id: "org_123".to_string(),
+            vault_id: None,
+            timestamp: chrono::Utc::now(),
+            actor: ActorInfo {
+                id: "user_123".to_string(),
+                actor_type: ActorType::System,
+                email: None,
+                ip_address: None,
+                user_agent: None,
+            },
+            action: AuditAction::Login,
+            resource: None,
+            details: None,
+            request_id: None,
+            outcome: AuditOutcome::Failure,
+        };
+        let cloned = event.clone();
+        assert_eq!(cloned.id, "evt_123");
+        assert_eq!(cloned.action, AuditAction::Login);
+        assert_eq!(cloned.outcome, AuditOutcome::Failure);
+    }
+
+    #[test]
+    fn test_audit_action_serde() {
+        // Test all action types can be serialized/deserialized
+        // Note: serde uses snake_case, so RelationshipWrite becomes "relationship_write"
+        let actions = vec![
+            (AuditAction::Check, "\"check\""),
+            (AuditAction::CheckBatch, "\"check_batch\""),
+            (AuditAction::RelationshipWrite, "\"relationship_write\""),
+            (AuditAction::RelationshipDelete, "\"relationship_delete\""),
+        ];
+        for (action, expected) in actions {
+            let json = serde_json::to_string(&action).unwrap();
+            assert_eq!(json, expected);
+            let parsed: AuditAction = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, action);
+        }
+    }
+
+    #[test]
+    fn test_audit_outcome_serde() {
+        let outcomes = vec![
+            (AuditOutcome::Success, "\"success\""),
+            (AuditOutcome::Failure, "\"failure\""),
+            (AuditOutcome::Denied, "\"denied\""),
+        ];
+        for (outcome, expected) in outcomes {
+            let json = serde_json::to_string(&outcome).unwrap();
+            assert_eq!(json, expected);
+            let parsed: AuditOutcome = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, outcome);
+        }
+    }
+
+    #[test]
+    fn test_export_format_serde() {
+        let json = serde_json::to_string(&ExportFormat::Json).unwrap();
+        assert_eq!(json, "\"json\"");
+        let json = serde_json::to_string(&ExportFormat::Csv).unwrap();
+        assert_eq!(json, "\"csv\"");
+    }
+
+    #[test]
+    fn test_actor_type_serde() {
+        let actors = vec![
+            (ActorType::User, "\"user\""),
+            (ActorType::ApiClient, "\"api_client\""),
+            (ActorType::System, "\"system\""),
+        ];
+        for (actor, expected) in actors {
+            let json = serde_json::to_string(&actor).unwrap();
+            assert_eq!(json, expected);
+            let parsed: ActorType = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, actor);
+        }
+    }
 }
