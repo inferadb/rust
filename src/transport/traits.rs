@@ -657,4 +657,100 @@ mod tests {
         assert_eq!(config.max_connections, 100);
         assert_eq!(config.idle_timeout, Duration::from_secs(90));
     }
+
+    #[test]
+    fn test_transport_event_display() {
+        let fallback_event = TransportEvent::FallbackTriggered {
+            from: Transport::Grpc,
+            to: Transport::Http,
+            reason: FallbackReason::ConnectionRefused,
+        };
+        assert!(fallback_event.to_string().contains("gRPC"));
+        assert!(fallback_event.to_string().contains("HTTP"));
+
+        let restored_event = TransportEvent::Restored {
+            transport: Transport::Grpc,
+        };
+        assert!(restored_event.to_string().contains("restored"));
+        assert!(restored_event.to_string().contains("gRPC"));
+    }
+
+    #[test]
+    fn test_transport_stats_default() {
+        let stats = TransportStats::default();
+        assert_eq!(stats.active_transport, Transport::default());
+        assert_eq!(stats.fallback_count, 0);
+        assert!(stats.grpc.is_none());
+        assert!(stats.rest.is_none());
+    }
+
+    #[test]
+    fn test_grpc_stats_default() {
+        let stats = GrpcStats::default();
+        assert_eq!(stats.requests_sent, 0);
+        assert_eq!(stats.requests_failed, 0);
+        assert_eq!(stats.streams_opened, 0);
+        assert_eq!(stats.streams_active, 0);
+    }
+
+    #[test]
+    fn test_rest_stats_default() {
+        let stats = RestStats::default();
+        assert_eq!(stats.requests_sent, 0);
+        assert_eq!(stats.requests_failed, 0);
+        assert_eq!(stats.sse_connections, 0);
+        assert_eq!(stats.sse_active, 0);
+    }
+
+    #[test]
+    fn test_fallback_reason_connect_timeout() {
+        assert_eq!(FallbackReason::ConnectTimeout.to_string(), "connect timeout");
+    }
+
+    #[test]
+    fn test_fallback_reason_protocol_error() {
+        let reason = FallbackReason::ProtocolError("invalid frame".to_string());
+        assert!(reason.to_string().contains("protocol error"));
+        assert!(reason.to_string().contains("invalid frame"));
+    }
+
+    #[test]
+    fn test_transport_strategy_rest_only() {
+        let strategy = TransportStrategy::RestOnly;
+        assert_eq!(strategy.preferred_transport(), Transport::Http);
+        assert_eq!(strategy.fallback_transport(), None);
+        assert!(!strategy.has_fallback());
+    }
+
+    #[test]
+    fn test_transport_strategy_prefer_rest() {
+        let strategy = TransportStrategy::PreferRest {
+            fallback_on: FallbackTrigger::default(),
+        };
+        assert_eq!(strategy.preferred_transport(), Transport::Http);
+        assert_eq!(strategy.fallback_transport(), Some(Transport::Grpc));
+        assert!(strategy.has_fallback());
+    }
+
+    #[test]
+    fn test_fallback_trigger_on_any_error() {
+        let trigger = FallbackTrigger::on_any_error();
+        assert!(trigger.connection_error);
+        assert!(trigger.protocol_error);
+        assert!(trigger.connect_timeout);
+        assert!(trigger.should_fallback_on_status(500));
+        assert!(trigger.should_fallback_on_status(502));
+        assert!(trigger.should_fallback_on_status(503));
+        assert!(trigger.should_fallback_on_status(504));
+    }
+
+    #[test]
+    fn test_fallback_trigger_on_connection_only() {
+        let trigger = FallbackTrigger::on_connection_only();
+        assert!(trigger.connection_error);
+        assert!(!trigger.protocol_error);
+        assert!(trigger.connect_timeout);
+        assert!(trigger.status_codes.is_empty());
+        assert!(!trigger.should_fallback_on_status(502));
+    }
 }

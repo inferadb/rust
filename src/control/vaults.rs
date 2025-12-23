@@ -511,4 +511,45 @@ mod tests {
         let provided = "DELETE wrong_vault";
         assert_ne!(provided, expected);
     }
+
+    #[tokio::test]
+    async fn test_vaults_client_accessors() {
+        let client = create_test_client().await;
+        let vaults = VaultsClient::new(client, "org_test");
+        assert_eq!(vaults.organization_id(), "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_vaults_client_debug() {
+        let client = create_test_client().await;
+        let vaults = VaultsClient::new(client, "org_test");
+        let debug = format!("{:?}", vaults);
+        assert!(debug.contains("VaultsClient"));
+        assert!(debug.contains("org_test"));
+    }
+
+    #[tokio::test]
+    async fn test_list_vaults_request_builders() {
+        let client = create_test_client().await;
+        let vaults = VaultsClient::new(client, "org_test");
+
+        // Test all builder methods
+        let _request = vaults
+            .list()
+            .limit(50)
+            .cursor("cursor_xyz")
+            .sort(SortOrder::Descending)
+            .status(VaultStatus::Active);
+
+        // Just verify the builder compiles and returns a request
+    }
+
+    #[tokio::test]
+    async fn test_delete_vault_request_builder() {
+        let client = create_test_client().await;
+        let vaults = VaultsClient::new(client, "org_test");
+
+        // Test delete with confirmation builder
+        let _request = vaults.delete("vlt_abc123").confirm("DELETE vlt_abc123");
+    }
 }

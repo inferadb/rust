@@ -481,3 +481,131 @@ impl std::fmt::Debug for OrganizationClient {
             .finish_non_exhaustive()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::auth::BearerCredentialsConfig;
+
+    async fn create_test_client() -> Client {
+        Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build()
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_client_url() {
+        let client = create_test_client().await;
+        assert_eq!(client.url(), "https://api.example.com");
+    }
+
+    #[tokio::test]
+    async fn test_client_debug() {
+        let client = create_test_client().await;
+        let debug = format!("{:?}", client);
+        assert!(debug.contains("Client"));
+        assert!(debug.contains("api.example.com"));
+    }
+
+    #[tokio::test]
+    async fn test_client_clone() {
+        let client = create_test_client().await;
+        let cloned = client.clone();
+        assert_eq!(client.url(), cloned.url());
+    }
+
+    #[tokio::test]
+    async fn test_client_organization() {
+        let client = create_test_client().await;
+        let org = client.organization("org_test123");
+        assert_eq!(org.organization_id(), "org_test123");
+    }
+
+    #[tokio::test]
+    async fn test_organization_client_vault() {
+        let client = create_test_client().await;
+        let org = client.organization("org_test");
+        let vault = org.vault("vlt_test");
+        assert_eq!(vault.organization_id(), "org_test");
+        assert_eq!(vault.vault_id(), "vlt_test");
+    }
+
+    #[tokio::test]
+    async fn test_organization_client_client() {
+        let client = create_test_client().await;
+        let org = client.organization("org_test");
+        let inner_client = org.client();
+        assert_eq!(inner_client.url(), "https://api.example.com");
+    }
+
+    #[tokio::test]
+    async fn test_organization_client_debug() {
+        let client = create_test_client().await;
+        let org = client.organization("org_test");
+        let debug = format!("{:?}", org);
+        assert!(debug.contains("OrganizationClient"));
+        assert!(debug.contains("org_test"));
+    }
+
+    #[tokio::test]
+    async fn test_organization_client_control() {
+        let client = create_test_client().await;
+        let org = client.organization("org_test");
+        let control = org.control();
+        // Verify control client can be created
+        let debug = format!("{:?}", control);
+        assert!(debug.contains("org_test"));
+    }
+
+    #[tokio::test]
+    async fn test_organization_client_clients() {
+        let client = create_test_client().await;
+        let org = client.organization("org_test");
+        let clients = org.clients();
+        // Verify API clients client can be created
+        let debug = format!("{:?}", clients);
+        assert!(debug.contains("org_test"));
+    }
+
+    #[tokio::test]
+    async fn test_client_account() {
+        let client = create_test_client().await;
+        let account = client.account();
+        let debug = format!("{:?}", account);
+        assert!(debug.contains("AccountClient"));
+    }
+
+    #[tokio::test]
+    async fn test_client_jwks() {
+        let client = create_test_client().await;
+        let jwks = client.jwks();
+        let debug = format!("{:?}", jwks);
+        assert!(debug.contains("JwksClient"));
+    }
+
+    #[tokio::test]
+    async fn test_client_organizations() {
+        let client = create_test_client().await;
+        let orgs = client.organizations();
+        let debug = format!("{:?}", orgs);
+        assert!(debug.contains("OrganizationsClient"));
+    }
+
+    #[tokio::test]
+    async fn test_client_is_not_shutting_down() {
+        let client = create_test_client().await;
+        // Without a shutdown guard configured, should always return false
+        assert!(!client.is_shutting_down());
+    }
+
+    #[tokio::test]
+    async fn test_readiness_criteria_default() {
+        let criteria = ReadinessCriteria::new();
+        assert!(criteria.max_latency.is_none());
+        assert!(!criteria.require_auth);
+        assert!(!criteria.require_vault);
+    }
+}

@@ -508,4 +508,65 @@ mod tests {
         assert_eq!(expected, "DELETE org_test");
         assert_ne!("DELETE wrong_org", expected);
     }
+
+    #[tokio::test]
+    async fn test_organization_control_client_accessors() {
+        let client = create_test_client().await;
+        let org = OrganizationControlClient::new(client, "org_test");
+        assert_eq!(org.organization_id(), "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_organization_control_client_debug() {
+        let client = create_test_client().await;
+        let org = OrganizationControlClient::new(client, "org_test");
+        let debug = format!("{:?}", org);
+        assert!(debug.contains("OrganizationControlClient"));
+        assert!(debug.contains("org_test"));
+    }
+
+    #[tokio::test]
+    async fn test_organizations_client_debug() {
+        let client = create_test_client().await;
+        let orgs = OrganizationsClient::new(client);
+        let debug = format!("{:?}", orgs);
+        assert!(debug.contains("OrganizationsClient"));
+    }
+
+    #[tokio::test]
+    async fn test_organization_sub_clients() {
+        let client = create_test_client().await;
+        let org = OrganizationControlClient::new(client, "org_test");
+
+        // Test that sub-clients can be created (coverage for accessor methods)
+        let _vaults = org.vaults();
+        let _members = org.members();
+        let _teams = org.teams();
+        let _invitations = org.invitations();
+        let _audit_logs = org.audit_logs();
+    }
+
+    #[tokio::test]
+    async fn test_list_organizations_request_builders() {
+        let client = create_test_client().await;
+        let orgs = OrganizationsClient::new(client);
+
+        // Test all builder methods
+        let _request = orgs
+            .list()
+            .limit(50)
+            .cursor("cursor_xyz")
+            .sort(SortOrder::Descending);
+
+        // Just verify the builder compiles and returns a request
+    }
+
+    #[tokio::test]
+    async fn test_delete_organization_request_builder() {
+        let client = create_test_client().await;
+        let org = OrganizationControlClient::new(client, "org_test");
+
+        // Test delete with confirmation builder
+        let _request = org.delete().confirm("DELETE org_test");
+    }
 }

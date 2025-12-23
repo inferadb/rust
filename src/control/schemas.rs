@@ -670,7 +670,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires running server"]
     async fn test_schemas_client_accessors() {
         let client = create_test_client().await;
         let schemas = SchemasClient::new(client, "org_test", "vlt_abc123");
@@ -679,7 +678,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires running server"]
     async fn test_schemas_client_debug() {
         let client = create_test_client().await;
         let schemas = SchemasClient::new(client, "org_test", "vlt_abc123");
@@ -687,6 +685,22 @@ mod tests {
         assert!(debug.contains("SchemasClient"));
         assert!(debug.contains("org_test"));
         assert!(debug.contains("vlt_abc123"));
+    }
+
+    #[tokio::test]
+    async fn test_list_schemas_request_builders() {
+        let client = create_test_client().await;
+        let schemas = SchemasClient::new(client, "org_test", "vlt_abc123");
+
+        // Test all builder methods
+        let _request = schemas
+            .list()
+            .limit(50)
+            .cursor("cursor_xyz")
+            .sort(SortOrder::Descending)
+            .status(SchemaStatus::Active);
+
+        // Just verify the builder compiles and returns a request
     }
 
     #[tokio::test]

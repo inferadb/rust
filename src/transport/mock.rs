@@ -445,4 +445,205 @@ mod tests {
         transport.set_failure(Error::unavailable("unhealthy"));
         assert!(transport.health_check().await.is_err());
     }
+
+    #[test]
+    fn test_mock_transport_default() {
+        let transport = MockTransport::default();
+        assert_eq!(transport.request_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_mock_transport_clear_failure() {
+        let transport = MockTransport::new();
+        transport.set_failure(Error::unavailable("test"));
+        transport.clear_failure();
+        // Failure should be cleared - check by doing a health check
+        assert!(transport.health_check().await.is_ok());
+    }
+
+    #[test]
+    fn test_mock_transport_transport_type() {
+        let transport = MockTransport::new();
+        assert_eq!(transport.transport_type(), Transport::Mock);
+    }
+
+    #[test]
+    fn test_mock_transport_stats() {
+        let transport = MockTransport::new();
+        let stats = transport.stats();
+        assert_eq!(stats.active_transport, Transport::Mock);
+        assert_eq!(stats.fallback_count, 0);
+        assert!(stats.last_fallback_reason.is_none());
+        assert!(stats.grpc.is_none());
+        assert!(stats.rest.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_mock_transport_simulate() {
+        let transport = MockTransport::new();
+
+        // Add existing relationship
+        transport.add_relationship(Relationship::new("doc:1", "editor", "user:alice").into_owned());
+
+        // Simulate adding viewer relationship
+        let result = transport
+            .simulate(SimulateRequest {
+                subject: "user:bob".to_string(),
+                permission: "viewer".to_string(),
+                resource: "doc:1".to_string(),
+                context: None,
+                additions: vec![
+                    Relationship::new("doc:1", "viewer", "user:bob").into_owned(),
+                ],
+                removals: vec![],
+            })
+            .await
+            .unwrap();
+
+        assert!(result.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_mock_transport_simulate_with_removal() {
+        let transport = MockTransport::new();
+
+        // Add existing relationship
+        transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+
+        // Simulate removing the relationship
+        let result = transport
+            .simulate(SimulateRequest {
+                subject: "user:alice".to_string(),
+                permission: "viewer".to_string(),
+                resource: "doc:1".to_string(),
+                context: None,
+                additions: vec![],
+                removals: vec![
+                    Relationship::new("doc:1", "viewer", "user:alice").into_owned(),
+                ],
+            })
+            .await
+            .unwrap();
+
+        assert!(!result.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_mock_transport_list_resources() {
+        let transport = MockTransport::new();
+        transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        transport.add_relationship(Relationship::new("doc:2", "viewer", "user:alice").into_owned());
+        transport.add_relationship(Relationship::new("folder:1", "viewer", "user:alice").into_owned());
+
+        let result = transport
+            .list_resources("user:alice", "viewer", None, None, None)
+            .await
+            .unwrap();
+
+        assert_eq!(result.resources.len(), 3);
+        assert!(result.resources.contains(&"doc:1".to_string()));
+        assert!(result.resources.contains(&"doc:2".to_string()));
+        assert!(result.resources.contains(&"folder:1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_mock_transport_list_resources_with_type_filter() {
+        let transport = MockTransport::new();
+        transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        transport.add_relationship(Relationship::new("doc:2", "viewer", "user:alice").into_owned());
+        transport.add_relationship(Relationship::new("folder:1", "viewer", "user:alice").into_owned());
+
+        let result = transport
+            .list_resources("user:alice", "viewer", Some("doc"), None, None)
+            .await
+            .unwrap();
+
+        assert_eq!(result.resources.len(), 2);
+        assert!(result.resources.contains(&"doc:1".to_string()));
+        assert!(result.resources.contains(&"doc:2".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_mock_transport_list_subjects() {
+        let transport = MockTransport::new();
+        transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        transport.add_relationship(Relationship::new("doc:1", "viewer", "user:bob").into_owned());
+        transport.add_relationship(Relationship::new("doc:1", "viewer", "group:admins").into_owned());
+
+        let result = transport
+            .list_subjects("viewer", "doc:1", None, None, None)
+            .await
+            .unwrap();
+
+        assert_eq!(result.subjects.len(), 3);
+        assert!(result.subjects.contains(&"user:alice".to_string()));
+        assert!(result.subjects.contains(&"user:bob".to_string()));
+        assert!(result.subjects.contains(&"group:admins".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_mock_transport_list_subjects_with_type_filter() {
+        let transport = MockTransport::new();
+        transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        transport.add_relationship(Relationship::new("doc:1", "viewer", "user:bob").into_owned());
+        transport.add_relationship(Relationship::new("doc:1", "viewer", "group:admins").into_owned());
+
+        let result = transport
+            .list_subjects("viewer", "doc:1", Some("user"), None, None)
+            .await
+            .unwrap();
+
+        assert_eq!(result.subjects.len(), 2);
+        assert!(result.subjects.contains(&"user:alice".to_string()));
+        assert!(result.subjects.contains(&"user:bob".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_mock_transport_clear_relationships() {
+        let transport = MockTransport::new();
+        transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        transport.add_relationship(Relationship::new("doc:2", "viewer", "user:bob").into_owned());
+
+        transport.clear_relationships();
+
+        let list = transport
+            .list_relationships(None, None, None, None, None)
+            .await
+            .unwrap();
+        assert!(list.relationships.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_mock_transport_list_resources_with_limit() {
+        let transport = MockTransport::new();
+        for i in 0..10 {
+            transport.add_relationship(
+                Relationship::new(&format!("doc:{}", i), "viewer", "user:alice").into_owned(),
+            );
+        }
+
+        let result = transport
+            .list_resources("user:alice", "viewer", None, Some(5), None)
+            .await
+            .unwrap();
+
+        assert_eq!(result.resources.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_mock_transport_list_subjects_with_limit() {
+        let transport = MockTransport::new();
+        for i in 0..10 {
+            transport.add_relationship(
+                Relationship::new("doc:1", "viewer", &format!("user:{}", i)).into_owned(),
+            );
+        }
+
+        let result = transport
+            .list_subjects("viewer", "doc:1", None, Some(5), None)
+            .await
+            .unwrap();
+
+        assert_eq!(result.subjects.len(), 5);
+    }
 }

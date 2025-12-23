@@ -1242,4 +1242,423 @@ mod tests {
         let result = RestTransportBuilder::new().build();
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_map_status_error_400() {
+        let err = map_status_error(400, "Bad request");
+        assert!(matches!(err.kind(), ErrorKind::InvalidRequest));
+    }
+
+    #[test]
+    fn test_map_status_error_403() {
+        let err = map_status_error(403, "Forbidden");
+        assert!(matches!(err.kind(), ErrorKind::PermissionDenied));
+    }
+
+    #[test]
+    fn test_map_status_error_409() {
+        let err = map_status_error(409, "Conflict");
+        assert!(matches!(err.kind(), ErrorKind::Conflict));
+    }
+
+    #[test]
+    fn test_map_status_error_other() {
+        let err = map_status_error(418, "I'm a teapot");
+        assert!(matches!(err.kind(), ErrorKind::Transport));
+    }
+
+    #[test]
+    fn test_map_status_error_500_range() {
+        for status in [500u16, 502, 503, 504] {
+            let err = map_status_error(status, "Server error");
+            assert!(matches!(err.kind(), ErrorKind::ServiceUnavailable));
+        }
+    }
+
+    #[test]
+    fn test_parse_sse_event_multiline_data() {
+        let event = "data: line1\ndata: line2";
+        let data = parse_sse_event(event);
+        // Should only get first data line
+        assert_eq!(data, Some("line1".to_string()));
+    }
+
+    #[test]
+    fn test_parse_sse_event_no_data() {
+        let event = "event: ping";
+        let data = parse_sse_event(event);
+        assert_eq!(data, None);
+    }
+
+    #[test]
+    fn test_rest_transport_builder_with_pool_config() {
+        let pool_config = PoolConfig {
+            max_connections: 50,
+            idle_timeout: Duration::from_secs(60),
+            max_idle_per_host: 5,
+            pool_timeout: Duration::from_secs(15),
+            http2_only: false,
+            http2_keepalive: Duration::from_secs(10),
+        };
+
+        let result = RestTransportBuilder::new()
+            .base_url("https://api.example.com")
+            .unwrap()
+            .pool_config(pool_config)
+            .build();
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_rest_transport_stats() {
+        let transport = RestTransportBuilder::new()
+            .base_url("https://api.example.com")
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let stats = transport.stats();
+        assert_eq!(stats.active_transport, Transport::Http);
+        assert!(stats.rest.is_some());
+        assert!(stats.grpc.is_none());
+    }
+
+    #[test]
+    fn test_rest_transport_type() {
+        let transport = RestTransportBuilder::new()
+            .base_url("https://api.example.com")
+            .unwrap()
+            .build()
+            .unwrap();
+
+        assert_eq!(transport.transport_type(), Transport::Http);
+    }
+}
+
+// Wiremock-based async tests
+#[cfg(test)]
+mod wiremock_tests {
+    use super::*;
+    use crate::Context;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn create_test_transport(server: &MockServer) -> RestTransport {
+        RestTransportBuilder::new()
+            .base_url(&server.uri())
+            .unwrap()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_health_check_success() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/healthz"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "ok"})))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let result = transport.health_check().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_health_check_failure() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/healthz"))
+            .respond_with(ResponseTemplate::new(503).set_body_string("Service unavailable"))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let result = transport.health_check().await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err().kind(), ErrorKind::ServiceUnavailable));
+    }
+
+    #[tokio::test]
+    async fn test_check_success() {
+        let server = MockServer::start().await;
+
+        // check uses SSE endpoint /access/v1/evaluate with text/event-stream format
+        Mock::given(method("POST"))
+            .and(path("/access/v1/evaluate"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string("data: {\"decision\": \"allow\", \"index\": 0}\n\n"),
+            )
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let request = CheckRequest {
+            subject: "user:alice".to_string(),
+            permission: "view".to_string(),
+            resource: "document:readme".to_string(),
+            context: None,
+            consistency: None,
+            trace: false,
+        };
+
+        let result = transport.check(request).await;
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert!(response.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_check_denied() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/evaluate"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string("data: {\"decision\": \"deny\", \"index\": 0}\n\n"),
+            )
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let request = CheckRequest {
+            subject: "user:bob".to_string(),
+            permission: "edit".to_string(),
+            resource: "document:readme".to_string(),
+            context: None,
+            consistency: None,
+            trace: false,
+        };
+
+        let result = transport.check(request).await;
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert!(!response.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_check_unauthorized() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/evaluate"))
+            .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+                "error": "Invalid token"
+            })))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let request = CheckRequest {
+            subject: "user:alice".to_string(),
+            permission: "view".to_string(),
+            resource: "document:readme".to_string(),
+            context: None,
+            consistency: None,
+            trace: false,
+        };
+
+        let result = transport.check(request).await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err().kind(),
+            ErrorKind::Authentication
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_write_success() {
+        let server = MockServer::start().await;
+
+        // write uses /access/v1/relationships/write and expects {revision: ...}
+        Mock::given(method("POST"))
+            .and(path("/access/v1/relationships/write"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "revision": "rev_abc123",
+                "relationships_written": 1
+            })))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let relationship = Relationship::new("document:readme", "viewer", "user:alice");
+        let request = WriteRequest {
+            relationship: relationship.into_owned(),
+            idempotency_key: None,
+        };
+
+        let result = transport.write(request).await;
+        assert!(result.is_ok());
+        let _response = result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_write_batch_success() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/relationships/write"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "revision": "rev_batch123",
+                "relationships_written": 2
+            })))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let requests = vec![
+            WriteRequest {
+                relationship: Relationship::new("doc:1", "viewer", "user:alice").into_owned(),
+                idempotency_key: None,
+            },
+            WriteRequest {
+                relationship: Relationship::new("doc:2", "viewer", "user:bob").into_owned(),
+                idempotency_key: None,
+            },
+        ];
+
+        let result = transport.write_batch(requests).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_delete_success() {
+        let server = MockServer::start().await;
+
+        // delete uses path with URL-encoded components
+        Mock::given(method("DELETE"))
+            .and(path("/access/v1/relationships/document%3Areadme/viewer/user%3Aalice"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let relationship =
+            Relationship::new("document:readme", "viewer", "user:alice").into_owned();
+
+        let result = transport.delete(relationship).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_delete_not_found() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("DELETE"))
+            .and(path("/access/v1/relationships/document%3Amissing/viewer/user%3Aalice"))
+            .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+                "error": "Relationship not found"
+            })))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let relationship =
+            Relationship::new("document:missing", "viewer", "user:alice").into_owned();
+
+        let result = transport.delete(relationship).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err().kind(), ErrorKind::NotFound));
+    }
+
+    #[tokio::test]
+    async fn test_simulate_success() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/simulate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "allowed": true,
+                "decision_id": "sim_123"
+            })))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let request = SimulateRequest {
+            subject: "user:alice".to_string(),
+            permission: "view".to_string(),
+            resource: "document:readme".to_string(),
+            context: None,
+            additions: vec![
+                Relationship::new("document:readme", "viewer", "user:alice").into_owned(),
+            ],
+            removals: vec![],
+        };
+
+        let result = transport.simulate(request).await;
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert!(response.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_check_with_context() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/evaluate"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string("data: {\"decision\": \"allow\", \"index\": 0}\n\n"),
+            )
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let mut context = Context::new();
+        context = context.with("ip_address", "192.168.1.1");
+
+        let request = CheckRequest {
+            subject: "user:alice".to_string(),
+            permission: "view".to_string(),
+            resource: "document:readme".to_string(),
+            context: Some(context),
+            consistency: None,
+            trace: false,
+        };
+
+        let result = transport.check(request).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_rate_limited() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/access/v1/evaluate"))
+            .respond_with(ResponseTemplate::new(429).set_body_json(serde_json::json!({
+                "error": "Rate limit exceeded"
+            })))
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let request = CheckRequest {
+            subject: "user:alice".to_string(),
+            permission: "view".to_string(),
+            resource: "document:readme".to_string(),
+            context: None,
+            consistency: None,
+            trace: false,
+        };
+
+        let result = transport.check(request).await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err().kind(),
+            ErrorKind::RateLimited
+        ));
+    }
 }

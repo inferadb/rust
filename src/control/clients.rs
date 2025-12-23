@@ -799,4 +799,26 @@ mod tests {
         assert!(format!("{:?}", clients).contains("ApiClientsClient"));
         assert!(format!("{:?}", clients.certificates("cli_abc123")).contains("CertificatesClient"));
     }
+
+    #[tokio::test]
+    async fn test_list_api_clients_request_builders() {
+        let client = create_test_client().await;
+        let clients = ApiClientsClient::new(client, "org_test");
+
+        // Test all builder methods
+        let _request = clients
+            .list()
+            .limit(50)
+            .cursor("cursor_xyz")
+            .sort(SortOrder::Descending)
+            .status(ClientStatus::Active);
+
+        // Just verify the builder compiles and returns a request
+    }
+
+    #[test]
+    fn test_update_api_client_request_with_status() {
+        let req = UpdateApiClientRequest::new().with_status(ClientStatus::Suspended);
+        assert_eq!(req.status, Some(ClientStatus::Suspended));
+    }
 }

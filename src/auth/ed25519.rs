@@ -349,4 +349,33 @@ mod tests {
         assert!(!sig.contains('+'));
         assert!(!sig.contains('/'));
     }
+
+    #[test]
+    fn test_sign_hex() {
+        let key = Ed25519PrivateKey::generate();
+        let sig = key.sign_hex(b"test message");
+        // Hex signature should be 128 chars (64 bytes = 128 hex chars)
+        assert_eq!(sig.len(), 128);
+        // Should be valid hex
+        assert!(hex::decode(&sig).is_ok());
+    }
+
+    #[test]
+    fn test_from_pem_invalid() {
+        let result = Ed25519PrivateKey::from_pem("not a valid PEM");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_from_pem_file_not_found() {
+        let result = Ed25519PrivateKey::from_pem_file("/nonexistent/path/key.pem");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_signing_key_accessor() {
+        let key = Ed25519PrivateKey::generate();
+        // Just verify we can access the signing key
+        let _signing_key = key.signing_key();
+    }
 }

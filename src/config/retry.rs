@@ -225,4 +225,35 @@ mod tests {
         let config = RetryConfig::new().with_jitter(-0.5);
         assert_eq!(config.jitter, 0.0);
     }
+
+    #[test]
+    fn test_with_retry_on_timeout() {
+        let config = RetryConfig::new().with_retry_on_timeout(false);
+        assert!(!config.retry_on_timeout);
+
+        let config = RetryConfig::new().with_retry_on_timeout(true);
+        assert!(config.retry_on_timeout);
+    }
+
+    #[test]
+    fn test_with_retry_on_connection_error() {
+        let config = RetryConfig::new().with_retry_on_connection_error(false);
+        assert!(!config.retry_on_connection_error);
+
+        let config = RetryConfig::new().with_retry_on_connection_error(true);
+        assert!(config.retry_on_connection_error);
+    }
+
+    #[test]
+    fn test_delay_with_jitter() {
+        let config = RetryConfig::new()
+            .with_jitter(0.5) // 50% jitter
+            .with_initial_delay(Duration::from_millis(100));
+
+        // With jitter, the delay should vary but still be reasonable
+        let delay = config.delay_for_attempt(1);
+        // With 50% jitter, delay should be between 50ms and 150ms
+        assert!(delay >= Duration::from_millis(50));
+        assert!(delay <= Duration::from_millis(150));
+    }
 }

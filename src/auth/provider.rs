@@ -263,4 +263,45 @@ mod tests {
         assert_eq!(token1, "token_0");
         assert_eq!(token2, "token_1");
     }
+
+    #[tokio::test]
+    async fn test_arc_provider_delegations() {
+        let provider: Arc<dyn CredentialsProvider> = Arc::new(CustomProvider::new());
+        // Test that Arc properly delegates all methods
+        assert!(provider.supports_refresh());
+        assert_eq!(
+            provider.refresh_hint(),
+            Some(std::time::Duration::from_secs(300))
+        );
+        let token = provider.get_token().await.unwrap();
+        assert_eq!(token, "token_0");
+    }
+
+    #[tokio::test]
+    async fn test_box_provider_delegations() {
+        let provider: Box<dyn CredentialsProvider> = Box::new(CustomProvider::new());
+        // Test that Box properly delegates all methods
+        assert!(provider.supports_refresh());
+        assert_eq!(
+            provider.refresh_hint(),
+            Some(std::time::Duration::from_secs(300))
+        );
+        let token = provider.get_token().await.unwrap();
+        assert_eq!(token, "token_0");
+    }
+
+    #[test]
+    fn test_static_token_provider_debug() {
+        let provider = StaticTokenProvider::new("test");
+        let debug = format!("{:?}", provider);
+        assert!(debug.contains("StaticTokenProvider"));
+    }
+
+    #[test]
+    fn test_static_token_provider_clone() {
+        let provider = StaticTokenProvider::new("clone_test");
+        let cloned = provider.clone();
+        // Both should have the same token
+        assert_eq!(format!("{:?}", provider), format!("{:?}", cloned));
+    }
 }

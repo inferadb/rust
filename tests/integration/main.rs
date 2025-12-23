@@ -31,4 +31,6 @@
 mod client_tests;
 mod common;
 mod control_tests;
+mod transport_tests;
+mod vault_advanced_tests;
 mod vault_tests;

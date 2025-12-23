@@ -294,4 +294,10 @@ mod tests {
         let s: &str = token.as_ref();
         assert_eq!(s, "ref_test");
     }
+
+    #[test]
+    fn test_from_str_ref() {
+        let token: ConsistencyToken = "str_ref".into();
+        assert_eq!(token.value(), "str_ref");
+    }
 }

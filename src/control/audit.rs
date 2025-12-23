@@ -777,6 +777,47 @@ mod tests {
     }
 
     #[test]
+    fn test_audit_action_all_variants() {
+        // Cover all remaining Display implementations
+        assert_eq!(AuditAction::CheckBatch.to_string(), "check_batch");
+        assert_eq!(
+            AuditAction::RelationshipWriteBatch.to_string(),
+            "relationship.write_batch"
+        );
+        assert_eq!(
+            AuditAction::RelationshipDeleteBatch.to_string(),
+            "relationship.delete_batch"
+        );
+        assert_eq!(
+            AuditAction::OrganizationCreate.to_string(),
+            "organization.create"
+        );
+        assert_eq!(
+            AuditAction::OrganizationUpdate.to_string(),
+            "organization.update"
+        );
+        assert_eq!(
+            AuditAction::OrganizationDelete.to_string(),
+            "organization.delete"
+        );
+        assert_eq!(AuditAction::MemberAdd.to_string(), "member.add");
+        assert_eq!(AuditAction::TeamMemberAdd.to_string(), "team.member_add");
+        assert_eq!(
+            AuditAction::TeamMemberRemove.to_string(),
+            "team.member_remove"
+        );
+        assert_eq!(AuditAction::TokenCreate.to_string(), "token.create");
+        assert_eq!(AuditAction::TokenRevoke.to_string(), "token.revoke");
+        assert_eq!(AuditAction::TokenRotate.to_string(), "token.rotate");
+        assert_eq!(AuditAction::Login.to_string(), "login");
+        assert_eq!(AuditAction::Logout.to_string(), "logout");
+        assert_eq!(AuditAction::LoginFailed.to_string(), "login_failed");
+        assert_eq!(AuditAction::ApiClientCreate.to_string(), "api_client.create");
+        assert_eq!(AuditAction::ApiClientUpdate.to_string(), "api_client.update");
+        assert_eq!(AuditAction::ApiClientDelete.to_string(), "api_client.delete");
+    }
+
+    #[test]
     fn test_audit_outcome() {
         assert_eq!(AuditOutcome::default(), AuditOutcome::Success);
         assert_eq!(AuditOutcome::Success.to_string(), "success");
@@ -787,5 +828,62 @@ mod tests {
     #[test]
     fn test_export_format() {
         assert_eq!(ExportFormat::default(), ExportFormat::Json);
+        // Test Csv variant exists
+        let _csv = ExportFormat::Csv;
+    }
+
+    #[tokio::test]
+    async fn test_audit_logs_client_accessors() {
+        let client = create_test_client().await;
+        let audit = AuditLogsClient::new(client, "org_test");
+        assert_eq!(audit.organization_id(), "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_audit_logs_client_debug() {
+        let client = create_test_client().await;
+        let audit = AuditLogsClient::new(client, "org_test");
+        let debug = format!("{:?}", audit);
+        assert!(debug.contains("AuditLogsClient"));
+        assert!(debug.contains("org_test"));
+    }
+
+    #[tokio::test]
+    async fn test_list_audit_logs_request_builders() {
+        let client = create_test_client().await;
+        let audit = AuditLogsClient::new(client, "org_test");
+
+        // Test all builder methods
+        let now = chrono::Utc::now();
+        let _request = audit
+            .list()
+            .vault("vlt_abc123")
+            .limit(50)
+            .cursor("cursor_xyz")
+            .sort(SortOrder::Descending)
+            .actor("user_123")
+            .action(AuditAction::RelationshipWrite)
+            .resource("document:readme")
+            .after(now - chrono::Duration::hours(24))
+            .before(now);
+
+        // Just verify the builder compiles and returns a request
+    }
+
+    #[tokio::test]
+    async fn test_export_audit_logs_request_builders() {
+        let client = create_test_client().await;
+        let audit = AuditLogsClient::new(client, "org_test");
+
+        // Test all builder methods
+        let now = chrono::Utc::now();
+        let _request = audit
+            .export()
+            .vault("vlt_abc123")
+            .after(now - chrono::Duration::hours(24))
+            .before(now)
+            .format(ExportFormat::Csv);
+
+        // Just verify the builder compiles and returns a request
     }
 }

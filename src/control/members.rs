@@ -734,4 +734,67 @@ mod tests {
         assert_eq!(req.role, Some(OrgRole::Admin));
         assert_eq!(req.status, Some(MemberStatus::Suspended));
     }
+
+    #[tokio::test]
+    async fn test_members_client_accessors() {
+        let client = create_test_client().await;
+        let members = MembersClient::new(client, "org_test");
+        assert_eq!(members.organization_id(), "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_members_client_debug() {
+        let client = create_test_client().await;
+        let members = MembersClient::new(client, "org_test");
+        let debug = format!("{:?}", members);
+        assert!(debug.contains("MembersClient"));
+        assert!(debug.contains("org_test"));
+    }
+
+    #[tokio::test]
+    async fn test_invitations_client_accessors() {
+        let client = create_test_client().await;
+        let invitations = InvitationsClient::new(client, "org_test");
+        assert_eq!(invitations.organization_id(), "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_invitations_client_debug() {
+        let client = create_test_client().await;
+        let invitations = InvitationsClient::new(client, "org_test");
+        let debug = format!("{:?}", invitations);
+        assert!(debug.contains("InvitationsClient"));
+        assert!(debug.contains("org_test"));
+    }
+
+    #[tokio::test]
+    async fn test_list_members_request_builders() {
+        let client = create_test_client().await;
+        let members = MembersClient::new(client, "org_test");
+
+        // Test all builder methods
+        let _request = members
+            .list()
+            .limit(50)
+            .cursor("cursor_xyz")
+            .sort(SortOrder::Descending)
+            .role(OrgRole::Admin);
+
+        // Just verify the builder compiles and returns a request
+    }
+
+    #[tokio::test]
+    async fn test_list_invitations_request_builders() {
+        let client = create_test_client().await;
+        let invitations = InvitationsClient::new(client, "org_test");
+
+        // Test all builder methods
+        let _request = invitations
+            .list()
+            .limit(50)
+            .cursor("cursor_xyz")
+            .status(InvitationStatus::Pending);
+
+        // Just verify the builder compiles and returns a request
+    }
 }

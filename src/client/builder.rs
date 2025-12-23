@@ -814,4 +814,79 @@ mod tests {
         // Client should now report shutting down
         assert!(client.is_shutting_down());
     }
+
+    #[test]
+    fn test_builder_tls_config() {
+        let builder = ClientBuilder::new()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("token"))
+            .tls_config(TlsConfig::default());
+
+        // Default TLS config does not skip verification
+        assert!(!builder.tls_config.skip_verification);
+    }
+
+    #[test]
+    fn test_builder_degradation_config() {
+        let builder = ClientBuilder::new()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("token"))
+            .degradation_config(DegradationConfig::fail_open());
+
+        assert_eq!(
+            builder.degradation_config.failure_mode,
+            crate::config::FailureMode::FailOpen
+        );
+    }
+
+    #[test]
+    fn test_builder_transport_strategy() {
+        let builder = ClientBuilder::new()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("token"))
+            .transport_strategy(crate::transport::TransportStrategy::RestOnly);
+
+        assert_eq!(
+            builder.transport_strategy.preferred_transport(),
+            crate::transport::Transport::Http
+        );
+    }
+
+    #[test]
+    fn test_builder_pool_config() {
+        let builder = ClientBuilder::new()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("token"))
+            .pool_config(PoolConfig::default());
+
+        assert_eq!(builder.pool_config.max_connections, 100);
+    }
+
+    #[test]
+    fn test_builder_default() {
+        let builder: ClientBuilder<NoUrl, NoCredentials> = ClientBuilder::default();
+        assert!(builder.url.is_none());
+        assert!(builder.credentials.is_none());
+    }
+
+    #[test]
+    fn test_builder_all_configs_combined() {
+        let mut cache_config = CacheConfig::new();
+        cache_config.enabled = false;
+
+        let builder = ClientBuilder::new()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("token"))
+            .retry_config(RetryConfig::new().with_max_retries(10))
+            .cache_config(cache_config)
+            .tls_config(TlsConfig::default())
+            .degradation_config(DegradationConfig::fail_closed())
+            .timeout(Duration::from_secs(30))
+            .transport_strategy(crate::transport::TransportStrategy::RestOnly)
+            .pool_config(PoolConfig::default());
+
+        assert_eq!(builder.retry_config.max_retries, 10);
+        assert!(!builder.cache_config.enabled);
+        assert_eq!(builder.timeout, Some(Duration::from_secs(30)));
+    }
 }

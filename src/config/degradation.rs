@@ -222,4 +222,25 @@ mod tests {
         let config = DegradationConfig::new().with_request_timeout(Duration::from_secs(10));
         assert_eq!(config.request_timeout, Duration::from_secs(10));
     }
+
+    #[test]
+    fn test_with_failure_mode() {
+        let config = DegradationConfig::new().with_failure_mode(FailureMode::FailOpen);
+        assert_eq!(config.failure_mode, FailureMode::FailOpen);
+    }
+
+    #[test]
+    fn test_with_log_degraded_decisions() {
+        let config = DegradationConfig::new().with_log_degraded_decisions(false);
+        assert!(!config.log_degraded_decisions);
+
+        let config = DegradationConfig::new().with_log_degraded_decisions(true);
+        assert!(config.log_degraded_decisions);
+    }
+
+    #[test]
+    fn test_fail_closed() {
+        let config = DegradationConfig::fail_closed();
+        assert_eq!(config.failure_mode, FailureMode::FailClosed);
+    }
 }

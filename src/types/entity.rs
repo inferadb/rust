@@ -833,4 +833,39 @@ mod tests {
         assert_eq!(format!("{}", subject), "user:bob");
         assert!(!subject.is_userset());
     }
+
+    #[test]
+    fn test_subject_as_userset_ref() {
+        let user = User { id: "alice".into() };
+        let userset = user.as_userset_ref("member");
+        assert_eq!(userset, "user:alice#member");
+    }
+
+    #[test]
+    fn test_str_resource_id() {
+        let s: &str = "document:readme";
+        assert_eq!(s.resource_id(), "document:readme");
+        assert_eq!(s.as_resource_ref(), "document:readme");
+    }
+
+    #[test]
+    fn test_str_subject_id() {
+        let s: &str = "user:alice";
+        assert_eq!(s.subject_id(), "user:alice");
+        assert_eq!(s.as_subject_ref(), "user:alice");
+    }
+
+    #[test]
+    fn test_string_resource_id() {
+        let s = String::from("document:readme");
+        assert_eq!(s.resource_id(), "document:readme");
+        assert_eq!(s.as_resource_ref(), "document:readme");
+    }
+
+    #[test]
+    fn test_string_subject_id() {
+        let s = String::from("user:alice");
+        assert_eq!(s.subject_id(), "user:alice");
+        assert_eq!(s.as_subject_ref(), "user:alice");
+    }
 }

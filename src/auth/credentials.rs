@@ -324,4 +324,13 @@ mod tests {
         assert!(bearer_creds.as_bearer().is_some());
         assert!(bearer_creds.as_client_credentials().is_none());
     }
+
+    #[test]
+    fn test_bearer_from_string() {
+        let config: BearerCredentialsConfig = "test_token".into();
+        assert_eq!(config.token(), "test_token");
+
+        let config: BearerCredentialsConfig = String::from("owned_token").into();
+        assert_eq!(config.token(), "owned_token");
+    }
 }

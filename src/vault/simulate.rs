@@ -825,4 +825,225 @@ mod tests {
             assert_eq!(parsed, change);
         }
     }
+
+    // Tests for SimulateBuilder
+    use crate::auth::BearerCredentialsConfig;
+    use crate::client::Client;
+    use crate::transport::mock::MockTransport;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn test_simulate_builder_add_relationship() {
+        let mock_transport = Arc::new(MockTransport::new());
+        let client = Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build_with_transport(mock_transport)
+            .await
+            .unwrap();
+
+        let vault = client.organization("org_test").vault("vlt_test");
+        let result = vault
+            .simulate()
+            .add_relationship(Relationship::new("doc:1", "viewer", "user:alice"))
+            .check("user:alice", "viewer", "doc:1")
+            .await
+            .unwrap();
+
+        // Adding the relationship should grant access
+        assert!(result.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_simulate_builder_remove_relationship() {
+        let mock_transport = Arc::new(MockTransport::new());
+        // Add existing relationship
+        mock_transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+
+        let client = Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build_with_transport(mock_transport)
+            .await
+            .unwrap();
+
+        let vault = client.organization("org_test").vault("vlt_test");
+        let result = vault
+            .simulate()
+            .remove_relationship(Relationship::new("doc:1", "viewer", "user:alice"))
+            .check("user:alice", "viewer", "doc:1")
+            .await
+            .unwrap();
+
+        // Removing the relationship should deny access
+        assert!(!result.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_simulate_builder_add_all() {
+        let mock_transport = Arc::new(MockTransport::new());
+        let client = Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build_with_transport(mock_transport)
+            .await
+            .unwrap();
+
+        let vault = client.organization("org_test").vault("vlt_test");
+        let relationships = vec![
+            Relationship::new("doc:1", "viewer", "user:alice"),
+            Relationship::new("doc:2", "viewer", "user:bob"),
+        ];
+
+        let result = vault
+            .simulate()
+            .add_all(relationships)
+            .check("user:alice", "viewer", "doc:1")
+            .await
+            .unwrap();
+
+        assert!(result.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_simulate_builder_remove_all() {
+        let mock_transport = Arc::new(MockTransport::new());
+        mock_transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        mock_transport.add_relationship(Relationship::new("doc:2", "viewer", "user:bob").into_owned());
+
+        let client = Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build_with_transport(mock_transport)
+            .await
+            .unwrap();
+
+        let vault = client.organization("org_test").vault("vlt_test");
+        let relationships = vec![
+            Relationship::new("doc:1", "viewer", "user:alice"),
+            Relationship::new("doc:2", "viewer", "user:bob"),
+        ];
+
+        let result = vault
+            .simulate()
+            .remove_all(relationships)
+            .check("user:alice", "viewer", "doc:1")
+            .await
+            .unwrap();
+
+        assert!(!result.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_simulate_builder_compare() {
+        let mock_transport = Arc::new(MockTransport::new());
+        let client = Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build_with_transport(mock_transport)
+            .await
+            .unwrap();
+
+        let vault = client.organization("org_test").vault("vlt_test");
+
+        // Compare: what if we add viewer relationship
+        let diff = vault
+            .simulate()
+            .add_relationship(Relationship::new("doc:1", "viewer", "user:alice"))
+            .compare("user:alice", "viewer", "doc:1")
+            .await
+            .unwrap();
+
+        // Should show that access would be granted
+        assert_eq!(diff.change, SimulationChange::NowAllowed);
+        assert!(!diff.current_allowed);
+        assert!(diff.simulated_allowed);
+    }
+
+    #[tokio::test]
+    async fn test_simulate_builder_chaining() {
+        let mock_transport = Arc::new(MockTransport::new());
+        // Add some initial relationships
+        mock_transport.add_relationship(Relationship::new("doc:2", "viewer", "user:charlie").into_owned());
+
+        let client = Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build_with_transport(mock_transport)
+            .await
+            .unwrap();
+
+        let vault = client.organization("org_test").vault("vlt_test");
+
+        // Chain multiple operations
+        let result = vault
+            .simulate()
+            .add_relationship(Relationship::new("doc:1", "viewer", "user:alice"))
+            .add_relationship(Relationship::new("doc:1", "editor", "user:bob"))
+            .remove_relationship(Relationship::new("doc:2", "viewer", "user:charlie"))
+            .check("user:alice", "viewer", "doc:1")
+            .await
+            .unwrap();
+
+        assert!(result.allowed);
+        assert!(!result.hypothetical_additions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_simulate_compare_now_denied() {
+        let mock_transport = Arc::new(MockTransport::new());
+        // Add existing relationship
+        mock_transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+
+        let client = Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build_with_transport(mock_transport)
+            .await
+            .unwrap();
+
+        let vault = client.organization("org_test").vault("vlt_test");
+
+        // Compare: what if we remove viewer relationship
+        let diff = vault
+            .simulate()
+            .remove_relationship(Relationship::new("doc:1", "viewer", "user:alice"))
+            .compare("user:alice", "viewer", "doc:1")
+            .await
+            .unwrap();
+
+        // Should show that access would be revoked
+        assert_eq!(diff.change, SimulationChange::NowDenied);
+        assert!(diff.current_allowed);
+        assert!(!diff.simulated_allowed);
+    }
+
+    #[tokio::test]
+    async fn test_simulate_compare_no_change() {
+        let mock_transport = Arc::new(MockTransport::new());
+        // Add existing relationship
+        mock_transport.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+
+        let client = Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build_with_transport(mock_transport)
+            .await
+            .unwrap();
+
+        let vault = client.organization("org_test").vault("vlt_test");
+
+        // Compare: adding the same relationship that already exists
+        let diff = vault
+            .simulate()
+            .add_relationship(Relationship::new("doc:1", "viewer", "user:alice"))
+            .compare("user:alice", "viewer", "doc:1")
+            .await
+            .unwrap();
+
+        // Should show no change (already allowed)
+        assert_eq!(diff.change, SimulationChange::NoChange);
+        assert!(diff.current_allowed);
+        assert!(diff.simulated_allowed);
+    }
 }

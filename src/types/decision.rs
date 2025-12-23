@@ -412,9 +412,16 @@ mod tests {
         assert_eq!(Decision::allowed().to_string(), "allowed");
         assert_eq!(Decision::denied().to_string(), "denied");
 
-        let with_reason = Decision::allowed()
+        let allowed_with_reason = Decision::allowed()
             .with_metadata(DecisionMetadata::new().with_reason(DecisionReason::DirectRelationship));
-        assert_eq!(with_reason.to_string(), "allowed (direct relationship)");
+        assert_eq!(
+            allowed_with_reason.to_string(),
+            "allowed (direct relationship)"
+        );
+
+        let denied_with_reason = Decision::denied()
+            .with_metadata(DecisionMetadata::new().with_reason(DecisionReason::NoRelationship));
+        assert_eq!(denied_with_reason.to_string(), "denied (no relationship)");
     }
 
     #[test]
@@ -424,10 +431,24 @@ mod tests {
             "direct relationship"
         );
         assert_eq!(
+            DecisionReason::InheritedRelationship.to_string(),
+            "inherited relationship"
+        );
+        assert_eq!(
+            DecisionReason::ComputedPermission.to_string(),
+            "computed permission"
+        );
+        assert_eq!(DecisionReason::ConditionMet.to_string(), "condition met");
+        assert_eq!(
             DecisionReason::NoRelationship.to_string(),
             "no relationship"
         );
-        assert_eq!(DecisionReason::ConditionMet.to_string(), "condition met");
+        assert_eq!(
+            DecisionReason::ConditionNotMet.to_string(),
+            "condition not met"
+        );
+        assert_eq!(DecisionReason::ExplicitDeny.to_string(), "explicit deny");
+        assert_eq!(DecisionReason::Unknown.to_string(), "unknown");
     }
 
     #[test]

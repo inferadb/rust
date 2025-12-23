@@ -565,4 +565,49 @@ mod tests {
         assert_eq!(req.name, Some("New Name".to_string()));
         assert_eq!(req.description, Some("New description".to_string()));
     }
+
+    #[tokio::test]
+    async fn test_teams_client_accessors() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+        assert_eq!(teams.organization_id(), "org_test");
+    }
+
+    #[tokio::test]
+    async fn test_teams_client_debug() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+        let debug = format!("{:?}", teams);
+        assert!(debug.contains("TeamsClient"));
+        assert!(debug.contains("org_test"));
+    }
+
+    #[tokio::test]
+    async fn test_list_teams_request_builders() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+
+        // Test all builder methods
+        let _request = teams
+            .list()
+            .limit(50)
+            .cursor("cursor_xyz")
+            .sort(SortOrder::Descending);
+
+        // Just verify the builder compiles and returns a request
+    }
+
+    #[tokio::test]
+    async fn test_list_team_members_request_builders() {
+        let client = create_test_client().await;
+        let teams = TeamsClient::new(client, "org_test");
+
+        // Test all builder methods
+        let _request = teams
+            .list_members("team_abc123")
+            .limit(50)
+            .cursor("cursor_xyz");
+
+        // Just verify the builder compiles and returns a request
+    }
 }
