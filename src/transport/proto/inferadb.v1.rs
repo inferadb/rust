@@ -546,10 +546,10 @@ pub mod inferadb_service_client {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value,
+        clippy::let_unit_value
     )]
-    use tonic::codegen::*;
     use tonic::codegen::http::Uri;
+    use tonic::codegen::*;
     /// The main Infera authorization service
     #[derive(Debug, Clone)]
     pub struct InferadbServiceClient<T> {
@@ -594,9 +594,8 @@ pub mod inferadb_service_client {
                     <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
                 >,
             >,
-            <T as tonic::codegen::Service<
-                http::Request<tonic::body::BoxBody>,
-            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
+            <T as tonic::codegen::Service<http::Request<tonic::body::BoxBody>>>::Error:
+                Into<StdError> + std::marker::Send + std::marker::Sync,
         {
             InferadbServiceClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -640,18 +639,12 @@ pub mod inferadb_service_client {
             tonic::Response<tonic::codec::Streaming<super::EvaluateResponse>>,
             tonic::Status,
         > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/inferadb.v1.InferadbService/Evaluate",
-            );
+            let path =
+                http::uri::PathAndQuery::from_static("/inferadb.v1.InferadbService/Evaluate");
             let mut req = request.into_streaming_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("inferadb.v1.InferadbService", "Evaluate"));
@@ -665,18 +658,11 @@ pub mod inferadb_service_client {
             tonic::Response<tonic::codec::Streaming<super::ExpandResponse>>,
             tonic::Status,
         > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/inferadb.v1.InferadbService/Expand",
-            );
+            let path = http::uri::PathAndQuery::from_static("/inferadb.v1.InferadbService/Expand");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("inferadb.v1.InferadbService", "Expand"));
@@ -687,23 +673,18 @@ pub mod inferadb_service_client {
             &mut self,
             request: impl tonic::IntoStreamingRequest<Message = super::WriteRequest>,
         ) -> std::result::Result<tonic::Response<super::WriteResponse>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/inferadb.v1.InferadbService/WriteRelationships",
             );
             let mut req = request.into_streaming_request();
-            req.extensions_mut()
-                .insert(
-                    GrpcMethod::new("inferadb.v1.InferadbService", "WriteRelationships"),
-                );
+            req.extensions_mut().insert(GrpcMethod::new(
+                "inferadb.v1.InferadbService",
+                "WriteRelationships",
+            ));
             self.inner.client_streaming(req, path, codec).await
         }
         /// Delete relationships from the store
@@ -711,23 +692,18 @@ pub mod inferadb_service_client {
             &mut self,
             request: impl tonic::IntoStreamingRequest<Message = super::DeleteRequest>,
         ) -> std::result::Result<tonic::Response<super::DeleteResponse>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/inferadb.v1.InferadbService/DeleteRelationships",
             );
             let mut req = request.into_streaming_request();
-            req.extensions_mut()
-                .insert(
-                    GrpcMethod::new("inferadb.v1.InferadbService", "DeleteRelationships"),
-                );
+            req.extensions_mut().insert(GrpcMethod::new(
+                "inferadb.v1.InferadbService",
+                "DeleteRelationships",
+            ));
             self.inner.client_streaming(req, path, codec).await
         }
         /// Health check
@@ -735,18 +711,11 @@ pub mod inferadb_service_client {
             &mut self,
             request: impl tonic::IntoRequest<super::HealthRequest>,
         ) -> std::result::Result<tonic::Response<super::HealthResponse>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/inferadb.v1.InferadbService/Health",
-            );
+            let path = http::uri::PathAndQuery::from_static("/inferadb.v1.InferadbService/Health");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("inferadb.v1.InferadbService", "Health"));
@@ -760,21 +729,17 @@ pub mod inferadb_service_client {
             tonic::Response<tonic::codec::Streaming<super::ListResourcesResponse>>,
             tonic::Status,
         > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/inferadb.v1.InferadbService/ListResources",
-            );
+            let path =
+                http::uri::PathAndQuery::from_static("/inferadb.v1.InferadbService/ListResources");
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("inferadb.v1.InferadbService", "ListResources"));
+            req.extensions_mut().insert(GrpcMethod::new(
+                "inferadb.v1.InferadbService",
+                "ListResources",
+            ));
             self.inner.server_streaming(req, path, codec).await
         }
         /// List relationships (relationships) with optional filtering
@@ -785,23 +750,18 @@ pub mod inferadb_service_client {
             tonic::Response<tonic::codec::Streaming<super::ListRelationshipsResponse>>,
             tonic::Status,
         > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/inferadb.v1.InferadbService/ListRelationships",
             );
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(
-                    GrpcMethod::new("inferadb.v1.InferadbService", "ListRelationships"),
-                );
+            req.extensions_mut().insert(GrpcMethod::new(
+                "inferadb.v1.InferadbService",
+                "ListRelationships",
+            ));
             self.inner.server_streaming(req, path, codec).await
         }
         /// List subjects that have a specific relation to a resource
@@ -812,21 +772,17 @@ pub mod inferadb_service_client {
             tonic::Response<tonic::codec::Streaming<super::ListSubjectsResponse>>,
             tonic::Status,
         > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/inferadb.v1.InferadbService/ListSubjects",
-            );
+            let path =
+                http::uri::PathAndQuery::from_static("/inferadb.v1.InferadbService/ListSubjects");
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("inferadb.v1.InferadbService", "ListSubjects"));
+            req.extensions_mut().insert(GrpcMethod::new(
+                "inferadb.v1.InferadbService",
+                "ListSubjects",
+            ));
             self.inner.server_streaming(req, path, codec).await
         }
         /// Watch for real-time relationship changes
@@ -837,18 +793,11 @@ pub mod inferadb_service_client {
             tonic::Response<tonic::codec::Streaming<super::WatchResponse>>,
             tonic::Status,
         > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/inferadb.v1.InferadbService/Watch",
-            );
+            let path = http::uri::PathAndQuery::from_static("/inferadb.v1.InferadbService/Watch");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("inferadb.v1.InferadbService", "Watch"));
@@ -858,22 +807,13 @@ pub mod inferadb_service_client {
         pub async fn simulate(
             &mut self,
             request: impl tonic::IntoRequest<super::SimulateRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::SimulateResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+        ) -> std::result::Result<tonic::Response<super::SimulateResponse>, tonic::Status> {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/inferadb.v1.InferadbService/Simulate",
-            );
+            let path =
+                http::uri::PathAndQuery::from_static("/inferadb.v1.InferadbService/Simulate");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("inferadb.v1.InferadbService", "Simulate"));
