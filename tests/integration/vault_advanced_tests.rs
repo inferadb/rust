@@ -542,7 +542,7 @@ async fn test_resources_with_take() {
         let _ = vault
             .relationships()
             .write(Relationship::new(
-                &format!("document:page{}", i),
+                format!("document:page{}", i),
                 "viewer",
                 "user:alice",
             ))

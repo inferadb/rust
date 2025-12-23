@@ -182,9 +182,9 @@ impl TransportClient for MockTransport {
         let filtered: Vec<_> = relationships
             .iter()
             .filter(|rel| {
-                let resource_match = resource.map_or(true, |r| rel.resource() == r);
-                let relation_match = relation.map_or(true, |r| rel.relation() == r);
-                let subject_match = subject.map_or(true, |s| rel.subject() == s);
+                let resource_match = resource.is_none_or(|r| rel.resource() == r);
+                let relation_match = relation.is_none_or(|r| rel.relation() == r);
+                let subject_match = subject.is_none_or(|s| rel.subject() == s);
                 resource_match && relation_match && subject_match
             })
             .take(limit.unwrap_or(100) as usize)
@@ -215,7 +215,7 @@ impl TransportClient for MockTransport {
                 rel.subject() == subject
                     && rel.relation() == permission
                     && resource_type
-                        .map_or(true, |rt| rel.resource().starts_with(&format!("{}:", rt)))
+                        .is_none_or(|rt| rel.resource().starts_with(&format!("{}:", rt)))
             })
             .take(limit.unwrap_or(100) as usize)
             .map(|rel| rel.resource().to_string())
@@ -244,8 +244,7 @@ impl TransportClient for MockTransport {
             .filter(|rel| {
                 rel.resource() == resource
                     && rel.relation() == permission
-                    && subject_type
-                        .map_or(true, |st| rel.subject().starts_with(&format!("{}:", st)))
+                    && subject_type.is_none_or(|st| rel.subject().starts_with(&format!("{}:", st)))
             })
             .take(limit.unwrap_or(100) as usize)
             .map(|rel| rel.subject().to_string())

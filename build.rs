@@ -19,8 +19,8 @@ fn main() {
         // Tell cargo to rerun if the proto file changes
         println!("cargo:rerun-if-changed={proto_file}");
 
-        // Configure tonic-build
-        tonic_build::configure()
+        // Configure tonic-prost-build (tonic 0.14+ split prost codegen into separate crate)
+        tonic_prost_build::configure()
             .build_server(false) // We only need the client
             .build_client(true)
             .out_dir("src/transport/proto")

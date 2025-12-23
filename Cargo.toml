@@ -33,9 +33,10 @@ http = "1"
 url = "2"
 
 # gRPC (optional)
-tonic = { version = "0.12", features = ["transport", "tls"], optional = true }
-prost = { version = "0.13", optional = true }
-prost-types = { version = "0.13", optional = true }
+tonic = { version = "0.14", features = ["transport", "tls-ring", "tls-native-roots"], optional = true }
+prost = { version = "0.14", optional = true }
+prost-types = { version = "0.14", optional = true }
+tonic-prost = { version = "0.14", optional = true }
 
 # REST (optional)
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream"], optional = true }
@@ -80,7 +81,7 @@ rand = "0.8"
 inferadb-derive = { path = "inferadb-derive", optional = true }
 
 [build-dependencies]
-tonic-build = { version = "0.12", optional = true }
+tonic-prost-build = { version = "0.14", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
@@ -104,7 +105,7 @@ required-features = ["rest"]
 default = ["grpc", "rest", "rustls"]
 
 # Transport options
-grpc = ["dep:tonic", "dep:prost", "dep:prost-types", "dep:tonic-build"]
+grpc = ["dep:tonic", "dep:prost", "dep:prost-types", "dep:tonic-prost", "dep:tonic-prost-build"]
 rest = ["dep:reqwest"]
 
 # TLS options (mutually exclusive)
