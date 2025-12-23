@@ -103,7 +103,10 @@ impl MembersClient {
     /// ```
     #[cfg(feature = "rest")]
     pub async fn invite(&self, request: InviteMemberRequest) -> Result<InvitationInfo, Error> {
-        let path = format!("/control/v1/organizations/{}/invitations", self.organization_id);
+        let path = format!(
+            "/control/v1/organizations/{}/invitations",
+            self.organization_id
+        );
         self.client.inner().control_post(&path, &request).await
     }
 
@@ -619,7 +622,10 @@ impl ListInvitationsRequest {
 
     #[cfg(feature = "rest")]
     async fn execute(self) -> Result<Page<InvitationInfo>, Error> {
-        let mut path = format!("/control/v1/organizations/{}/invitations", self.organization_id);
+        let mut path = format!(
+            "/control/v1/organizations/{}/invitations",
+            self.organization_id
+        );
         let mut query_parts = Vec::new();
 
         if let Some(limit) = self.limit {

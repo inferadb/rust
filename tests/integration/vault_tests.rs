@@ -9,8 +9,13 @@ use inferadb::Relationship;
 /// Test basic permission check (should deny when no relationships exist)
 #[tokio::test]
 async fn test_check_permission_denied() {
-    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
-    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
+    let fixture = TestFixture::create()
+        .await
+        .expect("Failed to create test fixture");
+    let client = fixture
+        .create_sdk_client()
+        .await
+        .expect("Failed to create SDK client");
 
     let vault = client
         .organization(fixture.org_id_str())
@@ -21,7 +26,10 @@ async fn test_check_permission_denied() {
 
     match result {
         Ok(allowed) => {
-            assert!(!allowed, "Permission should be denied when no relationships exist");
+            assert!(
+                !allowed,
+                "Permission should be denied when no relationships exist"
+            );
         }
         Err(e) => {
             // Some implementations may return an error for missing resources
@@ -35,8 +43,13 @@ async fn test_check_permission_denied() {
 /// Test writing and checking a relationship
 #[tokio::test]
 async fn test_write_and_check_relationship() {
-    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
-    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
+    let fixture = TestFixture::create()
+        .await
+        .expect("Failed to create test fixture");
+    let client = fixture
+        .create_sdk_client()
+        .await
+        .expect("Failed to create SDK client");
 
     let vault = client
         .organization(fixture.org_id_str())
@@ -54,7 +67,10 @@ async fn test_write_and_check_relationship() {
             let check_result = vault.check("user:alice", "viewer", "document:readme").await;
             match check_result {
                 Ok(allowed) => {
-                    assert!(allowed, "Permission should be granted after writing relationship");
+                    assert!(
+                        allowed,
+                        "Permission should be granted after writing relationship"
+                    );
                 }
                 Err(e) => {
                     println!("Check error after write: {:?}", e);
@@ -73,8 +89,13 @@ async fn test_write_and_check_relationship() {
 /// Test batch permission checks
 #[tokio::test]
 async fn test_batch_check() {
-    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
-    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
+    let fixture = TestFixture::create()
+        .await
+        .expect("Failed to create test fixture");
+    let client = fixture
+        .create_sdk_client()
+        .await
+        .expect("Failed to create SDK client");
 
     let vault = client
         .organization(fixture.org_id_str())
@@ -108,19 +129,31 @@ async fn test_batch_check() {
 /// Test listing relationships
 #[tokio::test]
 async fn test_list_relationships() {
-    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
-    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
+    let fixture = TestFixture::create()
+        .await
+        .expect("Failed to create test fixture");
+    let client = fixture
+        .create_sdk_client()
+        .await
+        .expect("Failed to create SDK client");
 
     let vault = client
         .organization(fixture.org_id_str())
         .vault(fixture.vault_id_str());
 
     // List relationships for a resource (should be empty initially)
-    let result = vault.relationships().list().resource("document:readme").await;
+    let result = vault
+        .relationships()
+        .list()
+        .resource("document:readme")
+        .await;
 
     match result {
         Ok(response) => {
-            println!("Found {} relationships for document:readme", response.relationships.len());
+            println!(
+                "Found {} relationships for document:readme",
+                response.relationships.len()
+            );
         }
         Err(e) => {
             println!("List relationships error: {:?}", e);
@@ -133,15 +166,23 @@ async fn test_list_relationships() {
 /// Test require() which should error on denied permission
 #[tokio::test]
 async fn test_require_permission_fails() {
-    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
-    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
+    let fixture = TestFixture::create()
+        .await
+        .expect("Failed to create test fixture");
+    let client = fixture
+        .create_sdk_client()
+        .await
+        .expect("Failed to create SDK client");
 
     let vault = client
         .organization(fixture.org_id_str())
         .vault(fixture.vault_id_str());
 
     // require() should return an error when permission is denied
-    let result = vault.check("user:alice", "view", "document:readme").require().await;
+    let result = vault
+        .check("user:alice", "view", "document:readme")
+        .require()
+        .await;
 
     match result {
         Ok(_) => {
@@ -153,7 +194,9 @@ async fn test_require_permission_fails() {
             // The error message should contain information about what was denied
             let msg = e.to_string();
             assert!(
-                msg.contains("denied") || msg.contains("user:alice") || msg.contains("document:readme"),
+                msg.contains("denied")
+                    || msg.contains("user:alice")
+                    || msg.contains("document:readme"),
                 "Error should indicate access was denied: {:?}",
                 e
             );
@@ -166,8 +209,13 @@ async fn test_require_permission_fails() {
 /// Test querying subjects with permission on a resource
 #[tokio::test]
 async fn test_subjects_with_permission() {
-    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
-    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
+    let fixture = TestFixture::create()
+        .await
+        .expect("Failed to create test fixture");
+    let client = fixture
+        .create_sdk_client()
+        .await
+        .expect("Failed to create SDK client");
 
     let vault = client
         .organization(fixture.org_id_str())
@@ -198,8 +246,13 @@ async fn test_subjects_with_permission() {
 /// Test querying resources accessible by a subject
 #[tokio::test]
 async fn test_resources_accessible_by() {
-    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
-    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
+    let fixture = TestFixture::create()
+        .await
+        .expect("Failed to create test fixture");
+    let client = fixture
+        .create_sdk_client()
+        .await
+        .expect("Failed to create SDK client");
 
     let vault = client
         .organization(fixture.org_id_str())
@@ -215,7 +268,10 @@ async fn test_resources_accessible_by() {
 
     match result {
         Ok(resources) => {
-            println!("Found {} resources accessible by user:alice", resources.len());
+            println!(
+                "Found {} resources accessible by user:alice",
+                resources.len()
+            );
             // Should be empty since no relationships exist
             assert!(resources.is_empty(), "Should have no resources initially");
         }
@@ -230,8 +286,13 @@ async fn test_resources_accessible_by() {
 /// Test deleting a relationship
 #[tokio::test]
 async fn test_delete_relationship() {
-    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
-    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
+    let fixture = TestFixture::create()
+        .await
+        .expect("Failed to create test fixture");
+    let client = fixture
+        .create_sdk_client()
+        .await
+        .expect("Failed to create SDK client");
 
     let vault = client
         .organization(fixture.org_id_str())

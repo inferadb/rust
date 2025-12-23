@@ -31,6 +31,9 @@
 pub(crate) mod traits;
 
 #[cfg(feature = "grpc")]
+pub(crate) mod proto;
+
+#[cfg(feature = "grpc")]
 pub(crate) mod grpc;
 
 #[cfg(feature = "rest")]

@@ -39,7 +39,7 @@ pub(crate) struct ClientInner {
     pub timeout: Duration,
 
     /// Transport client for Engine API calls.
-    #[cfg(feature = "rest")]
+    #[cfg(any(feature = "grpc", feature = "rest"))]
     pub transport: Option<Arc<dyn TransportClient + Send + Sync>>,
 
     /// HTTP client for Control API calls.

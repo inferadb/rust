@@ -2291,9 +2291,8 @@ impl ExplainPermissionRequest {
 
             // Add trace information if available
             if let Some(trace) = response.trace {
-                explanation = explanation.with_evaluation_time(
-                    std::time::Duration::from_micros(trace.duration_micros)
-                );
+                explanation = explanation
+                    .with_evaluation_time(std::time::Duration::from_micros(trace.duration_micros));
 
                 // Convert evaluation tree to paths
                 if let Some(root) = trace.root {
@@ -2354,7 +2353,10 @@ impl ExplainPermissionRequest {
                         }
                     }
                 }
-                EvaluationNodeType::RelatedObjectUserset { relationship, computed } => {
+                EvaluationNodeType::RelatedObjectUserset {
+                    relationship,
+                    computed,
+                } => {
                     // Tupleset rewrite - check children
                     for child in &node.children {
                         let child_paths = Self::extract_paths_from_tree(child, subject, resource);

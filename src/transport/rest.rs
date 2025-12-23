@@ -651,7 +651,11 @@ fn convert_evaluation_node(node: EvaluationNodeResponse) -> super::traits::Evalu
     super::traits::EvaluationNode {
         node_type,
         result: node.result,
-        children: node.children.into_iter().map(convert_evaluation_node).collect(),
+        children: node
+            .children
+            .into_iter()
+            .map(convert_evaluation_node)
+            .collect(),
     }
 }
 

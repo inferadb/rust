@@ -99,10 +99,7 @@ impl ApiClientsClient {
     pub async fn create(&self, request: CreateApiClientRequest) -> Result<ApiClient, Error> {
         #[cfg(feature = "rest")]
         {
-            let path = format!(
-                "/control/v1/organizations/{}/clients",
-                self.organization_id
-            );
+            let path = format!("/control/v1/organizations/{}/clients", self.organization_id);
             return self.client.inner().control_post(&path, &request).await;
         }
         #[cfg(not(feature = "rest"))]
@@ -444,10 +441,7 @@ impl ListApiClientsRequest {
 
     #[cfg(feature = "rest")]
     async fn execute(self) -> Result<Page<ApiClient>, Error> {
-        let mut path = format!(
-            "/control/v1/organizations/{}/clients",
-            self.organization_id
-        );
+        let mut path = format!("/control/v1/organizations/{}/clients", self.organization_id);
 
         let mut query_params = Vec::new();
         if let Some(limit) = self.limit {
@@ -477,7 +471,9 @@ impl ListApiClientsRequest {
 
     #[cfg(not(feature = "rest"))]
     async fn execute(self) -> Result<Page<ApiClient>, Error> {
-        Err(Error::configuration("REST feature is required for control API"))
+        Err(Error::configuration(
+            "REST feature is required for control API",
+        ))
     }
 }
 

@@ -1,0 +1,453 @@
+syntax = "proto3";
+
+package inferadb.v1;
+
+// The main Infera authorization service
+service InferadbService {
+  // Evaluate if a subject has permission on a resource
+  // Supports optional detailed tracing for debugging
+  rpc Evaluate(stream EvaluateRequest) returns (stream EvaluateResponse);
+
+  // Expand a relation into its userset tree
+  rpc Expand(ExpandRequest) returns (stream ExpandResponse);
+
+  // Write relationships to the store
+  rpc WriteRelationships(stream WriteRequest) returns (WriteResponse);
+
+  // Delete relationships from the store
+  rpc DeleteRelationships(stream DeleteRequest) returns (DeleteResponse);
+
+  // Health check
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // List resources accessible by a subject
+  rpc ListResources(ListResourcesRequest) returns (stream ListResourcesResponse);
+
+  // List relationships (relationships) with optional filtering
+  rpc ListRelationships(ListRelationshipsRequest) returns (stream ListRelationshipsResponse);
+
+  // List subjects that have a specific relation to a resource
+  rpc ListSubjects(ListSubjectsRequest) returns (stream ListSubjectsResponse);
+
+  // Watch for real-time relationship changes
+  rpc Watch(WatchRequest) returns (stream WatchResponse);
+
+  // Simulate authorization with ephemeral relationships (what-if testing)
+  rpc Simulate(SimulateRequest) returns (SimulateResponse);
+}
+
+// Evaluate permission request
+message EvaluateRequest {
+  // Subject (e.g., "user:alice")
+  string subject = 1;
+
+  // Resource (e.g., "doc:readme")
+  string resource = 2;
+
+  // Permission to evaluate (e.g., "reader")
+  string permission = 3;
+
+  // Optional context data
+  optional string context = 4;
+
+  // Optional flag to include detailed evaluation trace for debugging
+  optional bool trace = 5;
+}
+
+// Evaluate response
+message EvaluateResponse {
+  // Decision (allow or deny)
+  Decision decision = 1;
+
+  // Index of the request this response corresponds to (for batch operations)
+  uint32 index = 2;
+
+  // Error message if evaluation failed
+  optional string error = 3;
+
+  // Optional detailed evaluation trace (included when trace was set in request)
+  optional DecisionTrace trace = 4;
+}
+
+// Decision enum
+enum Decision {
+  DECISION_UNSPECIFIED = 0;
+  DECISION_ALLOW = 1;
+  DECISION_DENY = 2;
+}
+
+// Decision trace for explainability
+message DecisionTrace {
+  // Final decision
+  Decision decision = 1;
+
+  // Root evaluation node
+  EvaluationNode root = 2;
+
+  // Duration in microseconds
+  uint64 duration_micros = 3;
+
+  // Number of relationships read
+  uint64 relationships_read = 4;
+
+  // Number of relations evaluated
+  uint64 relations_evaluated = 5;
+}
+
+// Evaluation node in the trace tree
+message EvaluationNode {
+  // Type of evaluation
+  NodeType node_type = 1;
+
+  // Result at this node
+  bool result = 2;
+
+  // Child nodes
+  repeated EvaluationNode children = 3;
+}
+
+// Node type in evaluation
+message NodeType {
+  oneof type {
+    DirectCheck direct_check = 1;
+    ComputedUserset computed_userset = 2;
+    RelatedObjectUserset related_object_userset = 3;
+    Union union = 4;
+    Intersection intersection = 5;
+    Exclusion exclusion = 6;
+    WasmModule wasm_module = 7;
+  }
+}
+
+message DirectCheck {
+  string resource = 1;
+  string relation = 2;
+  string subject = 3;
+}
+
+message ComputedUserset {
+  string relation = 1;
+  string relationship = 2;
+}
+
+message RelatedObjectUserset {
+  string relationship = 1;
+  string computed = 2;
+}
+
+message Union {}
+message Intersection {}
+message Exclusion {}
+
+message WasmModule {
+  string module_name = 1;
+}
+
+// Expand request
+message ExpandRequest {
+  // Resource to expand (e.g., "doc:readme")
+  string resource = 1;
+
+  // Relation to expand (e.g., "viewer")
+  string relation = 2;
+}
+
+// Expand response (one user at a time)
+message ExpandResponse {
+  oneof payload {
+    // A single user in the expanded set
+    string user = 1;
+    // Final summary with tree
+    ExpandStreamSummary summary = 2;
+  }
+}
+
+// Summary sent at end of expand stream
+message ExpandStreamSummary {
+  // Complete userset tree
+  UsersetTree tree = 1;
+  // Total number of users
+  uint64 total_users = 2;
+}
+
+// Userset tree node
+message UsersetTree {
+  // Node type
+  UsersetNodeType node_type = 1;
+
+  // Child nodes
+  repeated UsersetTree children = 2;
+}
+
+// Userset node type
+message UsersetNodeType {
+  oneof type {
+    This this = 1;
+    ComputedUsersetRef computed_userset = 2;
+    RelatedObjectUsersetRef related_object_userset = 3;
+    UnionNode union = 4;
+    IntersectionNode intersection = 5;
+    ExclusionNode exclusion = 6;
+    Leaf leaf = 7;
+  }
+}
+
+message This {}
+
+message ComputedUsersetRef {
+  string relation = 1;
+}
+
+message RelatedObjectUsersetRef {
+  string relationship = 1;
+  string computed = 2;
+}
+
+message UnionNode {}
+message IntersectionNode {}
+message ExclusionNode {}
+
+message Leaf {
+  repeated string users = 1;
+}
+
+// Write request
+message WriteRequest {
+  // Relationships to write
+  repeated Relationship relationships = 1;
+}
+
+// Write response
+message WriteResponse {
+  // Revision token
+  string revision = 1;
+
+  // Number of relationships written
+  uint64 relationships_written = 2;
+}
+
+// Filter for deleting relationships
+// All fields are optional and can be combined
+// At least one field must be set to avoid deleting all relationships
+message DeleteFilter {
+  // Filter by resource (e.g., "doc:readme")
+  optional string resource = 1;
+
+  // Filter by relation (e.g., "viewer")
+  optional string relation = 2;
+
+  // Filter by subject (e.g., "user:alice")
+  optional string subject = 3;
+}
+
+// Delete request
+message DeleteRequest {
+  // Optional filter for bulk deletion
+  // If provided, all relationships matching the filter will be deleted
+  optional DeleteFilter filter = 1;
+
+  // Optional exact relationships to delete
+  // Can be combined with filter
+  repeated Relationship relationships = 2;
+
+  // Maximum number of relationships to delete (safety limit)
+  // If not specified, uses default limit (1000)
+  // Set to 0 for unlimited (use with extreme caution!)
+  optional uint32 limit = 3;
+}
+
+// Delete response
+message DeleteResponse {
+  // Revision token
+  string revision = 1;
+
+  // Number of relationships deleted
+  uint64 relationships_deleted = 2;
+}
+
+// Health check request
+message HealthRequest {}
+
+// Health check response
+message HealthResponse {
+  // Status (e.g., "healthy")
+  string status = 1;
+
+  // Service name
+  string service = 2;
+}
+
+// List resources request
+message ListResourcesRequest {
+  // Subject (e.g., "user:alice")
+  string subject = 1;
+
+  // Resource type to filter by (e.g., "document")
+  string resource_type = 2;
+
+  // Permission to check (e.g., "can_view")
+  string permission = 3;
+
+  // Optional limit on number of resources to return
+  optional uint32 limit = 4;
+
+  // Optional continuation token from previous request
+  optional string cursor = 5;
+
+  // Optional resource ID pattern filter (supports wildcards: * matches any characters, ? matches single character)
+  // Examples: "doc:readme*", "user:alice_?", "folder:*/subfolder"
+  optional string resource_id_pattern = 6;
+}
+
+// List resources response
+message ListResourcesResponse {
+  // Resource ID (e.g., "document:readme")
+  string resource = 1;
+
+  // Continuation token for pagination (only set in final message)
+  optional string cursor = 2;
+
+  // Total count estimate (only set in final message, may be approximate)
+  optional uint64 total_count = 3;
+}
+
+// List relationships request
+message ListRelationshipsRequest {
+  // Optional filter by resource (e.g., "doc:readme")
+  optional string resource = 1;
+
+  // Optional filter by relation (e.g., "viewer")
+  optional string relation = 2;
+
+  // Optional filter by subject (e.g., "user:alice")
+  optional string subject = 3;
+
+  // Optional limit on number of relationships to return (default: 100, max: 1000)
+  optional uint32 limit = 4;
+
+  // Optional continuation token from previous request
+  optional string cursor = 5;
+}
+
+// Relationship represents an authorization relationship with API-friendly naming
+// (resource, relation, subject) instead of the storage-level (object, relation, user)
+message Relationship {
+  // Resource identifier (e.g., "doc:readme")
+  string resource = 1;
+
+  // Relation type (e.g., "viewer", "editor")
+  string relation = 2;
+
+  // Subject identifier (e.g., "user:alice", "group:engineers")
+  string subject = 3;
+}
+
+// List relationships response
+message ListRelationshipsResponse {
+  // A single relationship
+  Relationship relationship = 1;
+
+  // Continuation token for pagination (only set in final message)
+  optional string cursor = 2;
+
+  // Total count of relationships returned (only set in final message)
+  optional uint64 total_count = 3;
+}
+
+// List subjects request
+message ListSubjectsRequest {
+  // Resource (e.g., "document:readme")
+  string resource = 1;
+
+  // Relation to check (e.g., "viewer")
+  string relation = 2;
+
+  // Optional filter by subject type (e.g., "user", "group")
+  optional string subject_type = 3;
+
+  // Optional limit on number of subjects to return
+  optional uint32 limit = 4;
+
+  // Optional continuation token from previous request
+  optional string cursor = 5;
+}
+
+// List subjects response
+message ListSubjectsResponse {
+  // Subject ID (e.g., "user:alice", "group:admins")
+  string subject = 1;
+
+  // Continuation token for pagination (only set in final message)
+  optional string cursor = 2;
+
+  // Total count estimate (only set in final message, may be approximate)
+  optional uint64 total_count = 3;
+}
+
+// Watch request
+message WatchRequest {
+  // Optional filter by resource type (e.g., "document", "folder")
+  // If not specified, watches all relationship changes
+  repeated string resource_types = 1;
+
+  // Optional start revision/cursor to resume from
+  // If not specified, starts from current point in time
+  // If specified as "0" or empty, starts from beginning of available change log
+  optional string cursor = 2;
+}
+
+// Watch response - streams relationship changes
+message WatchResponse {
+  // Type of change operation
+  ChangeOperation operation = 1;
+
+  // The relationship that changed
+  Relationship relationship = 2;
+
+  // Revision at which this change occurred
+  string revision = 3;
+
+  // Timestamp when the change occurred (ISO 8601 format)
+  string timestamp = 4;
+}
+
+// Type of relationship change
+enum ChangeOperation {
+  CHANGE_OPERATION_UNSPECIFIED = 0;
+  CHANGE_OPERATION_CREATE = 1;  // Relationship was created
+  CHANGE_OPERATION_DELETE = 2;  // Relationship was deleted
+}
+
+// Simulate request - test authorization with ephemeral relationships
+message SimulateRequest {
+  // Ephemeral relationships to use for this check (temporary context)
+  // These relationships exist ONLY for this simulation and are not persisted
+  repeated Relationship context_relationships = 1;
+
+  // The check to evaluate against the ephemeral context
+  SimulateCheck check = 2;
+}
+
+// The authorization check to perform in the simulation
+message SimulateCheck {
+  // Subject (e.g., "user:alice")
+  string subject = 1;
+
+  // Resource (e.g., "doc:readme")
+  string resource = 2;
+
+  // Permission to evaluate (e.g., "viewer")
+  string permission = 3;
+
+  // Optional context data for WASM modules
+  optional string context = 4;
+}
+
+// Simulate response
+message SimulateResponse {
+  // Authorization decision based on ephemeral context
+  Decision decision = 1;
+
+  // Number of context relationships used in simulation
+  uint64 context_relationships_count = 2;
+}

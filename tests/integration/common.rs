@@ -369,8 +369,10 @@ impl TestFixture {
             anyhow::bail!("Registration failed with status {}: {}", status, error_body);
         }
 
-        let register_resp: RegisterResponse =
-            response.json().await.context("Failed to parse registration response")?;
+        let register_resp: RegisterResponse = response
+            .json()
+            .await
+            .context("Failed to parse registration response")?;
 
         let user_id = register_resp.user_id;
 
@@ -397,8 +399,10 @@ impl TestFixture {
             anyhow::bail!("Login failed with status {}: {}", login_status, error_body);
         }
 
-        let login_resp: LoginResponse =
-            login_response.json().await.context("Failed to parse login response")?;
+        let login_resp: LoginResponse = login_response
+            .json()
+            .await
+            .context("Failed to parse login response")?;
 
         let session_id = login_resp.session_id;
 
@@ -555,7 +559,8 @@ impl TestFixture {
 
         let secret_bytes = self.signing_key.to_bytes();
         let pem = ed25519_to_pem(&secret_bytes);
-        let encoding_key = EncodingKey::from_ed_pem(&pem).context("Failed to create encoding key")?;
+        let encoding_key =
+            EncodingKey::from_ed_pem(&pem).context("Failed to create encoding key")?;
 
         encode(&header, &claims, &encoding_key).context("Failed to encode JWT")
     }
@@ -615,7 +620,10 @@ impl TestFixture {
         let _ = self
             .ctx
             .http_client
-            .delete(self.ctx.control_url(&format!("/organizations/{}", self.org_id)))
+            .delete(
+                self.ctx
+                    .control_url(&format!("/organizations/{}", self.org_id)),
+            )
             .header("Authorization", format!("Bearer {}", self.session_id))
             .send()
             .await;
@@ -653,10 +661,9 @@ impl Drop for TestFixture {
 
             let _ = ctx
                 .http_client
-                .delete(ctx.control_url(&format!(
-                    "/organizations/{}/clients/{}",
-                    org_id, client_id
-                )))
+                .delete(
+                    ctx.control_url(&format!("/organizations/{}/clients/{}", org_id, client_id)),
+                )
                 .header("Authorization", format!("Bearer {}", session_id))
                 .send()
                 .await;

@@ -61,7 +61,10 @@ impl JwksClient {
     /// ```
     #[cfg(feature = "rest")]
     pub async fn get_well_known(&self) -> Result<Jwks, Error> {
-        self.client.inner().control_get("/.well-known/jwks.json").await
+        self.client
+            .inner()
+            .control_get("/.well-known/jwks.json")
+            .await
     }
 
     /// Gets the JWKS from the well-known endpoint.

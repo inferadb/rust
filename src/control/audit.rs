@@ -446,7 +446,10 @@ impl ListAuditLogsRequest {
 
     #[cfg(feature = "rest")]
     async fn execute(self) -> Result<Page<AuditEvent>, Error> {
-        let mut path = format!("/control/v1/organizations/{}/audit-logs", self.organization_id);
+        let mut path = format!(
+            "/control/v1/organizations/{}/audit-logs",
+            self.organization_id
+        );
 
         let mut query_params = Vec::new();
         if let Some(ref vault_id) = self.vault_id {
@@ -785,5 +788,4 @@ mod tests {
     fn test_export_format() {
         assert_eq!(ExportFormat::default(), ExportFormat::Json);
     }
-
 }

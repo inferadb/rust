@@ -6,8 +6,11 @@ use std::time::Duration;
 
 use crate::auth::Credentials;
 use crate::config::{CacheConfig, DegradationConfig, RetryConfig, TlsConfig};
+#[cfg(feature = "grpc")]
+use crate::transport::GrpcTransport;
 #[cfg(feature = "rest")]
-use crate::transport::{PoolConfig, RestTransport};
+use crate::transport::RestTransport;
+use crate::transport::{PoolConfig, TransportStrategy};
 use crate::{Client, Error};
 
 use super::inner::ClientInner;
@@ -67,6 +70,8 @@ pub struct ClientBuilder<UrlState, CredentialsState> {
     tls_config: TlsConfig,
     degradation_config: DegradationConfig,
     timeout: Option<Duration>,
+    transport_strategy: TransportStrategy,
+    pool_config: PoolConfig,
     _url_state: PhantomData<UrlState>,
     _credentials_state: PhantomData<CredentialsState>,
 }
@@ -82,6 +87,8 @@ impl ClientBuilder<NoUrl, NoCredentials> {
             tls_config: TlsConfig::default(),
             degradation_config: DegradationConfig::default(),
             timeout: None,
+            transport_strategy: TransportStrategy::default(),
+            pool_config: PoolConfig::default(),
             _url_state: PhantomData,
             _credentials_state: PhantomData,
         }
@@ -116,6 +123,8 @@ impl<C> ClientBuilder<NoUrl, C> {
             tls_config: self.tls_config,
             degradation_config: self.degradation_config,
             timeout: self.timeout,
+            transport_strategy: self.transport_strategy,
+            pool_config: self.pool_config,
             _url_state: PhantomData,
             _credentials_state: PhantomData,
         }
@@ -153,6 +162,8 @@ impl<U> ClientBuilder<U, NoCredentials> {
             tls_config: self.tls_config,
             degradation_config: self.degradation_config,
             timeout: self.timeout,
+            transport_strategy: self.transport_strategy,
+            pool_config: self.pool_config,
             _url_state: PhantomData,
             _credentials_state: PhantomData,
         }
@@ -245,6 +256,215 @@ impl<U, C> ClientBuilder<U, C> {
         self.timeout = Some(timeout);
         self
     }
+
+    /// Sets the transport strategy.
+    ///
+    /// Controls which transport protocol(s) the client uses:
+    /// - `GrpcOnly`: Use gRPC only, fail if unavailable
+    /// - `RestOnly`: Use REST only
+    /// - `PreferGrpc`: Use gRPC with automatic REST fallback (default)
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use inferadb::TransportStrategy;
+    ///
+    /// // Use gRPC only
+    /// let builder = builder.transport_strategy(TransportStrategy::GrpcOnly);
+    ///
+    /// // Use REST only
+    /// let builder = builder.transport_strategy(TransportStrategy::RestOnly);
+    /// ```
+    #[must_use]
+    pub fn transport_strategy(mut self, strategy: TransportStrategy) -> Self {
+        self.transport_strategy = strategy;
+        self
+    }
+
+    /// Sets the connection pool configuration.
+    ///
+    /// Controls connection pooling behavior for the transport.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use inferadb::PoolConfig;
+    /// use std::time::Duration;
+    ///
+    /// let builder = builder.pool_config(
+    ///     PoolConfig::default()
+    ///         .with_max_connections(20)
+    ///         .with_pool_timeout(Duration::from_secs(30))
+    /// );
+    /// ```
+    #[must_use]
+    pub fn pool_config(mut self, config: PoolConfig) -> Self {
+        self.pool_config = config;
+        self
+    }
+}
+
+impl<U, C> ClientBuilder<U, C> {
+    /// Creates the transport based on the configured strategy.
+    #[allow(unused_variables)]
+    async fn create_transport(
+        &self,
+        url: &url::Url,
+        timeout: Duration,
+        initial_token: Option<&String>,
+    ) -> Result<Option<Arc<dyn crate::transport::TransportClient + Send + Sync>>, Error> {
+        match &self.transport_strategy {
+            #[cfg(feature = "grpc")]
+            TransportStrategy::GrpcOnly => {
+                let grpc = GrpcTransport::new(
+                    url.clone(),
+                    &self.tls_config,
+                    &self.pool_config,
+                    self.retry_config.clone(),
+                    timeout,
+                )
+                .await?;
+                Ok(Some(Arc::new(grpc)))
+            }
+            #[cfg(not(feature = "grpc"))]
+            TransportStrategy::GrpcOnly => Err(Error::configuration(
+                "gRPC transport requested but 'grpc' feature is not enabled",
+            )),
+            #[cfg(feature = "rest")]
+            TransportStrategy::RestOnly => {
+                let rest = RestTransport::new(
+                    url.clone(),
+                    &self.tls_config,
+                    &self.pool_config,
+                    self.retry_config.clone(),
+                    timeout,
+                )?;
+                if let Some(token) = initial_token {
+                    rest.set_auth_token(token.clone());
+                }
+                Ok(Some(Arc::new(rest)))
+            }
+            #[cfg(not(feature = "rest"))]
+            TransportStrategy::RestOnly => Err(Error::configuration(
+                "REST transport requested but 'rest' feature is not enabled",
+            )),
+            #[cfg(all(feature = "grpc", feature = "rest"))]
+            TransportStrategy::PreferGrpc { .. } => {
+                // Try gRPC first, fall back to REST on connection error
+                match GrpcTransport::new(
+                    url.clone(),
+                    &self.tls_config,
+                    &self.pool_config,
+                    self.retry_config.clone(),
+                    timeout,
+                )
+                .await
+                {
+                    Ok(grpc) => Ok(Some(Arc::new(grpc))),
+                    Err(_) => {
+                        // Fall back to REST
+                        let rest = RestTransport::new(
+                            url.clone(),
+                            &self.tls_config,
+                            &self.pool_config,
+                            self.retry_config.clone(),
+                            timeout,
+                        )?;
+                        if let Some(token) = initial_token {
+                            rest.set_auth_token(token.clone());
+                        }
+                        Ok(Some(Arc::new(rest)))
+                    }
+                }
+            }
+            #[cfg(all(feature = "grpc", not(feature = "rest")))]
+            TransportStrategy::PreferGrpc { .. } => {
+                let grpc = GrpcTransport::new(
+                    url.clone(),
+                    &self.tls_config,
+                    &self.pool_config,
+                    self.retry_config.clone(),
+                    timeout,
+                )
+                .await?;
+                Ok(Some(Arc::new(grpc)))
+            }
+            #[cfg(all(not(feature = "grpc"), feature = "rest"))]
+            TransportStrategy::PreferGrpc { .. } => {
+                // gRPC not available, use REST
+                let rest = RestTransport::new(
+                    url.clone(),
+                    &self.tls_config,
+                    &self.pool_config,
+                    self.retry_config.clone(),
+                    timeout,
+                )?;
+                if let Some(token) = initial_token {
+                    rest.set_auth_token(token.clone());
+                }
+                Ok(Some(Arc::new(rest)))
+            }
+            #[cfg(all(feature = "grpc", feature = "rest"))]
+            TransportStrategy::PreferRest { .. } => {
+                // Try REST first, fall back to gRPC on connection error
+                match RestTransport::new(
+                    url.clone(),
+                    &self.tls_config,
+                    &self.pool_config,
+                    self.retry_config.clone(),
+                    timeout,
+                ) {
+                    Ok(rest) => {
+                        if let Some(token) = initial_token {
+                            rest.set_auth_token(token.clone());
+                        }
+                        Ok(Some(Arc::new(rest)))
+                    }
+                    Err(_) => {
+                        // Fall back to gRPC
+                        let grpc = GrpcTransport::new(
+                            url.clone(),
+                            &self.tls_config,
+                            &self.pool_config,
+                            self.retry_config.clone(),
+                            timeout,
+                        )
+                        .await?;
+                        Ok(Some(Arc::new(grpc)))
+                    }
+                }
+            }
+            #[cfg(all(feature = "rest", not(feature = "grpc")))]
+            TransportStrategy::PreferRest { .. } => {
+                let rest = RestTransport::new(
+                    url.clone(),
+                    &self.tls_config,
+                    &self.pool_config,
+                    self.retry_config.clone(),
+                    timeout,
+                )?;
+                if let Some(token) = initial_token {
+                    rest.set_auth_token(token.clone());
+                }
+                Ok(Some(Arc::new(rest)))
+            }
+            #[cfg(all(not(feature = "rest"), feature = "grpc"))]
+            TransportStrategy::PreferRest { .. } => {
+                // REST not available, use gRPC
+                let grpc = GrpcTransport::new(
+                    url.clone(),
+                    &self.tls_config,
+                    &self.pool_config,
+                    self.retry_config.clone(),
+                    timeout,
+                )
+                .await?;
+                Ok(Some(Arc::new(grpc)))
+            }
+            #[cfg(not(any(feature = "grpc", feature = "rest")))]
+            _ => Ok(None),
+        }
+    }
 }
 
 impl ClientBuilder<HasUrl, HasCredentials> {
@@ -274,7 +494,7 @@ impl ClientBuilder<HasUrl, HasCredentials> {
             tls_config: self.tls_config,
             degradation_config: self.degradation_config,
             timeout,
-            #[cfg(feature = "rest")]
+            #[cfg(any(feature = "grpc", feature = "rest"))]
             transport: Some(transport),
             #[cfg(feature = "rest")]
             http_client: None,
@@ -310,13 +530,10 @@ impl ClientBuilder<HasUrl, HasCredentials> {
     pub async fn build(self) -> Result<Client, Error> {
         let url = self
             .url
+            .clone()
             .ok_or_else(|| Error::configuration("URL is required"))?;
 
-        let credentials = self
-            .credentials
-            .ok_or_else(|| Error::configuration("credentials are required"))?;
-
-        // Validate URL
+        // Validate URL first
         let parsed_url = url::Url::parse(&url)
             .map_err(|e| Error::configuration(format!("invalid URL: {}", e)))?;
 
@@ -330,28 +547,25 @@ impl ClientBuilder<HasUrl, HasCredentials> {
 
         let timeout = self.timeout.unwrap_or(Duration::from_secs(30));
 
-        // Extract bearer token if using Bearer credentials
+        // Extract bearer token if using Bearer credentials (before consuming credentials)
         #[cfg(feature = "rest")]
-        let initial_token = credentials.as_bearer().map(|b| b.token().to_string());
+        let initial_token = self
+            .credentials
+            .as_ref()
+            .and_then(|c| c.as_bearer())
+            .map(|b| b.token().to_string());
+        #[cfg(not(feature = "rest"))]
+        let initial_token: Option<String> = None;
 
-        // Create REST transport if feature is enabled
-        #[cfg(feature = "rest")]
-        let transport = {
-            let transport = RestTransport::new(
-                parsed_url.clone(),
-                &self.tls_config,
-                &PoolConfig::default(),
-                self.retry_config.clone(),
-                timeout,
-            )?;
+        // Create transport based on strategy (before consuming self)
+        let transport = self
+            .create_transport(&parsed_url, timeout, initial_token.as_ref())
+            .await?;
 
-            // Set initial auth token if using Bearer credentials
-            if let Some(ref token) = initial_token {
-                transport.set_auth_token(token.clone());
-            }
-
-            Some(Arc::new(transport) as Arc<dyn crate::transport::TransportClient + Send + Sync>)
-        };
+        // Now extract credentials (consuming self)
+        let credentials = self
+            .credentials
+            .ok_or_else(|| Error::configuration("credentials are required"))?;
 
         // Create HTTP client for Control API
         #[cfg(feature = "rest")]
@@ -384,7 +598,7 @@ impl ClientBuilder<HasUrl, HasCredentials> {
             tls_config: self.tls_config,
             degradation_config: self.degradation_config,
             timeout,
-            #[cfg(feature = "rest")]
+            #[cfg(any(feature = "grpc", feature = "rest"))]
             transport,
             #[cfg(feature = "rest")]
             http_client,
@@ -425,13 +639,10 @@ impl ClientBuilder<HasUrl, HasCredentials> {
     ) -> Result<(Client, super::health::ShutdownHandle), Error> {
         let url = self
             .url
+            .clone()
             .ok_or_else(|| Error::configuration("URL is required"))?;
 
-        let credentials = self
-            .credentials
-            .ok_or_else(|| Error::configuration("credentials are required"))?;
-
-        // Validate URL
+        // Validate URL first
         let parsed_url = url::Url::parse(&url)
             .map_err(|e| Error::configuration(format!("invalid URL: {}", e)))?;
 
@@ -445,28 +656,25 @@ impl ClientBuilder<HasUrl, HasCredentials> {
 
         let timeout = self.timeout.unwrap_or(Duration::from_secs(30));
 
-        // Extract bearer token if using Bearer credentials
+        // Extract bearer token if using Bearer credentials (before consuming credentials)
         #[cfg(feature = "rest")]
-        let initial_token = credentials.as_bearer().map(|b| b.token().to_string());
+        let initial_token = self
+            .credentials
+            .as_ref()
+            .and_then(|c| c.as_bearer())
+            .map(|b| b.token().to_string());
+        #[cfg(not(feature = "rest"))]
+        let initial_token: Option<String> = None;
 
-        // Create REST transport if feature is enabled
-        #[cfg(feature = "rest")]
-        let transport = {
-            let transport = RestTransport::new(
-                parsed_url.clone(),
-                &self.tls_config,
-                &PoolConfig::default(),
-                self.retry_config.clone(),
-                timeout,
-            )?;
+        // Create transport based on strategy (before consuming self)
+        let transport = self
+            .create_transport(&parsed_url, timeout, initial_token.as_ref())
+            .await?;
 
-            // Set initial auth token if using Bearer credentials
-            if let Some(ref token) = initial_token {
-                transport.set_auth_token(token.clone());
-            }
-
-            Some(Arc::new(transport) as Arc<dyn crate::transport::TransportClient + Send + Sync>)
-        };
+        // Now extract credentials (consuming self)
+        let credentials = self
+            .credentials
+            .ok_or_else(|| Error::configuration("credentials are required"))?;
 
         // Create HTTP client for Control API
         #[cfg(feature = "rest")]
@@ -502,7 +710,7 @@ impl ClientBuilder<HasUrl, HasCredentials> {
             tls_config: self.tls_config,
             degradation_config: self.degradation_config,
             timeout,
-            #[cfg(feature = "rest")]
+            #[cfg(any(feature = "grpc", feature = "rest"))]
             transport,
             #[cfg(feature = "rest")]
             http_client,

@@ -31,7 +31,7 @@ http = "1"
 url = "2"
 
 # gRPC (optional)
-tonic = { version = "0.12", optional = true }
+tonic = { version = "0.12", features = ["transport", "tls"], optional = true }
 prost = { version = "0.13", optional = true }
 prost-types = { version = "0.13", optional = true }
 
@@ -79,6 +79,9 @@ rand = "0.8"
 # Derive macros (optional)
 inferadb-derive = { path = "inferadb-derive", optional = true }
 
+[build-dependencies]
+tonic-build = { version = "0.12", optional = true }
+
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
 tokio-test = "0.4"
@@ -100,7 +103,7 @@ required-features = ["rest"]
 default = ["grpc", "rest", "rustls"]
 
 # Transport options
-grpc = ["dep:tonic", "dep:prost", "dep:prost-types"]
+grpc = ["dep:tonic", "dep:prost", "dep:prost-types", "dep:tonic-build"]
 rest = ["dep:reqwest"]
 
 # TLS options (mutually exclusive)

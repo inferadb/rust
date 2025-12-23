@@ -1068,7 +1068,10 @@ mod tests {
     fn test_request_trace_context() {
         let ctx = TraceContext::new();
         let req = Request::new("check").trace_context(ctx.clone());
-        assert_eq!(req.metadata().trace_context.as_ref().unwrap().trace_id, ctx.trace_id);
+        assert_eq!(
+            req.metadata().trace_context.as_ref().unwrap().trace_id,
+            ctx.trace_id
+        );
     }
 
     #[test]
@@ -1200,10 +1203,7 @@ mod tests {
     #[test]
     fn test_trace_context_parse_invalid_parent_id() {
         // Invalid parent ID length
-        let result = TraceContext::parse(
-            "00-0af7651916cd43dd8448eb211c80319c-abc-01",
-            None,
-        );
+        let result = TraceContext::parse("00-0af7651916cd43dd8448eb211c80319c-abc-01", None);
         assert!(result.is_err());
     }
 

@@ -509,8 +509,7 @@ mod tests {
 
     #[test]
     fn test_failure_predicate_include() {
-        let predicate = FailurePredicate::only([ErrorKind::Timeout])
-            .include(ErrorKind::Connection);
+        let predicate = FailurePredicate::only([ErrorKind::Timeout]).include(ErrorKind::Connection);
         assert!(predicate.is_failure(ErrorKind::Timeout));
         assert!(predicate.is_failure(ErrorKind::Connection));
         assert!(!predicate.is_failure(ErrorKind::NotFound));

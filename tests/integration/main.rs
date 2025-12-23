@@ -28,7 +28,7 @@
 //! 1. Tailscale must be installed and connected to your tailnet
 //! 2. The dev environment must be running (`deploy/scripts/dev-up.sh`)
 
-mod common;
 mod client_tests;
+mod common;
 mod control_tests;
 mod vault_tests;

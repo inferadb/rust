@@ -484,14 +484,29 @@ mod tests {
     #[test]
     fn test_display_all_variants() {
         // Test remaining variants have display strings
-        assert_eq!(format!("{}", ErrorKind::Authentication), "authentication failed");
-        assert_eq!(format!("{}", ErrorKind::PermissionDenied), "permission denied");
+        assert_eq!(
+            format!("{}", ErrorKind::Authentication),
+            "authentication failed"
+        );
+        assert_eq!(
+            format!("{}", ErrorKind::PermissionDenied),
+            "permission denied"
+        );
         assert_eq!(format!("{}", ErrorKind::Conflict), "conflict");
         assert_eq!(format!("{}", ErrorKind::Transport), "transport error");
-        assert_eq!(format!("{}", ErrorKind::ConnectionFailed), "connection failed");
+        assert_eq!(
+            format!("{}", ErrorKind::ConnectionFailed),
+            "connection failed"
+        );
         assert_eq!(format!("{}", ErrorKind::InvalidRequest), "invalid request");
-        assert_eq!(format!("{}", ErrorKind::InvalidResponse), "invalid response");
-        assert_eq!(format!("{}", ErrorKind::ServiceUnavailable), "service unavailable");
+        assert_eq!(
+            format!("{}", ErrorKind::InvalidResponse),
+            "invalid response"
+        );
+        assert_eq!(
+            format!("{}", ErrorKind::ServiceUnavailable),
+            "service unavailable"
+        );
     }
 
     #[test]

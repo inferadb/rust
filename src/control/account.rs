@@ -52,7 +52,9 @@ impl AccountClient {
 
     #[cfg(not(feature = "rest"))]
     pub async fn get(&self) -> Result<Account, Error> {
-        Err(Error::configuration("REST feature is required for account API"))
+        Err(Error::configuration(
+            "REST feature is required for account API",
+        ))
     }
 
     /// Updates the current user's account.
