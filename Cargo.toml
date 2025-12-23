@@ -23,7 +23,6 @@ path = "src/lib.rs"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 async-trait = "0.1"
 futures = "0.3"
-pin-project-lite = "0.2"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -44,7 +43,6 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 # Cryptography
 ed25519-dalek = { version = "2", features = ["pem", "rand_core", "zeroize"] }
 zeroize = { version = "1", features = ["derive"] }
-secrecy = "0.10"
 
 # Time
 chrono = { version = "0.4", default-features = false, features = ["std", "serde", "clock"] }
@@ -60,7 +58,6 @@ thiserror = "2"
 # Utilities
 uuid = { version = "1", features = ["v4"] }
 parking_lot = "0.12"
-arc-swap = "1"
 
 # Tracing (optional)
 tracing = { version = "0.1", optional = true }
