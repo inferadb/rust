@@ -27,7 +27,7 @@ This guide covers common issues and their solutions when using the InferaDB Rust
    let client = Client::builder()
        .url("http://localhost:8080")  // Not https for local
        .credentials(credentials)
-       .insecure()                     // Required for non-TLS
+       .insecure()                     // Allows HTTP connections
        .build()
        .await?;
    ```

@@ -46,7 +46,15 @@
 //! - `native-tls`: Use native TLS (OpenSSL on Linux, Secure Transport on macOS)
 //! - `tracing`: Enable tracing integration
 //! - `blocking`: Enable blocking API
-//! - `insecure`: Enable `.insecure()` for development (never use in production)
+//! - `derive`: Enable derive macros for type-safe schemas
+//! - `wasm`: Enable WASM/browser support (REST only)
+//!
+//! ## Minimum Supported Rust Version
+//!
+//! This crate requires Rust **1.88.0** or later (MSRV). We target two releases
+//! behind stable where possible. See the [CHANGELOG] for MSRV increase notices.
+//!
+//! [CHANGELOG]: https://github.com/inferadb/rust/blob/main/CHANGELOG.md
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 // Documentation lints

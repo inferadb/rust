@@ -7,10 +7,18 @@ Thank you for your interest in contributing to the InferaDB Rust SDK! This docum
 ### Prerequisites
 
 - [Mise](https://mise.jdx.dev/) - Tool version manager (recommended)
-- Rust 1.75+ (stable) - Managed by mise or rustup
+- Rust 1.88.0+ (stable) - Managed by mise or rustup
 - Rust nightly (for formatting)
 - Docker and Docker Compose (for integration tests)
 - [inferadb/deploy](https://github.com/inferadb/deploy) - Development environment (for integration tests)
+
+### Minimum Supported Rust Version (MSRV)
+
+The SDK requires Rust **1.88.0** or later. We maintain the MSRV at two releases behind the latest stable release where possible (e.g., if stable is 1.90, MSRV would be 1.88).
+
+- MSRV increases will be called out in the [CHANGELOG](CHANGELOG.md)
+- We do not guarantee builds on compiler versions earlier than the MSRV
+- The `rust-version` field in `Cargo.toml` enforces this at build time
 
 ### Getting Started
 

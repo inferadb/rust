@@ -43,8 +43,6 @@ pub struct TlsConfig {
     /// Whether to skip certificate verification.
     ///
     /// **WARNING**: This is insecure and should only be used for local development.
-    /// Requires the `insecure` feature to be enabled.
-    #[cfg(feature = "insecure")]
     pub skip_verification: bool,
 }
 
@@ -96,9 +94,6 @@ impl TlsConfig {
     ///
     /// **WARNING**: This makes connections vulnerable to man-in-the-middle attacks.
     /// Only use this for local development with self-signed certificates.
-    ///
-    /// Requires the `insecure` feature.
-    #[cfg(feature = "insecure")]
     #[must_use]
     pub fn insecure(mut self) -> Self {
         self.skip_verification = true;
@@ -146,7 +141,6 @@ mod tests {
         assert!(!config.is_mtls_configured());
     }
 
-    #[cfg(feature = "insecure")]
     #[test]
     fn test_insecure() {
         let config = TlsConfig::new().insecure();

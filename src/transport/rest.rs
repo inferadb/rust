@@ -71,8 +71,7 @@ impl RestTransport {
             .pool_idle_timeout(pool_config.idle_timeout)
             .user_agent(user_agent::user_agent());
 
-        // Configure TLS with skip_verification (requires insecure feature)
-        #[cfg(feature = "insecure")]
+        // Configure TLS with skip_verification for local development
         if tls_config.skip_verification {
             client_builder = client_builder.danger_accept_invalid_certs(true);
         }

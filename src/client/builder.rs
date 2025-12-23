@@ -223,6 +223,27 @@ impl<U, C> ClientBuilder<U, C> {
         self
     }
 
+    /// Disables TLS certificate verification and allows HTTP connections.
+    ///
+    /// **WARNING**: This is insecure and should only be used for local development.
+    /// Never use this in production.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let client = Client::builder()
+    ///     .url("http://localhost:8080")
+    ///     .insecure()
+    ///     .credentials(credentials)
+    ///     .build()
+    ///     .await?;
+    /// ```
+    #[must_use]
+    pub fn insecure(mut self) -> Self {
+        self.tls_config.skip_verification = true;
+        self
+    }
+
     /// Sets the degradation configuration.
     ///
     /// # Example
@@ -537,11 +558,10 @@ impl ClientBuilder<HasUrl, HasCredentials> {
         let parsed_url = url::Url::parse(&url)
             .map_err(|e| Error::configuration(format!("invalid URL: {}", e)))?;
 
-        // Ensure HTTPS (unless insecure feature is enabled)
-        #[cfg(not(feature = "insecure"))]
-        if parsed_url.scheme() != "https" {
+        // Ensure HTTPS unless insecure mode is enabled
+        if parsed_url.scheme() != "https" && !self.tls_config.skip_verification {
             return Err(Error::configuration(
-                "HTTPS is required. Use the 'insecure' feature for development with HTTP.",
+                "HTTPS is required. Use .insecure() for development with HTTP.",
             ));
         }
 
@@ -580,7 +600,6 @@ impl ClientBuilder<HasUrl, HasCredentials> {
             }
 
             // Configure TLS certificate verification
-            #[cfg(feature = "insecure")]
             if self.tls_config.skip_verification {
                 builder = builder.danger_accept_invalid_certs(true);
             }
@@ -646,11 +665,10 @@ impl ClientBuilder<HasUrl, HasCredentials> {
         let parsed_url = url::Url::parse(&url)
             .map_err(|e| Error::configuration(format!("invalid URL: {}", e)))?;
 
-        // Ensure HTTPS (unless insecure feature is enabled)
-        #[cfg(not(feature = "insecure"))]
-        if parsed_url.scheme() != "https" {
+        // Ensure HTTPS unless insecure mode is enabled
+        if parsed_url.scheme() != "https" && !self.tls_config.skip_verification {
             return Err(Error::configuration(
-                "HTTPS is required. Use the 'insecure' feature for development with HTTP.",
+                "HTTPS is required. Use .insecure() for development with HTTP.",
             ));
         }
 
@@ -689,7 +707,6 @@ impl ClientBuilder<HasUrl, HasCredentials> {
             }
 
             // Configure TLS certificate verification
-            #[cfg(feature = "insecure")]
             if self.tls_config.skip_verification {
                 builder = builder.danger_accept_invalid_certs(true);
             }
@@ -753,7 +770,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[cfg(not(feature = "insecure"))]
     #[tokio::test]
     async fn test_build_requires_https() {
         let result = ClientBuilder::new()
@@ -765,6 +781,19 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("HTTPS"));
+    }
+
+    #[tokio::test]
+    async fn test_build_allows_http_when_insecure() {
+        let result = ClientBuilder::new()
+            .url("http://api.example.com")
+            .credentials(BearerCredentialsConfig::new("token"))
+            .insecure()
+            .build()
+            .await;
+
+        // Should succeed (or fail for other reasons like connection, not HTTPS)
+        assert!(result.is_ok() || !result.unwrap_err().to_string().contains("HTTPS"));
     }
 
     #[tokio::test]

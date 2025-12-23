@@ -745,6 +745,7 @@ mod wiremock_tests {
     async fn create_mock_client(server: &MockServer) -> Client {
         Client::builder()
             .url(server.uri())
+            .insecure()
             .credentials(BearerCredentialsConfig::new("test_token"))
             .build()
             .await
