@@ -308,4 +308,43 @@ mod tests {
         let denied = AccessDenied::new("user:test", "view", "doc:1");
         takes_error(&denied);
     }
+
+    #[test]
+    fn test_access_denied_clone() {
+        let denied = AccessDenied::new("user:alice", "delete", "doc:1")
+            .with_reason("no permission")
+            .with_request_id("req-123");
+        let cloned = denied.clone();
+
+        assert_eq!(cloned.subject(), "user:alice");
+        assert_eq!(cloned.permission(), "delete");
+        assert_eq!(cloned.resource(), "doc:1");
+        assert_eq!(cloned.reason(), Some("no permission"));
+        assert_eq!(cloned.request_id(), Some("req-123"));
+    }
+
+    #[test]
+    fn test_access_denied_debug() {
+        let denied = AccessDenied::new("user:bob", "edit", "folder:private");
+        let debug = format!("{:?}", denied);
+        assert!(debug.contains("AccessDenied"));
+        assert!(debug.contains("user:bob"));
+    }
+
+    #[test]
+    fn test_access_denied_to_log_string_minimal() {
+        let denied = AccessDenied::new("user:alice", "view", "doc:1");
+        let log = denied.to_log_string();
+        assert!(log.contains("subject=user:alice"));
+        assert!(log.contains("permission=view"));
+        assert!(log.contains("resource=doc:1"));
+        assert!(!log.contains("reason="));
+        assert!(!log.contains("request_id="));
+    }
+
+    #[test]
+    fn test_access_denied_source_is_none() {
+        let denied = AccessDenied::new("user:test", "view", "doc:1");
+        assert!(denied.source().is_none());
+    }
 }

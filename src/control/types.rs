@@ -74,6 +74,14 @@ impl SortOrder {
     pub fn is_descending(&self) -> bool {
         matches!(self, SortOrder::Descending)
     }
+
+    /// Returns the string representation for API queries.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SortOrder::Ascending => "asc",
+            SortOrder::Descending => "desc",
+        }
+    }
 }
 
 #[cfg(test)]

@@ -66,9 +66,18 @@ tracing = { version = "0.1", optional = true }
 hex = "0.4"
 base64 = "0.22"
 
+# URL encoding
+urlencoding = "2"
+
+# Bytes
+bytes = "1"
+
 # Random
 getrandom = "0.2"
 rand = "0.8"
+
+# Derive macros (optional)
+inferadb-derive = { path = "inferadb-derive", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
@@ -92,6 +101,10 @@ native-tls = ["reqwest?/native-tls"]
 # Optional features
 tracing = ["dep:tracing"]
 blocking = ["tokio/rt"]
+derive = ["dep:inferadb-derive"]
+
+# WASM support
+wasm = ["getrandom/js"]
 
 # Development only - enables .insecure() for local testing
 insecure = []

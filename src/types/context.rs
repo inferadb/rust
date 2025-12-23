@@ -342,6 +342,13 @@ impl Context {
         self.extend(other);
         self
     }
+
+    /// Converts this context into a JSON value.
+    ///
+    /// This is useful for serializing the context for API requests.
+    pub fn into_value(self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+    }
 }
 
 impl FromIterator<(String, ContextValue)> for Context {

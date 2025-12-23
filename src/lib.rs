@@ -71,6 +71,9 @@ pub mod vault;
 // Transport layer
 pub mod transport;
 
+// Middleware
+pub mod middleware;
+
 // Control plane API
 pub mod control;
 
@@ -82,15 +85,23 @@ pub mod testing;
 #[cfg_attr(docsrs, doc(cfg(feature = "tracing")))]
 pub mod tracing_support;
 
+// WASM support
+#[cfg(feature = "wasm")]
+#[cfg_attr(docsrs, doc(cfg(feature = "wasm")))]
+pub mod wasm;
+
 // Prelude for convenient imports
 pub mod prelude;
 
 // Re-export main types at crate root for convenience
-pub use client::{Client, ClientBuilder};
+pub use client::{
+    Client, ClientBuilder, ComponentHealth, HealthResponse, HealthStatus, ReadinessCriteria,
+    ShutdownGuard, ShutdownHandle,
+};
 pub use error::{AccessDenied, Error, ErrorKind};
 pub use types::{
-    ConsistencyToken, Context, ContextValue, Decision, DecisionMetadata, DecisionReason,
-    Relationship,
+    ConsistencyToken, Context, ContextValue, Decision, DecisionMetadata, DecisionReason, EntityRef,
+    ParseError, Relationship, Resource, Subject, SubjectRef,
 };
 pub use vault::VaultClient;
 
@@ -114,6 +125,41 @@ pub use transport::{
 
 // Testing support
 pub use testing::{AuthorizationClient, InMemoryClient, MockClient};
+
+// Re-export derive macros when feature is enabled
+#[cfg(feature = "derive")]
+#[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
+pub mod derive {
+    //! Derive macros for Resource and Subject traits.
+    //!
+    //! Enable the `derive` feature to use these macros:
+    //!
+    //! ```toml
+    //! [dependencies]
+    //! inferadb = { version = "0.1", features = ["derive"] }
+    //! ```
+    //!
+    //! ## Example
+    //!
+    //! ```rust,ignore
+    //! use inferadb::derive::{Resource, Subject};
+    //!
+    //! #[derive(Resource)]
+    //! #[resource(type = "document")]
+    //! struct Document {
+    //!     #[resource(id)]
+    //!     id: String,
+    //! }
+    //!
+    //! #[derive(Subject)]
+    //! #[subject(type = "user")]
+    //! struct User {
+    //!     #[subject(id)]
+    //!     id: String,
+    //! }
+    //! ```
+    pub use inferadb_derive::{Resource, Subject};
+}
 
 #[cfg(test)]
 mod tests {

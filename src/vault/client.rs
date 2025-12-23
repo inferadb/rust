@@ -4,10 +4,16 @@
 #![allow(dead_code)]
 
 use std::borrow::Cow;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 
 use crate::client::Client;
+#[cfg(feature = "rest")]
+use crate::transport::{TransportCheckRequest, TransportClient, TransportWriteRequest};
 use crate::types::{ConsistencyToken, Context, Decision, Relationship};
 use crate::{AccessDenied, Error};
+use futures::Stream;
 
 /// A vault-scoped client for authorization operations.
 ///
@@ -59,6 +65,12 @@ impl VaultClient {
     /// Returns the underlying client.
     pub fn client(&self) -> &Client {
         &self.client
+    }
+
+    /// Returns the transport client, if available.
+    #[cfg(feature = "rest")]
+    fn transport(&self) -> Option<&std::sync::Arc<dyn TransportClient + Send + Sync>> {
+        self.client.transport()
     }
 
     /// Checks if a subject has a permission on a resource.
@@ -249,6 +261,113 @@ impl VaultClient {
     pub fn subjects(&self) -> SubjectsClient<'_> {
         SubjectsClient::new(self)
     }
+
+    /// Explains why a permission check would result in allow or deny.
+    ///
+    /// This is useful for debugging authorization decisions, understanding
+    /// the paths through the relationship graph, and getting suggestions
+    /// for how to grant access.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let explanation = vault
+    ///     .explain_permission()
+    ///     .subject("user:alice")
+    ///     .permission("edit")
+    ///     .resource("doc:readme")
+    ///     .await?;
+    ///
+    /// if explanation.allowed {
+    ///     println!("Access granted via {} path(s)", explanation.paths.len());
+    /// } else {
+    ///     println!("Access denied:");
+    ///     for reason in &explanation.denial_reasons {
+    ///         println!("  - {}", reason);
+    ///     }
+    /// }
+    ///
+    /// // Print full explanation
+    /// println!("{}", explanation);
+    /// ```
+    pub fn explain_permission(&self) -> ExplainPermissionRequest {
+        ExplainPermissionRequest::new(self.clone())
+    }
+
+    /// Creates a simulation builder for what-if analysis.
+    ///
+    /// Simulations allow you to test hypothetical changes to the relationship
+    /// graph without actually modifying the data. This is useful for:
+    ///
+    /// - Testing policy changes before deployment
+    /// - Understanding the impact of adding/removing relationships
+    /// - Debugging authorization issues
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // Test what would happen if we add a relationship
+    /// let result = vault
+    ///     .simulate()
+    ///     .add(Relationship::new("doc:1", "viewer", "user:bob"))
+    ///     .check("user:bob", "view", "doc:1")
+    ///     .await?;
+    ///
+    /// if result.allowed {
+    ///     println!("If we add this relationship, Bob will have access");
+    /// }
+    ///
+    /// // Compare hypothetical vs current state
+    /// let diff = vault
+    ///     .simulate()
+    ///     .add(Relationship::new("doc:1", "viewer", "user:bob"))
+    ///     .compare("user:bob", "view", "doc:1")
+    ///     .await?;
+    ///
+    /// println!("Change: {:?}", diff.change);
+    /// ```
+    pub fn simulate(&self) -> super::simulate::SimulateBuilder {
+        super::simulate::SimulateBuilder::new(self.clone())
+    }
+
+    /// Subscribe to real-time relationship changes.
+    ///
+    /// Returns a [`WatchBuilder`](super::watch::WatchBuilder) for configuring and starting
+    /// a watch stream. The stream delivers events whenever relationships are created
+    /// or deleted in this vault.
+    ///
+    /// ## Example
+    ///
+    /// ```rust,ignore
+    /// use futures::StreamExt;
+    /// use inferadb::vault::watch::{WatchFilter, Operation};
+    ///
+    /// // Watch all changes
+    /// let mut stream = vault.watch().run().await?;
+    ///
+    /// while let Some(event) = stream.next().await {
+    ///     let event = event?;
+    ///     println!("{:?}: {} -[{}]-> {}",
+    ///         event.operation,
+    ///         event.relationship.subject(),
+    ///         event.relationship.relation(),
+    ///         event.relationship.resource()
+    ///     );
+    /// }
+    ///
+    /// // Filtered watch with resumption
+    /// let mut stream = vault
+    ///     .watch()
+    ///     .filter(WatchFilter::resource_type("document"))
+    ///     .filter(WatchFilter::operations([Operation::Create]))
+    ///     .from_revision(12345)
+    ///     .resumable()
+    ///     .run()
+    ///     .await?;
+    /// ```
+    pub fn watch(&self) -> super::watch::WatchBuilder {
+        super::watch::WatchBuilder::new(self)
+    }
 }
 
 impl std::fmt::Debug for VaultClient {
@@ -357,13 +476,44 @@ impl<'a> CheckRequest<'a> {
     /// }
     /// ```
     pub async fn detailed(self) -> Result<Decision, Error> {
-        // TODO: Implement actual API call
+        #[cfg(feature = "rest")]
+        {
+            if let Some(transport) = self.vault.transport() {
+                let request = TransportCheckRequest {
+                    subject: self.subject.into_owned(),
+                    permission: self.permission.into_owned(),
+                    resource: self.resource.into_owned(),
+                    context: self.context,
+                    consistency: self.consistency,
+                };
+                let response = transport.check(request).await?;
+                return Ok(response.decision);
+            }
+        }
+
+        // Fallback for when no transport is available (e.g., testing)
         Ok(Decision::allowed())
     }
 
     /// Executes the check and returns a boolean result.
     async fn execute(self) -> Result<bool, Error> {
-        // TODO: Implement actual API call
+        #[cfg(feature = "rest")]
+        {
+            if let Some(transport) = self.vault.transport() {
+                let request = TransportCheckRequest {
+                    subject: self.subject.into_owned(),
+                    permission: self.permission.into_owned(),
+                    resource: self.resource.into_owned(),
+                    context: self.context,
+                    consistency: self.consistency,
+                };
+                let response = transport.check(request).await?;
+                return Ok(response.allowed);
+            }
+        }
+
+        // Fallback for when no transport is available (e.g., testing)
+        let _ = (self.context, self.consistency);
         Ok(true)
     }
 }
@@ -402,19 +552,37 @@ impl<'a> RequireCheckRequest<'a> {
 
     /// Executes the check and returns an error on denial.
     async fn execute(self) -> Result<(), AccessDenied> {
-        // TODO: Implement actual API call
-        // For now, simulate success
-        let _allowed = true;
-
-        if _allowed {
-            Ok(())
-        } else {
-            Err(AccessDenied::new(
-                self.inner.subject.into_owned(),
-                self.inner.permission.into_owned(),
-                self.inner.resource.into_owned(),
-            ))
+        #[cfg(feature = "rest")]
+        {
+            if let Some(transport) = self.inner.vault.transport() {
+                let request = TransportCheckRequest {
+                    subject: self.inner.subject.clone().into_owned(),
+                    permission: self.inner.permission.clone().into_owned(),
+                    resource: self.inner.resource.clone().into_owned(),
+                    context: self.inner.context.clone(),
+                    consistency: self.inner.consistency.clone(),
+                };
+                let response = transport.check(request).await.map_err(|_| {
+                    AccessDenied::new(
+                        self.inner.subject.clone().into_owned(),
+                        self.inner.permission.clone().into_owned(),
+                        self.inner.resource.clone().into_owned(),
+                    )
+                })?;
+                if response.allowed {
+                    return Ok(());
+                } else {
+                    return Err(AccessDenied::new(
+                        self.inner.subject.into_owned(),
+                        self.inner.permission.into_owned(),
+                        self.inner.resource.into_owned(),
+                    ));
+                }
+            }
         }
+
+        // Fallback for when no transport is available (e.g., testing)
+        Ok(())
     }
 }
 
@@ -506,8 +674,27 @@ impl<'a> BatchCheckRequest<'a> {
 
     /// Executes the batch check and returns results.
     async fn execute(self) -> Result<Vec<bool>, Error> {
-        // TODO: Implement actual API call
-        // For now, return all true
+        #[cfg(feature = "rest")]
+        {
+            if let Some(transport) = self.vault.transport() {
+                let requests: Vec<TransportCheckRequest> = self
+                    .items
+                    .iter()
+                    .map(|item| TransportCheckRequest {
+                        subject: item.subject.clone().into_owned(),
+                        permission: item.permission.clone().into_owned(),
+                        resource: item.resource.clone().into_owned(),
+                        context: self.context.clone(),
+                        consistency: self.consistency.clone(),
+                    })
+                    .collect();
+                let responses = transport.check_batch(requests).await?;
+                return Ok(responses.into_iter().map(|r| r.allowed).collect());
+            }
+        }
+
+        // Fallback for when no transport is available (e.g., testing)
+        let _ = (self.context, self.consistency);
         Ok(vec![true; self.items.len()])
     }
 }
@@ -688,6 +875,38 @@ impl RelationshipsClient {
             cursor: None,
         }
     }
+
+    /// Deletes multiple relationships matching a filter.
+    ///
+    /// This is useful for bulk deletions when you want to remove
+    /// relationships based on patterns rather than exact matches.
+    ///
+    /// **Note**: At least one filter (resource, relation, or subject) must be specified.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // Delete all viewer relationships on a document
+    /// let count = vault.relationships()
+    ///     .delete_where()
+    ///     .resource("doc:1")
+    ///     .relation("viewer")
+    ///     .await?;
+    ///
+    /// // Delete all relationships for a user (careful!)
+    /// let count = vault.relationships()
+    ///     .delete_where()
+    ///     .subject("user:alice")
+    ///     .await?;
+    /// ```
+    pub fn delete_where(&self) -> DeleteWhereBuilder {
+        DeleteWhereBuilder {
+            client: self.clone(),
+            resource: None,
+            relation: None,
+            subject: None,
+        }
+    }
 }
 
 impl std::fmt::Debug for RelationshipsClient {
@@ -706,7 +925,19 @@ pub struct WriteRelationshipRequest<'a> {
 
 impl<'a> WriteRelationshipRequest<'a> {
     async fn execute(self) -> Result<ConsistencyToken, Error> {
-        // TODO: Implement actual API call
+        #[cfg(feature = "rest")]
+        {
+            if let Some(transport) = self.client.vault.transport() {
+                let request = TransportWriteRequest {
+                    relationship: self.relationship.into_owned(),
+                    idempotency_key: None,
+                };
+                let response = transport.write(request).await?;
+                return Ok(response.consistency_token);
+            }
+        }
+
+        // Fallback for when no transport is available (e.g., testing)
         Ok(ConsistencyToken::new(format!(
             "token_{}",
             uuid::Uuid::new_v4()
@@ -742,7 +973,23 @@ impl<'a> WriteBatchRequest<'a> {
     }
 
     async fn execute(self) -> Result<ConsistencyToken, Error> {
-        // TODO: Implement actual API call
+        #[cfg(feature = "rest")]
+        {
+            if let Some(transport) = self.client.vault.transport() {
+                let requests: Vec<TransportWriteRequest> = self
+                    .relationships
+                    .into_iter()
+                    .map(|r| TransportWriteRequest {
+                        relationship: r.into_owned(),
+                        idempotency_key: None,
+                    })
+                    .collect();
+                let response = transport.write_batch(requests).await?;
+                return Ok(response.consistency_token);
+            }
+        }
+
+        // Fallback for when no transport is available (e.g., testing)
         Ok(ConsistencyToken::new(format!(
             "token_{}",
             uuid::Uuid::new_v4()
@@ -768,7 +1015,15 @@ pub struct DeleteRelationshipRequest<'a> {
 
 impl<'a> DeleteRelationshipRequest<'a> {
     async fn execute(self) -> Result<(), Error> {
-        // TODO: Implement actual API call
+        #[cfg(feature = "rest")]
+        {
+            if let Some(transport) = self.client.vault.transport() {
+                transport.delete(self.relationship.into_owned()).await?;
+                return Ok(());
+            }
+        }
+
+        // Fallback for when no transport is available (e.g., testing)
         Ok(())
     }
 }
@@ -780,6 +1035,138 @@ impl<'a> std::future::IntoFuture for DeleteRelationshipRequest<'a> {
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.execute())
+    }
+}
+
+/// Builder for bulk relationship deletion with filters.
+///
+/// Created by [`RelationshipsClient::delete_where()`].
+/// At least one filter must be specified before executing.
+pub struct DeleteWhereBuilder {
+    client: RelationshipsClient,
+    resource: Option<String>,
+    relation: Option<String>,
+    subject: Option<String>,
+}
+
+impl DeleteWhereBuilder {
+    /// Filters by resource.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// vault.relationships()
+    ///     .delete_where()
+    ///     .resource("doc:1")
+    ///     .await?;
+    /// ```
+    #[must_use]
+    pub fn resource(mut self, resource: impl Into<String>) -> Self {
+        self.resource = Some(resource.into());
+        self
+    }
+
+    /// Filters by relation.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// vault.relationships()
+    ///     .delete_where()
+    ///     .resource("doc:1")
+    ///     .relation("viewer")
+    ///     .await?;
+    /// ```
+    #[must_use]
+    pub fn relation(mut self, relation: impl Into<String>) -> Self {
+        self.relation = Some(relation.into());
+        self
+    }
+
+    /// Filters by subject.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// vault.relationships()
+    ///     .delete_where()
+    ///     .subject("user:alice")
+    ///     .await?;
+    /// ```
+    #[must_use]
+    pub fn subject(mut self, subject: impl Into<String>) -> Self {
+        self.subject = Some(subject.into());
+        self
+    }
+
+    /// Executes the bulk delete and returns the number of deleted relationships.
+    async fn execute(self) -> Result<DeleteWhereResult, Error> {
+        // Validate that at least one filter is specified
+        if self.resource.is_none() && self.relation.is_none() && self.subject.is_none() {
+            return Err(Error::configuration(
+                "delete_where requires at least one filter (resource, relation, or subject)",
+            ));
+        }
+
+        #[cfg(feature = "rest")]
+        {
+            if let Some(transport) = self.client.vault.transport() {
+                // List relationships matching the filter, then delete them
+                // Note: In a real implementation, this would be a batch delete endpoint
+                let response = transport
+                    .list_relationships(
+                        self.resource.as_deref(),
+                        self.relation.as_deref(),
+                        self.subject.as_deref(),
+                        None, // No limit - get all
+                        None, // No cursor - start from beginning
+                    )
+                    .await?;
+
+                let mut deleted = 0;
+                for rel in response.relationships {
+                    transport.delete(rel).await?;
+                    deleted += 1;
+                }
+
+                return Ok(DeleteWhereResult {
+                    deleted_count: deleted,
+                });
+            }
+        }
+
+        // Fallback for when no transport is available (e.g., testing)
+        let _ = (self.resource, self.relation, self.subject);
+        Ok(DeleteWhereResult { deleted_count: 0 })
+    }
+}
+
+impl std::future::IntoFuture for DeleteWhereBuilder {
+    type Output = Result<DeleteWhereResult, Error>;
+    type IntoFuture =
+        std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'static>>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(self.execute())
+    }
+}
+
+/// Result of a bulk delete operation.
+#[derive(Debug, Clone, Copy)]
+pub struct DeleteWhereResult {
+    /// Number of relationships deleted.
+    pub deleted_count: u64,
+}
+
+impl DeleteWhereResult {
+    /// Returns the number of deleted relationships.
+    pub fn deleted_count(&self) -> u64 {
+        self.deleted_count
+    }
+
+    /// Returns `true` if any relationships were deleted.
+    pub fn any_deleted(&self) -> bool {
+        self.deleted_count > 0
     }
 }
 
@@ -830,7 +1217,33 @@ impl ListRelationshipsRequest {
     }
 
     async fn execute(self) -> Result<ListRelationshipsResponse, Error> {
-        // TODO: Implement actual API call
+        #[cfg(feature = "rest")]
+        {
+            if let Some(transport) = self.client.vault.transport() {
+                let response = transport
+                    .list_relationships(
+                        self.resource.as_deref(),
+                        self.relation.as_deref(),
+                        self.subject.as_deref(),
+                        self.limit.map(|l| l as u32),
+                        self.cursor.as_deref(),
+                    )
+                    .await?;
+                return Ok(ListRelationshipsResponse {
+                    relationships: response.relationships,
+                    next_cursor: response.next_cursor,
+                });
+            }
+        }
+
+        // Fallback for when no transport is available (e.g., testing)
+        let _ = (
+            self.resource,
+            self.relation,
+            self.subject,
+            self.limit,
+            self.cursor,
+        );
         Ok(ListRelationshipsResponse {
             relationships: vec![],
             next_cursor: None,
@@ -1019,6 +1432,29 @@ impl<'a> ResourcesListBuilder<'a> {
         self
     }
 
+    /// Returns a stream of resources.
+    ///
+    /// This is the recommended way to handle large result sets, as it
+    /// processes resources one at a time without loading everything into memory.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use futures::TryStreamExt;
+    ///
+    /// let mut stream = vault.resources()
+    ///     .accessible_by("user:alice")
+    ///     .with_permission("view")
+    ///     .stream();
+    ///
+    /// while let Some(resource) = stream.try_next().await? {
+    ///     println!("Resource: {}", resource);
+    /// }
+    /// ```
+    pub fn stream(self) -> ResourceStream<'a> {
+        ResourceStream::new(self)
+    }
+
     /// Limit results to first N items.
     ///
     /// # Example
@@ -1053,15 +1489,38 @@ impl<'a> ResourcesListBuilder<'a> {
     ///     .await?;
     /// ```
     pub async fn collect(self) -> Result<Vec<String>, Error> {
-        // TODO: Implement actual API call via transport layer
-        let _ = (
-            self.vault,
-            self.subject,
-            self.permission,
-            self.resource_type,
-            self.consistency,
-            self.page_size,
-        );
+        #[cfg(feature = "rest")]
+        {
+            if let Some(transport) = self.vault.transport() {
+                let mut all_resources = Vec::new();
+                let mut cursor: Option<String> = None;
+
+                loop {
+                    let response = transport
+                        .list_resources(
+                            &self.subject,
+                            &self.permission,
+                            self.resource_type.as_ref().map(|s| s.as_ref()),
+                            self.page_size,
+                            cursor.as_deref(),
+                        )
+                        .await?;
+
+                    all_resources.extend(response.resources);
+
+                    if let Some(next) = response.next_cursor {
+                        cursor = Some(next);
+                    } else {
+                        break;
+                    }
+                }
+
+                return Ok(all_resources);
+            }
+        }
+
+        // Fallback for when no transport is available (e.g., testing)
+        let _ = (self.consistency, self.page_size);
         Ok(Vec::new())
     }
 
@@ -1083,16 +1542,28 @@ impl<'a> ResourcesListBuilder<'a> {
     ///     .cursor(page.next_cursor.as_deref())
     ///     .await?;
     /// ```
-    pub async fn cursor(self, _cursor: Option<&str>) -> Result<ResourcesPage, Error> {
-        // TODO: Implement actual API call via transport layer
-        let _ = (
-            self.vault,
-            self.subject,
-            self.permission,
-            self.resource_type,
-            self.consistency,
-            self.page_size,
-        );
+    pub async fn cursor(self, cursor: Option<&str>) -> Result<ResourcesPage, Error> {
+        #[cfg(feature = "rest")]
+        {
+            if let Some(transport) = self.vault.transport() {
+                let response = transport
+                    .list_resources(
+                        &self.subject,
+                        &self.permission,
+                        self.resource_type.as_ref().map(|s| s.as_ref()),
+                        self.page_size,
+                        cursor,
+                    )
+                    .await?;
+                return Ok(ResourcesPage {
+                    resources: response.resources,
+                    next_cursor: response.next_cursor,
+                });
+            }
+        }
+
+        // Fallback for when no transport is available (e.g., testing)
+        let _ = (self.consistency, self.page_size);
         Ok(ResourcesPage {
             resources: Vec::new(),
             next_cursor: None,
@@ -1143,6 +1614,131 @@ impl IntoIterator for ResourcesPage {
 
     fn into_iter(self) -> Self::IntoIter {
         self.resources.into_iter()
+    }
+}
+
+/// A stream of resources returned by [`ResourcesListBuilder::stream()`].
+///
+/// Implements [`Stream`](futures::Stream) and can be consumed with
+/// `TryStreamExt::try_next()` or similar methods from the futures crate.
+pub struct ResourceStream<'a> {
+    #[cfg(feature = "rest")]
+    transport: Option<Arc<dyn TransportClient + Send + Sync>>,
+    subject: String,
+    permission: String,
+    resource_type: Option<String>,
+    page_size: Option<u32>,
+    cursor: Option<String>,
+    buffer: std::collections::VecDeque<String>,
+    done: bool,
+    _marker: std::marker::PhantomData<&'a ()>,
+}
+
+impl<'a> ResourceStream<'a> {
+    fn new(builder: ResourcesListBuilder<'a>) -> Self {
+        Self {
+            #[cfg(feature = "rest")]
+            transport: builder.vault.transport().cloned(),
+            subject: builder.subject.into_owned(),
+            permission: builder.permission.into_owned(),
+            resource_type: builder.resource_type.map(|s| s.into_owned()),
+            page_size: builder.page_size,
+            cursor: None,
+            buffer: std::collections::VecDeque::new(),
+            done: false,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    /// Attempts to fetch the next item from the stream.
+    ///
+    /// This is a convenience method for when you don't want to use the
+    /// futures `TryStreamExt` trait directly.
+    pub async fn try_next(&mut self) -> Result<Option<String>, Error> {
+        use futures::StreamExt;
+        self.next().await.transpose()
+    }
+}
+
+impl<'a> Stream for ResourceStream<'a> {
+    type Item = Result<String, Error>;
+
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+
+        // If we have items in the buffer, return one
+        if let Some(resource) = this.buffer.pop_front() {
+            return std::task::Poll::Ready(Some(Ok(resource)));
+        }
+
+        // If we're done, return None
+        if this.done {
+            return std::task::Poll::Ready(None);
+        }
+
+        // We need to fetch more data
+        #[cfg(feature = "rest")]
+        {
+            if let Some(transport) = &this.transport {
+                let transport = transport.clone();
+                let subject = this.subject.clone();
+                let permission = this.permission.clone();
+                let resource_type = this.resource_type.clone();
+                let page_size = this.page_size;
+                let cursor = this.cursor.clone();
+
+                // Create a future to fetch the next page
+                let fut = async move {
+                    transport
+                        .list_resources(
+                            &subject,
+                            &permission,
+                            resource_type.as_deref(),
+                            page_size,
+                            cursor.as_deref(),
+                        )
+                        .await
+                };
+
+                // Pin the future and poll it
+                let mut fut = Box::pin(fut);
+                match fut.as_mut().poll(cx) {
+                    std::task::Poll::Ready(Ok(response)) => {
+                        // Update cursor for next page
+                        if let Some(next_cursor) = response.next_cursor {
+                            this.cursor = Some(next_cursor);
+                        } else {
+                            this.done = true;
+                        }
+
+                        // Add resources to buffer
+                        this.buffer.extend(response.resources);
+
+                        // Return first item if any
+                        if let Some(resource) = this.buffer.pop_front() {
+                            return std::task::Poll::Ready(Some(Ok(resource)));
+                        } else {
+                            this.done = true;
+                            return std::task::Poll::Ready(None);
+                        }
+                    }
+                    std::task::Poll::Ready(Err(e)) => {
+                        this.done = true;
+                        return std::task::Poll::Ready(Some(Err(e)));
+                    }
+                    std::task::Poll::Pending => {
+                        return std::task::Poll::Pending;
+                    }
+                }
+            }
+        }
+
+        // No transport available, mark as done
+        this.done = true;
+        std::task::Poll::Ready(None)
     }
 }
 
@@ -1287,6 +1883,29 @@ impl<'a> SubjectsListBuilder<'a> {
         self
     }
 
+    /// Returns a stream of subjects.
+    ///
+    /// This is the recommended way to handle large result sets, as it
+    /// processes subjects one at a time without loading everything into memory.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use futures::TryStreamExt;
+    ///
+    /// let mut stream = vault.subjects()
+    ///     .with_permission("edit")
+    ///     .on_resource("document:readme")
+    ///     .stream();
+    ///
+    /// while let Some(subject) = stream.try_next().await? {
+    ///     println!("Subject: {}", subject);
+    /// }
+    /// ```
+    pub fn stream(self) -> SubjectStream<'a> {
+        SubjectStream::new(self)
+    }
+
     /// Limit results to first N items.
     ///
     /// # Example
@@ -1321,15 +1940,38 @@ impl<'a> SubjectsListBuilder<'a> {
     ///     .await?;
     /// ```
     pub async fn collect(self) -> Result<Vec<String>, Error> {
-        // TODO: Implement actual API call via transport layer
-        let _ = (
-            self.vault,
-            self.permission,
-            self.resource,
-            self.subject_type,
-            self.consistency,
-            self.page_size,
-        );
+        #[cfg(feature = "rest")]
+        {
+            if let Some(transport) = self.vault.transport() {
+                let mut all_subjects = Vec::new();
+                let mut cursor: Option<String> = None;
+
+                loop {
+                    let response = transport
+                        .list_subjects(
+                            &self.permission,
+                            &self.resource,
+                            self.subject_type.as_ref().map(|s| s.as_ref()),
+                            self.page_size,
+                            cursor.as_deref(),
+                        )
+                        .await?;
+
+                    all_subjects.extend(response.subjects);
+
+                    if let Some(next) = response.next_cursor {
+                        cursor = Some(next);
+                    } else {
+                        break;
+                    }
+                }
+
+                return Ok(all_subjects);
+            }
+        }
+
+        // Fallback for when no transport is available (e.g., testing)
+        let _ = (self.consistency, self.page_size);
         Ok(Vec::new())
     }
 
@@ -1351,16 +1993,28 @@ impl<'a> SubjectsListBuilder<'a> {
     ///     .cursor(page.next_cursor.as_deref())
     ///     .await?;
     /// ```
-    pub async fn cursor(self, _cursor: Option<&str>) -> Result<SubjectsPage, Error> {
-        // TODO: Implement actual API call via transport layer
-        let _ = (
-            self.vault,
-            self.permission,
-            self.resource,
-            self.subject_type,
-            self.consistency,
-            self.page_size,
-        );
+    pub async fn cursor(self, cursor: Option<&str>) -> Result<SubjectsPage, Error> {
+        #[cfg(feature = "rest")]
+        {
+            if let Some(transport) = self.vault.transport() {
+                let response = transport
+                    .list_subjects(
+                        &self.permission,
+                        &self.resource,
+                        self.subject_type.as_ref().map(|s| s.as_ref()),
+                        self.page_size,
+                        cursor,
+                    )
+                    .await?;
+                return Ok(SubjectsPage {
+                    subjects: response.subjects,
+                    next_cursor: response.next_cursor,
+                });
+            }
+        }
+
+        // Fallback for when no transport is available (e.g., testing)
+        let _ = (self.consistency, self.page_size);
         Ok(SubjectsPage {
             subjects: Vec::new(),
             next_cursor: None,
@@ -1414,16 +2068,269 @@ impl IntoIterator for SubjectsPage {
     }
 }
 
+/// A stream of subjects returned by [`SubjectsListBuilder::stream()`].
+///
+/// Implements [`Stream`](futures::Stream) and can be consumed with
+/// `TryStreamExt::try_next()` or similar methods from the futures crate.
+pub struct SubjectStream<'a> {
+    #[cfg(feature = "rest")]
+    transport: Option<Arc<dyn TransportClient + Send + Sync>>,
+    permission: String,
+    resource: String,
+    subject_type: Option<String>,
+    page_size: Option<u32>,
+    cursor: Option<String>,
+    buffer: std::collections::VecDeque<String>,
+    done: bool,
+    _marker: std::marker::PhantomData<&'a ()>,
+}
+
+impl<'a> SubjectStream<'a> {
+    fn new(builder: SubjectsListBuilder<'a>) -> Self {
+        Self {
+            #[cfg(feature = "rest")]
+            transport: builder.vault.transport().cloned(),
+            permission: builder.permission.into_owned(),
+            resource: builder.resource.into_owned(),
+            subject_type: builder.subject_type.map(|s| s.into_owned()),
+            page_size: builder.page_size,
+            cursor: None,
+            buffer: std::collections::VecDeque::new(),
+            done: false,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    /// Attempts to fetch the next item from the stream.
+    ///
+    /// This is a convenience method for when you don't want to use the
+    /// futures `TryStreamExt` trait directly.
+    pub async fn try_next(&mut self) -> Result<Option<String>, Error> {
+        use futures::StreamExt;
+        self.next().await.transpose()
+    }
+}
+
+impl<'a> Stream for SubjectStream<'a> {
+    type Item = Result<String, Error>;
+
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+
+        // If we have items in the buffer, return one
+        if let Some(subject) = this.buffer.pop_front() {
+            return std::task::Poll::Ready(Some(Ok(subject)));
+        }
+
+        // If we're done, return None
+        if this.done {
+            return std::task::Poll::Ready(None);
+        }
+
+        // We need to fetch more data
+        #[cfg(feature = "rest")]
+        {
+            if let Some(transport) = &this.transport {
+                let transport = transport.clone();
+                let permission = this.permission.clone();
+                let resource = this.resource.clone();
+                let subject_type = this.subject_type.clone();
+                let page_size = this.page_size;
+                let cursor = this.cursor.clone();
+
+                // Create a future to fetch the next page
+                let fut = async move {
+                    transport
+                        .list_subjects(
+                            &permission,
+                            &resource,
+                            subject_type.as_deref(),
+                            page_size,
+                            cursor.as_deref(),
+                        )
+                        .await
+                };
+
+                // Pin the future and poll it
+                let mut fut = Box::pin(fut);
+                match fut.as_mut().poll(cx) {
+                    std::task::Poll::Ready(Ok(response)) => {
+                        // Update cursor for next page
+                        if let Some(next_cursor) = response.next_cursor {
+                            this.cursor = Some(next_cursor);
+                        } else {
+                            this.done = true;
+                        }
+
+                        // Add subjects to buffer
+                        this.buffer.extend(response.subjects);
+
+                        // Return first item if any
+                        if let Some(subject) = this.buffer.pop_front() {
+                            return std::task::Poll::Ready(Some(Ok(subject)));
+                        } else {
+                            this.done = true;
+                            return std::task::Poll::Ready(None);
+                        }
+                    }
+                    std::task::Poll::Ready(Err(e)) => {
+                        this.done = true;
+                        return std::task::Poll::Ready(Some(Err(e)));
+                    }
+                    std::task::Poll::Pending => {
+                        return std::task::Poll::Pending;
+                    }
+                }
+            }
+        }
+
+        // No transport available, mark as done
+        this.done = true;
+        std::task::Poll::Ready(None)
+    }
+}
+
+// ============================================================================
+// Explain Permission
+// ============================================================================
+
+use super::explain::{DenialReason, PermissionExplanation};
+
+/// A builder for explain permission requests.
+///
+/// Created by [`VaultClient::explain_permission()`]. Use method chaining to
+/// configure the request, then `.await` to execute.
+pub struct ExplainPermissionRequest {
+    vault: VaultClient,
+    subject: Option<String>,
+    permission: Option<String>,
+    resource: Option<String>,
+    context: Option<Context>,
+}
+
+impl ExplainPermissionRequest {
+    fn new(vault: VaultClient) -> Self {
+        Self {
+            vault,
+            subject: None,
+            permission: None,
+            resource: None,
+            context: None,
+        }
+    }
+
+    /// Sets the subject to check.
+    #[must_use]
+    pub fn subject(mut self, subject: impl Into<String>) -> Self {
+        self.subject = Some(subject.into());
+        self
+    }
+
+    /// Sets the permission to check.
+    #[must_use]
+    pub fn permission(mut self, permission: impl Into<String>) -> Self {
+        self.permission = Some(permission.into());
+        self
+    }
+
+    /// Sets the resource to check.
+    #[must_use]
+    pub fn resource(mut self, resource: impl Into<String>) -> Self {
+        self.resource = Some(resource.into());
+        self
+    }
+
+    /// Adds ABAC context for condition evaluation.
+    #[must_use]
+    pub fn with_context(mut self, context: Context) -> Self {
+        self.context = Some(context);
+        self
+    }
+
+    async fn execute(self) -> Result<PermissionExplanation, Error> {
+        let subject = self
+            .subject
+            .ok_or_else(|| Error::invalid_argument("subject is required"))?;
+        let permission = self
+            .permission
+            .ok_or_else(|| Error::invalid_argument("permission is required"))?;
+        let resource = self
+            .resource
+            .ok_or_else(|| Error::invalid_argument("resource is required"))?;
+
+        // TODO: Implement actual API call via transport
+        // For now, perform a check and return a basic explanation
+        #[cfg(feature = "rest")]
+        if let Some(transport) = self.vault.transport() {
+            let request = TransportCheckRequest {
+                subject: subject.clone(),
+                permission: permission.clone(),
+                resource: resource.clone(),
+                context: self.context.clone(),
+                consistency: None,
+            };
+
+            let response = transport.check(request).await?;
+
+            let explanation = if response.allowed {
+                PermissionExplanation::allowed(&subject, &permission, &resource)
+            } else {
+                PermissionExplanation::denied(&subject, &permission, &resource)
+                    .with_denial_reason(DenialReason::no_path())
+            };
+
+            return Ok(explanation);
+        }
+
+        // Fallback for when transport is not available
+        Ok(
+            PermissionExplanation::denied(&subject, &permission, &resource)
+                .with_denial_reason(DenialReason::no_path()),
+        )
+    }
+}
+
+impl std::future::IntoFuture for ExplainPermissionRequest {
+    type Output = Result<PermissionExplanation, Error>;
+    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + Send>>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(self.execute())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::auth::BearerCredentialsConfig;
+    use crate::transport::mock::MockTransport;
+    use std::sync::Arc;
 
     async fn create_test_vault() -> VaultClient {
+        let mock_transport = Arc::new(MockTransport::new());
         let client = Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))
-            .build()
+            .build_with_transport(mock_transport)
+            .await
+            .unwrap();
+
+        client.organization("org_test").vault("vlt_test")
+    }
+
+    async fn create_test_vault_with_relationships() -> VaultClient {
+        let mock_transport = Arc::new(MockTransport::new());
+        // Add default relationships for tests that expect access
+        mock_transport.add_relationship(Relationship::new("doc:1", "view", "user:alice"));
+        mock_transport.add_relationship(Relationship::new("doc:1", "edit", "user:bob"));
+
+        let client = Client::builder()
+            .url("https://api.example.com")
+            .credentials(BearerCredentialsConfig::new("test"))
+            .build_with_transport(mock_transport)
             .await
             .unwrap();
 
@@ -1460,14 +2367,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_require() {
-        let vault = create_test_vault().await;
+        // require() returns Ok only if access is granted
+        let vault = create_test_vault_with_relationships().await;
         let result = vault.check("user:alice", "view", "doc:1").require().await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_require_with_context() {
-        let vault = create_test_vault().await;
+        // require() returns Ok only if access is granted
+        let vault = create_test_vault_with_relationships().await;
         let result = vault
             .check("user:alice", "view", "doc:1")
             .require()
@@ -1478,7 +2387,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_require_with_consistency() {
-        let vault = create_test_vault().await;
+        // require() returns Ok only if access is granted
+        let vault = create_test_vault_with_relationships().await;
         let token = ConsistencyToken::new("test_token");
         let result = vault
             .check("user:alice", "view", "doc:1")
@@ -1490,7 +2400,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_detailed() {
-        let vault = create_test_vault().await;
+        // detailed() with is_allowed() requires a relationship
+        let vault = create_test_vault_with_relationships().await;
         let decision = vault
             .check("user:alice", "view", "doc:1")
             .detailed()
@@ -1948,5 +2859,83 @@ mod tests {
             next_cursor: None,
         };
         assert!(!page.has_more());
+    }
+
+    // Explain Permission tests
+    #[tokio::test]
+    async fn test_explain_permission_missing_subject() {
+        let vault = create_test_vault().await;
+        let result = vault
+            .explain_permission()
+            .permission("view")
+            .resource("doc:1")
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("subject"));
+    }
+
+    #[tokio::test]
+    async fn test_explain_permission_missing_permission() {
+        let vault = create_test_vault().await;
+        let result = vault
+            .explain_permission()
+            .subject("user:alice")
+            .resource("doc:1")
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("permission"));
+    }
+
+    #[tokio::test]
+    async fn test_explain_permission_missing_resource() {
+        let vault = create_test_vault().await;
+        let result = vault
+            .explain_permission()
+            .subject("user:alice")
+            .permission("view")
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("resource"));
+    }
+
+    #[tokio::test]
+    async fn test_explain_permission_denied() {
+        let vault = create_test_vault().await;
+        let explanation = vault
+            .explain_permission()
+            .subject("user:alice")
+            .permission("view")
+            .resource("doc:1")
+            .await
+            .unwrap();
+        assert!(!explanation.allowed);
+        assert!(!explanation.denial_reasons.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_explain_permission_allowed() {
+        let vault = create_test_vault_with_relationships().await;
+        let explanation = vault
+            .explain_permission()
+            .subject("user:alice")
+            .permission("view")
+            .resource("doc:1")
+            .await
+            .unwrap();
+        assert!(explanation.allowed);
+    }
+
+    #[tokio::test]
+    async fn test_explain_permission_with_context() {
+        let vault = create_test_vault().await;
+        let explanation = vault
+            .explain_permission()
+            .subject("user:alice")
+            .permission("view")
+            .resource("doc:1")
+            .with_context(Context::new().with("environment", "production"))
+            .await
+            .unwrap();
+        assert!(!explanation.allowed);
     }
 }

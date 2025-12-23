@@ -2,10 +2,13 @@
 //!
 //! The control plane provides administrative operations:
 //!
+//! - Account management (current user)
 //! - Organization management
 //! - Vault management
 //! - Team management
 //! - Member management
+//! - API client management
+//! - JWKS operations
 //! - Schema management
 //! - Audit logs
 //!
@@ -13,6 +16,13 @@
 //!
 //! ```rust,ignore
 //! let client = Client::from_env().await?;
+//!
+//! // Account operations (current user)
+//! let account = client.account();
+//! let emails = account.emails().list().await?;
+//!
+//! // JWKS operations
+//! let jwks = client.jwks().get().await?;
 //!
 //! // Organization context
 //! let org = client.organization("org_8675309...");
@@ -23,6 +33,7 @@
 //! let teams = org.teams();
 //! let invitations = org.invitations();
 //! let audit_logs = org.audit_logs();
+//! let api_clients = org.clients();
 //!
 //! // Vault operations
 //! let vault = org.vault("vlt_01JFQGK...");
@@ -59,13 +70,31 @@
 // Allow dead code for control types not yet integrated
 #![allow(dead_code)]
 
+mod account;
 mod audit;
+mod clients;
+mod jwks;
 mod members;
 mod organizations;
 mod schemas;
 mod teams;
 mod types;
 mod vaults;
+
+// Re-export account types
+pub use account::{
+    Account, AccountClient, AccountStatus, ChangePasswordRequest, Email, EmailsClient, Session,
+    SessionsClient, UpdateAccountRequest,
+};
+
+// Re-export API client types
+pub use clients::{
+    AddCertificateRequest, ApiClient, ApiClientsClient, CertificatesClient, ClientCertificate,
+    ClientStatus, CreateApiClientRequest, RotateCertificateRequest, UpdateApiClientRequest,
+};
+
+// Re-export JWKS types
+pub use jwks::{Jwk, Jwks, JwksClient};
 
 // Re-export organization types
 pub use organizations::{

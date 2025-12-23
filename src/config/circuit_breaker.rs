@@ -492,4 +492,78 @@ mod tests {
         let event = CircuitEvent::Closed { success_count: 2 };
         assert!(event.to_string().contains("2 successes"));
     }
+
+    #[test]
+    fn test_circuit_state_display() {
+        assert_eq!(format!("{}", CircuitState::Closed), "closed");
+        assert_eq!(format!("{}", CircuitState::Open), "open");
+        assert_eq!(format!("{}", CircuitState::HalfOpen), "half-open");
+    }
+
+    #[test]
+    fn test_circuit_stats_default() {
+        let stats = CircuitStats::default();
+        assert_eq!(stats.state, CircuitState::Closed);
+        assert_eq!(stats.failure_count, 0);
+    }
+
+    #[test]
+    fn test_failure_predicate_include() {
+        let predicate = FailurePredicate::only([ErrorKind::Timeout])
+            .include(ErrorKind::Connection);
+        assert!(predicate.is_failure(ErrorKind::Timeout));
+        assert!(predicate.is_failure(ErrorKind::Connection));
+        assert!(!predicate.is_failure(ErrorKind::NotFound));
+    }
+
+    #[test]
+    fn test_config_is_failure() {
+        let config = CircuitBreakerConfig::default();
+        assert!(config.is_failure(ErrorKind::Timeout));
+        assert!(!config.is_failure(ErrorKind::NotFound));
+    }
+
+    #[test]
+    fn test_config_custom_predicate() {
+        let predicate = FailurePredicate::only([ErrorKind::NotFound]);
+        let config = CircuitBreakerConfig::new().failure_predicate(predicate);
+        assert!(config.is_failure(ErrorKind::NotFound));
+        assert!(!config.is_failure(ErrorKind::Timeout));
+    }
+
+    #[test]
+    fn test_config_get_failure_predicate() {
+        let config = CircuitBreakerConfig::default();
+        let predicate = config.get_failure_predicate();
+        assert!(predicate.is_failure(ErrorKind::Timeout));
+    }
+
+    #[test]
+    fn test_circuit_event_clone() {
+        let event = CircuitEvent::Opened {
+            failure_count: 5,
+            last_error: "error".to_string(),
+        };
+        let cloned = event.clone();
+        match cloned {
+            CircuitEvent::Opened { failure_count, .. } => assert_eq!(failure_count, 5),
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_circuit_state_copy() {
+        let state = CircuitState::Open;
+        let copied: CircuitState = state;
+        assert_eq!(state, copied);
+    }
+
+    #[test]
+    fn test_circuit_stats_with_times() {
+        let mut stats = CircuitStats::new();
+        stats.last_open_time = Some(std::time::Instant::now());
+        stats.last_close_time = Some(std::time::Instant::now());
+        assert!(stats.last_open_time.is_some());
+        assert!(stats.last_close_time.is_some());
+    }
 }

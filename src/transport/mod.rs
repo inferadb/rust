@@ -44,12 +44,15 @@ pub use traits::{
     TransportStats, TransportStrategy,
 };
 
-// Internal re-exports (will be used when transport is integrated with client)
-#[allow(unused_imports)]
+// Internal re-exports (used when transport is integrated with client)
 pub(crate) use traits::{
-    CheckRequest as TransportCheckRequest, CheckResponse as TransportCheckResponse,
-    ListRelationshipsResponse as TransportListRelationshipsResponse,
-    ListResourcesResponse as TransportListResourcesResponse,
-    ListSubjectsResponse as TransportListSubjectsResponse, TransportClient,
-    WriteRequest as TransportWriteRequest, WriteResponse as TransportWriteResponse,
+    CheckRequest as TransportCheckRequest, TransportClient, WriteRequest as TransportWriteRequest,
 };
+
+// Re-export REST transport
+#[cfg(feature = "rest")]
+pub use rest::{RestTransport, RestTransportBuilder};
+
+// Re-export gRPC transport
+#[cfg(feature = "grpc")]
+pub use grpc::{GrpcTransport, GrpcTransportBuilder};

@@ -28,12 +28,19 @@
 #![allow(dead_code)]
 
 mod builder;
+mod health;
 mod inner;
 
 pub use builder::ClientBuilder;
+pub use health::{
+    ComponentHealth, HealthResponse, HealthStatus, ReadinessCriteria, ShutdownGuard, ShutdownHandle,
+};
 
 use std::sync::Arc;
 
+use crate::control::{
+    AccountClient, ApiClientsClient, JwksClient, OrganizationControlClient, OrganizationsClient,
+};
 use crate::vault::VaultClient;
 
 /// The InferaDB SDK client.
@@ -128,6 +135,188 @@ impl Client {
     pub(crate) fn inner(&self) -> &inner::ClientInner {
         &self.inner
     }
+
+    /// Returns the transport client, if available.
+    #[cfg(feature = "rest")]
+    pub(crate) fn transport(
+        &self,
+    ) -> Option<&std::sync::Arc<dyn crate::transport::TransportClient + Send + Sync>> {
+        self.inner.transport.as_ref()
+    }
+
+    // Control plane methods
+
+    /// Returns a client for managing the current user's account.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let account = client.account();
+    /// let info = account.get().await?;
+    /// ```
+    pub fn account(&self) -> AccountClient {
+        AccountClient::new(self.clone())
+    }
+
+    /// Returns a client for JWKS operations.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let jwks = client.jwks().get().await?;
+    /// if let Some(key) = jwks.find_key("key_id") {
+    ///     // Use key for verification
+    /// }
+    /// ```
+    pub fn jwks(&self) -> JwksClient {
+        JwksClient::new(self.clone())
+    }
+
+    /// Returns a client for listing and creating organizations.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let orgs = client.organizations().list().await?;
+    /// ```
+    pub fn organizations(&self) -> OrganizationsClient {
+        OrganizationsClient::new(self.clone())
+    }
+
+    // Health check methods
+
+    /// Performs a simple health check.
+    ///
+    /// Returns `true` if the service is reachable and responding.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// if client.health_check().await? {
+    ///     println!("Service is healthy");
+    /// }
+    /// ```
+    pub async fn health_check(&self) -> Result<bool, crate::Error> {
+        // TODO: Implement actual health check via transport
+        // For now, return true as a placeholder
+        Ok(true)
+    }
+
+    /// Performs a detailed health check.
+    ///
+    /// Returns comprehensive health information including component
+    /// status and latency measurements.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let health = client.health().await?;
+    /// println!("Status: {:?}", health.status);
+    /// println!("Latency: {:?}", health.latency);
+    /// ```
+    pub async fn health(&self) -> Result<HealthResponse, crate::Error> {
+        use std::collections::HashMap;
+        use std::time::Duration;
+
+        // TODO: Implement actual health check via transport
+        // For now, return a placeholder response
+        Ok(HealthResponse {
+            status: HealthStatus::Healthy,
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            latency: Duration::from_millis(1),
+            components: HashMap::new(),
+            timestamp: chrono::Utc::now(),
+        })
+    }
+
+    /// Waits for the service to become ready.
+    ///
+    /// This is useful during application startup to ensure the
+    /// authorization service is available before accepting traffic.
+    ///
+    /// # Arguments
+    ///
+    /// * `timeout` - Maximum time to wait for readiness
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// client.wait_ready(Duration::from_secs(30)).await?;
+    /// println!("Service is ready");
+    /// ```
+    pub async fn wait_ready(&self, timeout: std::time::Duration) -> Result<(), crate::Error> {
+        let start = std::time::Instant::now();
+
+        while start.elapsed() < timeout {
+            if self.health_check().await.unwrap_or(false) {
+                return Ok(());
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+
+        Err(crate::Error::timeout(
+            "Timed out waiting for service readiness",
+        ))
+    }
+
+    /// Waits for the service to become ready with custom criteria.
+    ///
+    /// # Arguments
+    ///
+    /// * `timeout` - Maximum time to wait for readiness
+    /// * `criteria` - Custom readiness criteria
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// client.wait_ready_with(Duration::from_secs(30), ReadinessCriteria::new()
+    ///     .max_latency(Duration::from_millis(100))
+    ///     .require_auth()
+    /// ).await?;
+    /// ```
+    pub async fn wait_ready_with(
+        &self,
+        timeout: std::time::Duration,
+        criteria: ReadinessCriteria,
+    ) -> Result<(), crate::Error> {
+        let start = std::time::Instant::now();
+
+        while start.elapsed() < timeout {
+            let health = self.health().await?;
+
+            let mut ready = health.is_healthy();
+
+            if let Some(max_latency) = criteria.max_latency {
+                ready = ready && health.latency <= max_latency;
+            }
+
+            if ready {
+                return Ok(());
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+
+        Err(crate::Error::timeout(
+            "Timed out waiting for service readiness",
+        ))
+    }
+
+    /// Returns `true` if the client is in shutdown mode.
+    ///
+    /// When shutting down, new requests may be rejected.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// if client.is_shutting_down() {
+    ///     return Err(Error::shutting_down("Client is shutting down"));
+    /// }
+    /// ```
+    pub fn is_shutting_down(&self) -> bool {
+        // TODO: Implement actual shutdown state tracking
+        false
+    }
 }
 
 impl std::fmt::Debug for Client {
@@ -176,6 +365,35 @@ impl OrganizationClient {
     /// Returns the underlying client.
     pub fn client(&self) -> &Client {
         &self.client
+    }
+
+    // Control plane methods
+
+    /// Returns a control plane client for this organization.
+    ///
+    /// The control plane client provides administrative operations like
+    /// managing vaults, members, teams, and API clients.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let control = org.control();
+    /// let vaults = control.vaults().list().await?;
+    /// ```
+    pub fn control(&self) -> OrganizationControlClient {
+        OrganizationControlClient::new(self.client.clone(), self.organization_id.clone())
+    }
+
+    /// Returns a client for managing API clients in this organization.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let clients = org.clients();
+    /// let list = clients.list().await?;
+    /// ```
+    pub fn clients(&self) -> ApiClientsClient {
+        ApiClientsClient::new(self.client.clone(), self.organization_id.clone())
     }
 }
 

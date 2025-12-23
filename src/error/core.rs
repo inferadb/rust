@@ -112,6 +112,14 @@ impl Error {
             ErrorKind::Protocol => "protocol error",
             ErrorKind::Configuration => "configuration error",
             ErrorKind::Unknown => "unknown error",
+            ErrorKind::Authentication => "authentication failed",
+            ErrorKind::PermissionDenied => "permission denied",
+            ErrorKind::Conflict => "conflict",
+            ErrorKind::Transport => "transport error",
+            ErrorKind::ConnectionFailed => "connection failed",
+            ErrorKind::InvalidRequest => "invalid request",
+            ErrorKind::InvalidResponse => "invalid response",
+            ErrorKind::ServiceUnavailable => "service unavailable",
         };
         Self::new(kind, message)
     }
@@ -558,5 +566,45 @@ mod tests {
         let err = Error::new(ErrorKind::Internal, "test error");
         let debug = format!("{:?}", err);
         assert!(debug.contains("Error"));
+    }
+
+    #[test]
+    fn test_from_kind_remaining_variants() {
+        // Cover all remaining from_kind match arms
+        let _ = Error::from_kind(ErrorKind::Authentication);
+        let _ = Error::from_kind(ErrorKind::PermissionDenied);
+        let _ = Error::from_kind(ErrorKind::Conflict);
+        let _ = Error::from_kind(ErrorKind::Transport);
+        let _ = Error::from_kind(ErrorKind::ConnectionFailed);
+        let _ = Error::from_kind(ErrorKind::InvalidRequest);
+        let _ = Error::from_kind(ErrorKind::InvalidResponse);
+        let _ = Error::from_kind(ErrorKind::ServiceUnavailable);
+    }
+
+    #[test]
+    fn test_rate_limited_without_retry_after() {
+        let err = Error::rate_limited(None);
+        assert_eq!(err.kind(), ErrorKind::RateLimited);
+        assert!(err.retry_after().is_none());
+    }
+
+    #[test]
+    fn test_error_with_retry_after_builder() {
+        let err = Error::new(ErrorKind::RateLimited, "rate limited")
+            .with_retry_after(Duration::from_secs(60));
+        assert_eq!(err.retry_after(), Some(Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn test_error_from_kind_message_content() {
+        // Verify the default messages are sensible
+        let err = Error::from_kind(ErrorKind::Unauthorized);
+        assert!(err.to_string().contains("authentication"));
+
+        let err = Error::from_kind(ErrorKind::NotFound);
+        assert!(err.to_string().contains("not found"));
+
+        let err = Error::from_kind(ErrorKind::Conflict);
+        assert!(err.to_string().contains("conflict"));
     }
 }

@@ -35,7 +35,9 @@
 mod authorization_client;
 mod in_memory;
 mod mock_client;
+mod test_vault;
 
 pub use authorization_client::AuthorizationClient;
 pub use in_memory::InMemoryClient;
 pub use mock_client::MockClient;
+pub use test_vault::{TestRelationshipsClient, TestResourcesClient, TestSubjectsClient, TestVault};

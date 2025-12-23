@@ -1,10 +1,13 @@
 //! Client builder with typestate pattern.
 
 use std::marker::PhantomData;
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::auth::Credentials;
 use crate::config::{CacheConfig, DegradationConfig, RetryConfig, TlsConfig};
+#[cfg(feature = "rest")]
+use crate::transport::{PoolConfig, RestTransport};
 use crate::{Client, Error};
 
 use super::inner::ClientInner;
@@ -245,6 +248,43 @@ impl<U, C> ClientBuilder<U, C> {
 }
 
 impl ClientBuilder<HasUrl, HasCredentials> {
+    /// Builds the client with a custom transport (for testing).
+    ///
+    /// This is useful for injecting mock transports in tests.
+    #[cfg(test)]
+    pub async fn build_with_transport(
+        self,
+        transport: Arc<dyn crate::transport::TransportClient + Send + Sync>,
+    ) -> Result<Client, Error> {
+        let url = self
+            .url
+            .ok_or_else(|| Error::configuration("URL is required"))?;
+
+        let credentials = self
+            .credentials
+            .ok_or_else(|| Error::configuration("credentials are required"))?;
+
+        let timeout = self.timeout.unwrap_or(Duration::from_secs(30));
+
+        let inner = ClientInner {
+            url,
+            credentials,
+            retry_config: self.retry_config,
+            cache_config: self.cache_config,
+            tls_config: self.tls_config,
+            degradation_config: self.degradation_config,
+            timeout,
+            #[cfg(feature = "rest")]
+            transport: Some(transport),
+            #[cfg(feature = "rest")]
+            http_client: None,
+            #[cfg(feature = "rest")]
+            auth_token: parking_lot::RwLock::new(None),
+        };
+
+        Ok(Client::from_inner(inner))
+    }
+
     /// Builds the client.
     ///
     /// This validates the configuration and establishes the initial
@@ -276,16 +316,48 @@ impl ClientBuilder<HasUrl, HasCredentials> {
             .ok_or_else(|| Error::configuration("credentials are required"))?;
 
         // Validate URL
-        let _parsed_url = url::Url::parse(&url)
+        let parsed_url = url::Url::parse(&url)
             .map_err(|e| Error::configuration(format!("invalid URL: {}", e)))?;
 
         // Ensure HTTPS (unless insecure feature is enabled)
         #[cfg(not(feature = "insecure"))]
-        if _parsed_url.scheme() != "https" {
+        if parsed_url.scheme() != "https" {
             return Err(Error::configuration(
                 "HTTPS is required. Use the 'insecure' feature for development with HTTP.",
             ));
         }
+
+        let timeout = self.timeout.unwrap_or(Duration::from_secs(30));
+
+        // Create REST transport if feature is enabled
+        #[cfg(feature = "rest")]
+        let transport = {
+            let transport = RestTransport::new(
+                parsed_url.clone(),
+                &self.tls_config,
+                &PoolConfig::default(),
+                self.retry_config.clone(),
+                timeout,
+            )?;
+            Some(Arc::new(transport) as Arc<dyn crate::transport::TransportClient + Send + Sync>)
+        };
+
+        // Create HTTP client for Control API
+        #[cfg(feature = "rest")]
+        let http_client = {
+            let mut builder = reqwest::Client::builder()
+                .timeout(timeout)
+                .connect_timeout(timeout);
+
+            // Configure TLS if needed
+            if parsed_url.scheme() == "https" {
+                builder = builder.use_rustls_tls();
+            }
+
+            Some(builder.build().map_err(|e| {
+                Error::configuration(format!("Failed to create HTTP client: {}", e))
+            })?)
+        };
 
         let inner = ClientInner {
             url,
@@ -294,7 +366,13 @@ impl ClientBuilder<HasUrl, HasCredentials> {
             cache_config: self.cache_config,
             tls_config: self.tls_config,
             degradation_config: self.degradation_config,
-            timeout: self.timeout.unwrap_or(Duration::from_secs(30)),
+            timeout,
+            #[cfg(feature = "rest")]
+            transport,
+            #[cfg(feature = "rest")]
+            http_client,
+            #[cfg(feature = "rest")]
+            auth_token: parking_lot::RwLock::new(None),
         };
 
         Ok(Client::from_inner(inner))

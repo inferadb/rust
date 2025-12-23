@@ -1,0 +1,22 @@
+[package]
+name = "inferadb-derive"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+description = "Derive macros for InferaDB SDK"
+repository = "https://github.com/inferadb/inferadb"
+documentation = "https://docs.rs/inferadb-derive"
+keywords = ["authorization", "derive", "macro"]
+categories = ["development-tools::procedural-macro-helpers"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full", "extra-traits"] }
+
+[dev-dependencies]
+inferadb = { path = ".." }

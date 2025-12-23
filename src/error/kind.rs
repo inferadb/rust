@@ -134,6 +134,58 @@ pub enum ErrorKind {
     ///
     /// Used as a catch-all for unrecognized error codes.
     Unknown,
+
+    /// Authentication failed (token refresh, etc.).
+    ///
+    /// HTTP: 401 Unauthorized
+    ///
+    /// **Not retriable.** Refresh credentials and retry.
+    Authentication,
+
+    /// Permission denied for the operation.
+    ///
+    /// HTTP: 403 Forbidden
+    ///
+    /// **Not retriable.** Fix permissions.
+    PermissionDenied,
+
+    /// Conflict with existing resource state.
+    ///
+    /// HTTP: 409 Conflict
+    ///
+    /// **Not retriable** without resolving the conflict.
+    Conflict,
+
+    /// Transport layer error.
+    ///
+    /// Generic transport error for HTTP/gRPC issues.
+    Transport,
+
+    /// Connection failed (DNS, TLS, network).
+    ///
+    /// **Retriable.** May indicate network issues.
+    ConnectionFailed,
+
+    /// Invalid request format or parameters.
+    ///
+    /// HTTP: 400 Bad Request
+    ///
+    /// **Not retriable.** Fix the request.
+    InvalidRequest,
+
+    /// Invalid response from server.
+    ///
+    /// Response could not be parsed or was malformed.
+    ///
+    /// **Not retriable** without server-side fix.
+    InvalidResponse,
+
+    /// Service is unavailable.
+    ///
+    /// HTTP: 503 Service Unavailable
+    ///
+    /// **Retriable.** Wait and retry.
+    ServiceUnavailable,
 }
 
 impl ErrorKind {
@@ -166,6 +218,8 @@ impl ErrorKind {
                 | ErrorKind::RateLimited
                 | ErrorKind::CircuitOpen
                 | ErrorKind::Connection
+                | ErrorKind::ConnectionFailed
+                | ErrorKind::ServiceUnavailable
         )
     }
 
@@ -176,18 +230,24 @@ impl ErrorKind {
     pub fn http_status_code(&self) -> u16 {
         match self {
             ErrorKind::Unauthorized => 401,
+            ErrorKind::Authentication => 401,
             ErrorKind::Forbidden => 403,
+            ErrorKind::PermissionDenied => 403,
             ErrorKind::NotFound => 404,
-            ErrorKind::InvalidArgument | ErrorKind::SchemaViolation => 400,
+            ErrorKind::InvalidArgument | ErrorKind::SchemaViolation | ErrorKind::InvalidRequest => {
+                400
+            }
+            ErrorKind::Conflict => 409,
             ErrorKind::RateLimited => 429,
             ErrorKind::Timeout => 504,
-            ErrorKind::Unavailable => 503,
+            ErrorKind::Unavailable | ErrorKind::ServiceUnavailable => 503,
             ErrorKind::Internal => 500,
             ErrorKind::Cancelled => 499, // Client Closed Request
             ErrorKind::CircuitOpen => 503,
-            ErrorKind::Connection => 502,
-            ErrorKind::Protocol => 502,
+            ErrorKind::Connection | ErrorKind::ConnectionFailed => 502,
+            ErrorKind::Protocol | ErrorKind::Transport => 502,
             ErrorKind::Configuration => 500,
+            ErrorKind::InvalidResponse => 502,
             ErrorKind::Unknown => 500,
         }
     }
@@ -255,6 +315,14 @@ impl fmt::Display for ErrorKind {
             ErrorKind::Protocol => write!(f, "protocol error"),
             ErrorKind::Configuration => write!(f, "configuration error"),
             ErrorKind::Unknown => write!(f, "unknown error"),
+            ErrorKind::Authentication => write!(f, "authentication failed"),
+            ErrorKind::PermissionDenied => write!(f, "permission denied"),
+            ErrorKind::Conflict => write!(f, "conflict"),
+            ErrorKind::Transport => write!(f, "transport error"),
+            ErrorKind::ConnectionFailed => write!(f, "connection failed"),
+            ErrorKind::InvalidRequest => write!(f, "invalid request"),
+            ErrorKind::InvalidResponse => write!(f, "invalid response"),
+            ErrorKind::ServiceUnavailable => write!(f, "service unavailable"),
         }
     }
 }
@@ -380,5 +448,62 @@ mod tests {
         set.insert(ErrorKind::Unavailable);
         set.insert(ErrorKind::Timeout); // duplicate
         assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn test_is_retriable_all_retriable() {
+        // Test all retriable error kinds
+        assert!(ErrorKind::ConnectionFailed.is_retriable());
+        assert!(ErrorKind::ServiceUnavailable.is_retriable());
+    }
+
+    #[test]
+    fn test_is_retriable_all_non_retriable() {
+        // Test all non-retriable error kinds
+        assert!(!ErrorKind::Authentication.is_retriable());
+        assert!(!ErrorKind::PermissionDenied.is_retriable());
+        assert!(!ErrorKind::Conflict.is_retriable());
+        assert!(!ErrorKind::Transport.is_retriable());
+        assert!(!ErrorKind::InvalidRequest.is_retriable());
+        assert!(!ErrorKind::InvalidResponse.is_retriable());
+    }
+
+    #[test]
+    fn test_http_status_code_all_variants() {
+        // Test all variants have a status code (no panic)
+        assert_eq!(ErrorKind::Authentication.http_status_code(), 401);
+        assert_eq!(ErrorKind::PermissionDenied.http_status_code(), 403);
+        assert_eq!(ErrorKind::Conflict.http_status_code(), 409);
+        assert_eq!(ErrorKind::Transport.http_status_code(), 502);
+        assert_eq!(ErrorKind::ConnectionFailed.http_status_code(), 502);
+        assert_eq!(ErrorKind::InvalidRequest.http_status_code(), 400);
+        assert_eq!(ErrorKind::InvalidResponse.http_status_code(), 502);
+        assert_eq!(ErrorKind::ServiceUnavailable.http_status_code(), 503);
+    }
+
+    #[test]
+    fn test_display_all_variants() {
+        // Test remaining variants have display strings
+        assert_eq!(format!("{}", ErrorKind::Authentication), "authentication failed");
+        assert_eq!(format!("{}", ErrorKind::PermissionDenied), "permission denied");
+        assert_eq!(format!("{}", ErrorKind::Conflict), "conflict");
+        assert_eq!(format!("{}", ErrorKind::Transport), "transport error");
+        assert_eq!(format!("{}", ErrorKind::ConnectionFailed), "connection failed");
+        assert_eq!(format!("{}", ErrorKind::InvalidRequest), "invalid request");
+        assert_eq!(format!("{}", ErrorKind::InvalidResponse), "invalid response");
+        assert_eq!(format!("{}", ErrorKind::ServiceUnavailable), "service unavailable");
+    }
+
+    #[test]
+    fn test_error_kind_debug() {
+        let kind = ErrorKind::Timeout;
+        let debug = format!("{:?}", kind);
+        assert!(debug.contains("Timeout"));
+    }
+
+    #[test]
+    fn test_from_http_status_unmapped_4xx() {
+        // 409 is not explicitly mapped, falls back to InvalidArgument
+        assert_eq!(ErrorKind::from_http_status(409), ErrorKind::InvalidArgument);
     }
 }

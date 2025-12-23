@@ -13,7 +13,10 @@
 //! - Common data types
 
 // Core client types
-pub use crate::client::{Client, ClientBuilder};
+pub use crate::client::{
+    Client, ClientBuilder, ComponentHealth, HealthResponse, HealthStatus, ReadinessCriteria,
+    ShutdownGuard, ShutdownHandle,
+};
 pub use crate::vault::VaultClient;
 
 // Error types
