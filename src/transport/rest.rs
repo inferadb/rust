@@ -22,6 +22,7 @@ use crate::transport::traits::{
     TransportClient, TransportStats, WriteRequest, WriteResponse,
 };
 use crate::types::{ConsistencyToken, Decision, Relationship};
+use crate::user_agent;
 use crate::Error;
 
 // ============================================================================
@@ -67,7 +68,8 @@ impl RestTransport {
             .timeout(timeout)
             .connect_timeout(Duration::from_secs(10))
             .pool_max_idle_per_host(pool_config.max_idle_per_host as usize)
-            .pool_idle_timeout(pool_config.idle_timeout);
+            .pool_idle_timeout(pool_config.idle_timeout)
+            .user_agent(user_agent::user_agent());
 
         // Configure TLS with skip_verification (requires insecure feature)
         #[cfg(feature = "insecure")]
@@ -134,6 +136,7 @@ impl RestTransport {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+        // Note: User-Agent is set at the client level via .user_agent() in new()
 
         if let Some(ref token) = *self.auth_token.read() {
             let auth_value = format!("Bearer {}", token);
@@ -2163,5 +2166,54 @@ mod wiremock_tests {
         let result = transport.check(request).await;
         assert!(result.is_ok());
         assert!(result.unwrap().allowed);
+    }
+
+    #[tokio::test]
+    async fn test_user_agent_header_is_sent() {
+        use wiremock::matchers::header_exists;
+
+        let server = MockServer::start().await;
+
+        // Verify requests include the User-Agent header
+        Mock::given(method("GET"))
+            .and(path("/healthz"))
+            .and(header_exists("user-agent"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "ok"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let result = transport.health_check().await;
+        assert!(result.is_ok());
+
+        // wiremock will fail if the header wasn't present
+    }
+
+    #[tokio::test]
+    async fn test_user_agent_header_format() {
+        use wiremock::matchers::header_regex;
+
+        let server = MockServer::start().await;
+
+        // Verify User-Agent matches expected format: inferadb-rust/X.Y.Z (...)
+        Mock::given(method("GET"))
+            .and(path("/healthz"))
+            .and(header_regex(
+                "user-agent",
+                r"^inferadb-rust/\d+\.\d+\.\d+ \(.+\)$",
+            ))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "ok"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let transport = create_test_transport(&server).await;
+        let result = transport.health_check().await;
+        assert!(result.is_ok());
     }
 }

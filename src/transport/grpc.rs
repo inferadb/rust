@@ -16,6 +16,8 @@ use parking_lot::RwLock;
 use tonic::transport::{Channel, Endpoint};
 use url::Url;
 
+use tonic::service::interceptor::InterceptedService;
+
 use super::proto::inferadb_service_client::InferadbServiceClient;
 use super::proto::{self as pb};
 use crate::config::{RetryConfig, TlsConfig};
@@ -25,7 +27,30 @@ use crate::transport::traits::{
     TransportClient, TransportStats, WriteRequest, WriteResponse,
 };
 use crate::types::{ConsistencyToken, Decision, Relationship};
+use crate::user_agent;
 use crate::Error;
+
+/// Interceptor that adds user-agent metadata to all gRPC requests.
+#[allow(clippy::result_large_err)] // tonic::Status is the required error type for interceptors
+fn user_agent_interceptor(
+    mut req: tonic::Request<()>,
+) -> Result<tonic::Request<()>, tonic::Status> {
+    req.metadata_mut().insert(
+        "user-agent",
+        user_agent::user_agent()
+            .parse()
+            .unwrap_or_else(|_| tonic::metadata::MetadataValue::from_static("inferadb-rust")),
+    );
+    Ok(req)
+}
+
+/// Type alias for the intercepted gRPC client.
+type InterceptedClient = InferadbServiceClient<
+    InterceptedService<
+        Channel,
+        fn(tonic::Request<()>) -> Result<tonic::Request<()>, tonic::Status>,
+    >,
+>;
 
 /// gRPC transport client using tonic.
 ///
@@ -33,7 +58,7 @@ use crate::Error;
 /// services over HTTP/2 with native streaming support.
 #[derive(Clone)]
 pub struct GrpcTransport {
-    client: InferadbServiceClient<Channel>,
+    client: InterceptedClient,
     stats: Arc<RwLock<GrpcStats>>,
 }
 
@@ -98,7 +123,10 @@ impl GrpcTransport {
             .await
             .map_err(|e| Error::connection(format!("Failed to connect to gRPC server: {}", e)))?;
 
-        let client = InferadbServiceClient::new(channel);
+        // Create client with user-agent interceptor
+        let interceptor: fn(tonic::Request<()>) -> Result<tonic::Request<()>, tonic::Status> =
+            user_agent_interceptor;
+        let client = InferadbServiceClient::with_interceptor(channel, interceptor);
 
         Ok(Self {
             client,

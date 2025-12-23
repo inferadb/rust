@@ -71,6 +71,9 @@ pub mod vault;
 // Transport layer
 pub mod transport;
 
+// User-Agent generation (internal)
+mod user_agent;
+
 // Middleware
 pub mod middleware;
 
