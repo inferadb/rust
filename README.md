@@ -9,11 +9,12 @@
     <p>Ergonomic, type-safe access to InferaDB's authorization and management APIs</p>
 </div>
 
-- Centralized, fine‑grained authorization so Rust services avoid scattered, hand‑rolled permission logic.
-- Low‑latency, Google Zanzibar‑inspired engine that replaces ad‑hoc DB lookups and caches for authorization checks at scale.
-- Rust‑native API surface (types, async, errors, testing) so teams don’t need to build or adapt a generic policy engine.
-- Strong typing and policy‑as‑code to catch permission model mistakes in tests and at compile time instead of in production.
-- Standards‑based authorization (AuthZen) with built‑in multi‑tenant isolation and auditability.
+
+[InferaDB](https://inferadb.com/) is a distributed, [Google Zanzibar](https://research.google/pubs/zanzibar-googles-consistent-global-authorization-system/)‑inspired authorization engine that replaces ad‑hoc database lookups and scattered logic with a unified, millisecond‑latency source of truth. With this SDK, you define permissions as policy‑as‑code and wire up a type‑safe client in just a few lines.
+
+- **Rust‑Native & Async:** Fully integrated with the ecosystem (Tokio, Tracing) so you don't have to adapt generic policy engines to your runtime.
+- **Compile‑Time Safety:** Catch permission model mistakes in your build pipeline and tests, preventing surprises in production.
+- **Standards‑Based & Audit‑Ready:** Built on [AuthZen](https://openid.net/wg/authzen/) with automatic multi‑tenant isolation and cryptographically verifiable audit trails out of the box.
 
 ## Quick Start
 
