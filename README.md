@@ -24,7 +24,7 @@
 
 2. Run the following Cargo command in your project directory:
 
-    ```shell
+   ```shell
    cargo add inferadb
    ```
 
