@@ -744,6 +744,7 @@ impl ClientBuilder<HasUrl, HasCredentials> {
 mod tests {
     use super::*;
     use crate::auth::{BearerCredentialsConfig, ClientCredentialsConfig, Ed25519PrivateKey};
+    use crate::transport::mock::MockTransport;
 
     #[test]
     fn test_builder_typestate() {
@@ -799,10 +800,11 @@ mod tests {
     #[tokio::test]
     async fn test_build_with_client_credentials() {
         let key = Ed25519PrivateKey::generate();
+        let mock_transport = Arc::new(MockTransport::new());
         let result = ClientBuilder::new()
             .url("https://api.example.com")
             .credentials(ClientCredentialsConfig::new("client_id", key))
-            .build()
+            .build_with_transport(mock_transport)
             .await;
 
         assert!(result.is_ok());
@@ -822,6 +824,7 @@ mod tests {
         assert_eq!(builder.timeout, Some(Duration::from_secs(60)));
     }
 
+    #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_build_with_shutdown() {
         let result = ClientBuilder::new()

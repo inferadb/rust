@@ -1317,11 +1317,14 @@ mod tests {
     #[tokio::test]
     async fn test_watch_stream_basic() {
         use crate::auth::BearerCredentialsConfig;
+        use crate::transport::mock::MockTransport;
+        use std::sync::Arc;
 
+        let mock_transport = Arc::new(MockTransport::new());
         let client = crate::Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))
-            .build()
+            .build_with_transport(mock_transport)
             .await
             .unwrap();
 
@@ -1350,12 +1353,15 @@ mod tests {
     #[tokio::test]
     async fn test_watch_stream_shutdown() {
         use crate::auth::BearerCredentialsConfig;
+        use crate::transport::mock::MockTransport;
         use futures::StreamExt;
+        use std::sync::Arc;
 
+        let mock_transport = Arc::new(MockTransport::new());
         let client = crate::Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))
-            .build()
+            .build_with_transport(mock_transport)
             .await
             .unwrap();
 
@@ -1382,12 +1388,15 @@ mod tests {
     #[tokio::test]
     async fn test_watch_stream_with_filters() {
         use crate::auth::BearerCredentialsConfig;
+        use crate::transport::mock::MockTransport;
         use futures::StreamExt;
+        use std::sync::Arc;
 
+        let mock_transport = Arc::new(MockTransport::new());
         let client = crate::Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))
-            .build()
+            .build_with_transport(mock_transport)
             .await
             .unwrap();
 

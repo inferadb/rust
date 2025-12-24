@@ -352,12 +352,15 @@ impl Jwk {
 mod tests {
     use super::*;
     use crate::auth::BearerCredentialsConfig;
+    use crate::transport::mock::MockTransport;
+    use std::sync::Arc;
 
     async fn create_test_client() -> Client {
+        let mock_transport = Arc::new(MockTransport::new());
         Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))
-            .build()
+            .build_with_transport(mock_transport)
             .await
             .unwrap()
     }
