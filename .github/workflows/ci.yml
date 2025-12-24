@@ -78,7 +78,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        msrv: ["1.75"]
+        msrv: ["1.88"]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
