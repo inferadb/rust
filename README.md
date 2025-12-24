@@ -26,6 +26,8 @@ Add the [inferadb](https://crates.io/crates/inferadb) crate to your `Cargo.toml`
 inferadb = "0.1"
 ```
 
+Sign up for an account at [InferaDB](https://inferadb.com/) and create a new organization and vault. With these credentials, you can create a new client instance:
+
 ```rust
 use inferadb::prelude::*;
 
