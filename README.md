@@ -13,7 +13,7 @@
 
 [InferaDB](https://inferadb.com/) is a distributed, [Google Zanzibar](https://research.google/pubs/zanzibar-googles-consistent-global-authorization-system/)‑inspired authorization engine that replaces ad‑hoc database lookups and scattered logic with a unified, millisecond‑latency source of truth. With this SDK, you define permissions as policy‑as‑code and wire up a type‑safe client in just a few lines.
 
-- **Rust‑Native & Async:** Fully integrated with the ecosystem (Tokio, Tracing) so you don't have to adapt generic policy engines to your runtime.
+- **Rust‑Native & Async:** Fully integrated with the ecosystem ([Tokio](https://crates.io/crates/tokio), [Tracing](https://crates.io/crates/tracing)) so you don't have to adapt generic policy engines to your runtime.
 - **Compile‑Time Safety:** Catch permission model mistakes in your build pipeline and tests, preventing surprises in production.
 - **Standards‑Based & Audit‑Ready:** Built on [AuthZen](https://openid.net/wg/authzen/) with automatic multi‑tenant isolation and cryptographically verifiable audit trails out of the box.
 
@@ -60,21 +60,31 @@ let vault = org.vault("vlt_...");
 
 ### Permission Checks
 
-```rust
-// Simple check - returns bool
-let allowed = vault.check("user:alice", "view", "doc:1").await?;
+#### Check a Permission
 
-// With ABAC context
+```rust
+let allowed = vault.check("user:alice", "view", "doc:1").await?;
+```
+
+#### Check with ABAC Context
+
+```rust
 let allowed = vault.check("user:alice", "view", "doc:confidential")
     .with_context(Context::new()
         .with("ip_address", "10.0.0.50")
         .with("mfa_verified", true))
     .await?;
+```
 
-// Guard clause - returns Err(AccessDenied) if denied
+#### Require Permission (Guard Clause)
+
+```rust
 vault.check("user:alice", "edit", "doc:1").require().await?;
+```
 
-// Batch checks - single round-trip
+#### Check Multiple Permissions
+
+```rust
 let results = vault.check_batch([
     ("user:alice", "view", "doc:1"),
     ("user:alice", "edit", "doc:1"),
@@ -130,16 +140,20 @@ vault.relationships()
 
 ### Lookups
 
+#### List Accessible Resources
+
 ```rust
-// What can a user access?
 let docs = vault.resources()
     .accessible_by("user:alice")
     .with_permission("view")
     .resource_type("document")
     .collect()
     .await?;
+```
 
-// Who can access a resource?
+#### List Subjects with Access
+
+```rust
 let users = vault.subjects()
     .with_permission("view")
     .on_resource("document:readme")
@@ -149,8 +163,9 @@ let users = vault.subjects()
 
 ### Explain & Simulate
 
+#### Explain a Permission Decision
+
 ```rust
-// Debug why a permission was granted or denied
 let explanation = vault.explain_permission()
     .subject("user:alice")
     .permission("edit")
@@ -158,8 +173,11 @@ let explanation = vault.explain_permission()
     .execute()
     .await?;
 println!("{}", explanation.summary());
+```
 
-// Test what-if scenarios without persisting changes
+#### Simulate What-If Scenarios
+
+```rust
 let result = vault.simulate()
     .add_relationship(Relationship::new("doc:1", "editor", "user:bob"))
     .check("user:bob", "edit", "doc:1")
@@ -168,8 +186,9 @@ let result = vault.simulate()
 
 ### Watch for Changes
 
+#### Stream Relationship Changes
+
 ```rust
-// Real-time stream of relationship changes
 let mut stream = vault.watch()
     .filter(WatchFilter::resource_type("document"))
     .run()
@@ -189,9 +208,9 @@ let org = client.organization("org_...");
 let vault = org.vault("vlt_...");
 ```
 
-### Organizations & Vaults
+### Organizations
 
-### Get Current Organization
+#### Get Current Organization
 
 ```rust
 let info = org.control().get().await?;
@@ -213,9 +232,10 @@ let vaults = org.vaults().list().collect().await?;
 
 ### Schemas
 
+#### Push a Schema
+
 ```rust
-// Push a new schema version
-let result = org.vault("vlt_...").schemas().push(r#"
+let result = vault.schemas().push(r#"
     type user {}
     type document {
         relation viewer: user
@@ -224,39 +244,61 @@ let result = org.vault("vlt_...").schemas().push(r#"
         permission edit = editor
     }
 "#).await?;
-
-// Validate without persisting
-let validation = org.vault("vlt_...").schemas().validate(schema_content).await?;
-
-// Activate a version
-org.vault("vlt_...").schemas().activate("v2").await?;
-
-// Compare versions
-let diff = org.vault("vlt_...").schemas().diff("v1", "v2").await?;
 ```
 
-### Members & Teams
+#### Validate a Schema
 
 ```rust
-// Invite a member
+let validation = vault.schemas().validate(schema_content).await?;
+```
+
+#### Activate a Schema Version
+
+```rust
+vault.schemas().activate("v2").await?;
+```
+
+#### Compare Schema Versions
+
+```rust
+let diff = vault.schemas().diff("v1", "v2").await?;
+```
+
+### Members
+
+#### Invite a Member
+
+```rust
 org.members().invite(InviteMemberRequest::new("alice@example.com", OrgRole::Admin)).await?;
+```
 
-// Create a team
+### Teams
+
+#### Create a Team
+
+```rust
 org.teams().create(CreateTeamRequest::new("Engineering")).await?;
+```
 
-// Add member to team
+#### Add Member to Team
+
+```rust
 org.teams().add_member("team_...", "user_...", TeamRole::Member).await?;
 ```
 
 ### API Clients
 
+#### Create an API Client
+
 ```rust
-// Create an API client for service-to-service auth
 let api_client = org.clients().create(
     CreateApiClientRequest::new("payment-service")
 ).await?;
+```
 
-// Rotate credentials
+#### Rotate Client Credentials
+
+```rust
 org.clients().certificates("client_...").rotate(
     RotateCertificateRequest::new(public_key_pem)
 ).await?;
@@ -264,15 +306,19 @@ org.clients().certificates("client_...").rotate(
 
 ### Audit Logs
 
+#### Query Audit Events
+
 ```rust
-// Query audit events
 let events = org.audit().list()
     .action(AuditAction::RelationshipCreated)
     .since(one_hour_ago)
     .collect()
     .await?;
+```
 
-// Export to file
+#### Export Audit Logs
+
+```rust
 org.audit().export()
     .format(ExportFormat::Json)
     .write_to_file("audit.json")
