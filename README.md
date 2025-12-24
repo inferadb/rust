@@ -121,7 +121,9 @@ let users = vault.subjects()
 
 ## Management API
 
-## Local Development
+// Local Development
+
+[Deploy a local instance of InferaDB](https://github.com/inferadb/deploy/), then configure your client to connect to it.
 
 ```rust
 let client = Client::builder()
@@ -133,8 +135,6 @@ let client = Client::builder()
     .build()
     .await?;
 ```
-
-Run a local instance of InferaDB using [our deployment script](https://github.com/inferadb/deploy/).
 
 ## Testing
 
