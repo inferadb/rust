@@ -9,6 +9,12 @@
     <p>Ergonomic, type-safe access to InferaDB's authorization and management APIs</p>
 </div>
 
+- Centralized, fine‑grained authorization so Rust services avoid scattered, hand‑rolled permission logic.
+- Low‑latency, Google Zanzibar‑inspired engine that replaces ad‑hoc DB lookups and caches for authorization checks at scale.
+- Rust‑native API surface (types, async, errors, testing) so teams don’t need to build or adapt a generic policy engine.
+- Strong typing and policy‑as‑code to catch permission model mistakes in tests and at compile time instead of in production.
+- Standards‑based authorization (AuthZen) with built‑in multi‑tenant isolation and auditability.
+
 ## Quick Start
 
 ```toml
@@ -37,7 +43,7 @@ async fn main() -> Result<(), Error> {
     // Check permission - returns Ok(false) for denial, never errors on deny
     let allowed = vault.check("user:alice", "view", "document:readme").await?;
 
-    // Or use require() for guard clauses - returns Err(AccessDenied) on denial
+    // Guard-style API – converts denial into an AccessDenied error.
     vault.check("user:alice", "edit", "document:readme")
         .require()
         .await?;
@@ -70,7 +76,7 @@ inferadb = { version = "0.1", default-features = false, features = ["rest", "rus
 
 ### Minimum Supported Rust Version
 
-The MSRV is **1.88.0**. We target two releases behind stable where possible. MSRV increases are noted in the [CHANGELOG](CHANGELOG.md). Builds on earlier compiler versions are not guaranteed.
+The MSRV is **1.88.0**. The crate targets approximately two releases behind stable; MSRV bumps are documented in the [CHANGELOG](CHANGELOG.md). Earlier compilers are not guaranteed to work.
 
 ## Design Guarantees
 
@@ -79,8 +85,8 @@ The MSRV is **1.88.0**. We target two releases behind stable where possible. MSR
 | **Denial is not an error**     | `check()` returns `Ok(false)` for denied access; only `require()` converts denial to error |
 | **Fail-closed by default**     | Errors default to denying access; fail-open must be explicit                               |
 | **Results preserve order**     | Batch operations return results in the same order as inputs                                |
-| **Writes are acknowledged**    | Write operations return only after server confirmation                                     |
-| **Errors include request IDs** | All server errors include a `request_id()` for debugging                                   |
+| **Writes are acknowledged**    | Write operations complete only after server confirmation.                                  |
+| **Errors include request IDs** | All server errors expose a request_id() for debugging and support.                         |
 
 ## Core API
 
@@ -111,13 +117,19 @@ let results: Vec<bool> = vault
 ### Relationship Management
 
 ```rust
-// Write relationships
-vault.relationships()
-    .write(Relationship::new("document:readme", "viewer", "user:alice"))
+// Write a single relationship
+vault
+    .relationships()
+    .write(Relationship::new(
+        "document:readme",
+        "viewer",
+        "user:alice",
+    ))
     .await?;
 
 // Batch write
-vault.relationships()
+vault
+    .relationships()
     .write_batch([
         Relationship::new("folder:docs", "viewer", "group:engineering#member"),
         Relationship::new("document:readme", "parent", "folder:docs"),
@@ -149,7 +161,7 @@ let users = vault.subjects()
 ```rust
 let client = Client::builder()
     .url("http://localhost:8080")
-    .insecure()  // Disables TLS verification, allows HTTP
+    .insecure()  // Disables TLS verification for local development
     .credentials(BearerCredentialsConfig {
         token: "dev-token".into(),
     })
@@ -174,7 +186,7 @@ services:
 Use `MockClient` for unit tests:
 
 ```rust
-use inferadb::testing::{MockClient, AuthorizationClient};
+use inferadb::testing::{AuthorizationClient, MockClient};
 
 #[tokio::test]
 async fn test_authorization() {
@@ -183,7 +195,10 @@ async fn test_authorization() {
         .check("user:bob", "delete", "document:readme", false)
         .build();
 
-    assert!(mock.check("user:alice", "view", "document:readme").await.unwrap());
+    assert!(mock
+        .check("user:alice", "view", "document:readme")
+        .await
+        .unwrap());
 }
 ```
 
@@ -200,7 +215,7 @@ See the [Testing Guide](docs/guides/testing.md) for `InMemoryClient` (full polic
 | [Authentication](docs/guides/authentication.md)             | Client credentials, bearer tokens, key management |
 | [Integration Patterns](docs/guides/integration-patterns.md) | Axum, Actix-web, GraphQL, gRPC middleware         |
 | [Error Handling](docs/guides/errors.md)                     | Error types, retries, graceful degradation        |
-| [Testing](docs/guides/testing.md)                           | MockClient, InMemoryClient, TestVault             |
+| [Testing](docs/guides/testing.md)                           | `MockClient`, `InMemoryClient`, `TestVault`             |
 | [Schema Design](docs/guides/schema-design.md)               | ReBAC patterns, role hierarchy, anti-patterns     |
 | [Production Checklist](docs/guides/production-checklist.md) | Deployment readiness                              |
 | [Troubleshooting](docs/troubleshooting.md)                  | Common issues and solutions                       |
