@@ -121,7 +121,7 @@ let users = vault.subjects()
 
 ## Management API
 
-// Local Development
+## Local Development
 
 [Deploy a local instance of InferaDB](https://github.com/inferadb/deploy/), then configure your client to connect to it.
 
