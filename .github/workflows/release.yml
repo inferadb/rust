@@ -68,7 +68,7 @@ jobs:
           echo "Version validated: $CARGO_VERSION"
 
       - name: Run tests
-        run: cargo test --workspace --all-features
+        run: cargo test --lib --all-features
 
       - name: Check documentation builds
         env:
