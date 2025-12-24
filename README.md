@@ -19,6 +19,8 @@
 
 ## Quick Start
 
+Add the [inferadb](https://crates.io/crates/inferadb) crate to your `Cargo.toml`:
+
 ```toml
 [dependencies]
 inferadb = "0.1"
@@ -47,15 +49,19 @@ async fn main() -> Result<(), Error> {
 }
 ```
 
-## Design Guarantees
+## Philosophy
 
-| Guarantee                      | Description                                                                                |
-| ------------------------------ | ------------------------------------------------------------------------------------------ |
-| **Denial is not an error**     | `check()` returns `Ok(false)` for denied access; only `require()` converts denial to error |
-| **Fail-closed by default**     | Errors default to denying access; fail-open must be explicit                               |
-| **Results preserve order**     | Batch operations return results in the same order as inputs                                |
-| **Writes are acknowledged**    | Write operations complete only after server confirmation.                                  |
-| **Errors include request IDs** | All server errors expose a request_id() for debugging and support.                         |
+We designed this SDK with predictability and safety in mind:
+
+**Denial is not an error.** `check()` returns `Ok(false)` for denied access—never throws. Network failures are errors; permission denials are business logic.
+
+**Fail-closed by default.** When something goes wrong, access is denied. Fail-open requires explicit opt-in.
+
+**Results preserve order.** Batch operations return results matching input order—no ID correlation needed.
+
+**Writes are acknowledged.** Write operations return only after server confirmation. No fire-and-forget surprises.
+
+**Errors include request IDs.** Every server error exposes `request_id()` for debugging and support.
 
 ## Core API
 
