@@ -6,6 +6,7 @@ Supplementary documentation for the InferaDB Rust SDK. For the main README and q
 
 | Guide                                                  | Description                                            |
 | ------------------------------------------------------ | ------------------------------------------------------ |
+| [Installation](guides/installation.md)                 | Feature flags, optimized builds, TLS options, MSRV     |
 | [Authentication](guides/authentication.md)             | Client credentials, bearer tokens, key management      |
 | [Integration Patterns](guides/integration-patterns.md) | Framework integration (Axum, Actix-web, GraphQL, gRPC) |
 | [Error Handling](guides/errors.md)                     | Error types, retries, graceful degradation             |

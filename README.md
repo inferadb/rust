@@ -9,6 +9,7 @@
     <p>Ergonomic, type-safe access to InferaDB's authorization and management APIs</p>
 </div>
 
+<br />
 
 [InferaDB](https://inferadb.com/) is a distributed, [Google Zanzibar](https://research.google/pubs/zanzibar-googles-consistent-global-authorization-system/)‑inspired authorization engine that replaces ad‑hoc database lookups and scattered logic with a unified, millisecond‑latency source of truth. With this SDK, you define permissions as policy‑as‑code and wire up a type‑safe client in just a few lines.
 
@@ -21,7 +22,6 @@
 ```toml
 [dependencies]
 inferadb = "0.1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
 
 ```rust
@@ -34,50 +34,18 @@ async fn main() -> Result<(), Error> {
         .credentials(ClientCredentialsConfig {
             client_id: "my_service".into(),
             private_key: Ed25519PrivateKey::from_pem_file("private-key.pem")?,
-            certificate_id: None,
         })
         .build()
         .await?;
 
     let vault = client.organization("org_...").vault("vlt_...");
 
-    // Check permission - returns Ok(false) for denial, never errors on deny
     let allowed = vault.check("user:alice", "view", "document:readme").await?;
-
-    // Guard-style API – converts denial into an AccessDenied error.
-    vault.check("user:alice", "edit", "document:readme")
-        .require()
-        .await?;
+    println!("Allowed: {allowed}");
 
     Ok(())
 }
 ```
-
-## Installation
-
-### Feature Flags
-
-| Feature      | Default | Description                            |
-| ------------ | ------- | -------------------------------------- |
-| `grpc`       | Yes     | gRPC transport (faster, streaming)     |
-| `rest`       | Yes     | REST transport (broader compatibility) |
-| `rustls`     | Yes     | Pure-Rust TLS                          |
-| `native-tls` | No      | System TLS (OpenSSL/Schannel)          |
-| `tracing`    | No      | OpenTelemetry integration              |
-| `blocking`   | No      | Sync/blocking API wrapper              |
-| `derive`     | No      | Proc macros for type-safe schemas      |
-| `wasm`       | No      | Browser/WASM support (REST only)       |
-
-### Minimal Build (REST Only)
-
-```toml
-[dependencies]
-inferadb = { version = "0.1", default-features = false, features = ["rest", "rustls"] }
-```
-
-### Minimum Supported Rust Version
-
-The MSRV is **1.88.0**. The crate targets approximately two releases behind stable; MSRV bumps are documented in the [CHANGELOG](CHANGELOG.md). Earlier compilers are not guaranteed to work.
 
 ## Design Guarantees
 
@@ -213,10 +181,11 @@ See the [Testing Guide](docs/guides/testing.md) for `InMemoryClient` (full polic
 
 | Topic                                                       | Description                                       |
 | ----------------------------------------------------------- | ------------------------------------------------- |
+| [Installation](docs/guides/installation.md)                 | Feature flags, optimized builds, TLS, MSRV        |
 | [Authentication](docs/guides/authentication.md)             | Client credentials, bearer tokens, key management |
 | [Integration Patterns](docs/guides/integration-patterns.md) | Axum, Actix-web, GraphQL, gRPC middleware         |
 | [Error Handling](docs/guides/errors.md)                     | Error types, retries, graceful degradation        |
-| [Testing](docs/guides/testing.md)                           | `MockClient`, `InMemoryClient`, `TestVault`             |
+| [Testing](docs/guides/testing.md)                           | MockClient, InMemoryClient, TestVault             |
 | [Schema Design](docs/guides/schema-design.md)               | ReBAC patterns, role hierarchy, anti-patterns     |
 | [Production Checklist](docs/guides/production-checklist.md) | Deployment readiness                              |
 | [Troubleshooting](docs/troubleshooting.md)                  | Common issues and solutions                       |
