@@ -54,8 +54,7 @@ async fn main() -> Result<(), Error> {
 ## Authorization API
 
 ```rust
-let org = client.organization("org_...");
-let vault = org.vault("vlt_...");
+let vault = client.organization("org_...").vault("vlt_...");
 ```
 
 ### Permission Checks
@@ -64,21 +63,7 @@ let vault = org.vault("vlt_...");
 let allowed = vault.check("user:alice", "view", "doc:1").await?;
 ```
 
-See the [Authorization API Guide](docs/guides/authorization-api.md) for ABAC context, batch checks, guard clauses, and more.
-
 ### Relationships
-
-#### List Relationships
-
-```rust
-let rels = vault.relationships()
-    .list()
-    .resource("document:readme")
-    .collect()
-    .await?;
-```
-
-#### Write a Relationship
 
 ```rust
 vault.relationships()
@@ -86,95 +71,17 @@ vault.relationships()
     .await?;
 ```
 
-#### Write Multiple Relationships
-
-```rust
-vault.relationships().write_batch([
-    Relationship::new("folder:docs", "viewer", "group:engineering#member"),
-    Relationship::new("document:readme", "parent", "folder:docs"),
-]).await?;
-```
-
-#### Delete a Relationship
-
-```rust
-vault.relationships()
-    .delete(Relationship::new("document:readme", "viewer", "user:alice"))
-    .await?;
-```
-
-#### Delete Multiple Relationships
-
-```rust
-vault.relationships()
-    .delete_where()
-    .resource("document:readme")
-    .execute()
-    .await?;
-```
-
 ### Lookups
-
-#### List Accessible Resources
 
 ```rust
 let docs = vault.resources()
     .accessible_by("user:alice")
     .with_permission("view")
-    .resource_type("document")
     .collect()
     .await?;
 ```
 
-#### List Subjects with Access
-
-```rust
-let users = vault.subjects()
-    .with_permission("view")
-    .on_resource("document:readme")
-    .collect()
-    .await?;
-```
-
-### Explain & Simulate
-
-#### Explain a Permission Decision
-
-```rust
-let explanation = vault.explain_permission()
-    .subject("user:alice")
-    .permission("edit")
-    .resource("document:readme")
-    .execute()
-    .await?;
-println!("{}", explanation.summary());
-```
-
-#### Simulate What-If Scenarios
-
-```rust
-let result = vault.simulate()
-    .add_relationship(Relationship::new("doc:1", "editor", "user:bob"))
-    .check("user:bob", "edit", "doc:1")
-    .await?;
-```
-
-### Watch for Changes
-
-#### Stream Relationship Changes
-
-```rust
-let mut stream = vault.watch()
-    .filter(WatchFilter::resource_type("document"))
-    .run()
-    .await?;
-
-while let Some(event) = stream.next().await {
-    let event = event?;
-    println!("{}: {} {} {}",
-        event.operation, event.resource, event.relation, event.subject);
-}
-```
+See the [Authorization API Guide](docs/guides/authorization-api.md) for ABAC context, batch checks, explain, simulate, watch, and more.
 
 ## Management API
 
