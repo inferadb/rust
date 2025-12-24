@@ -1,4 +1,8 @@
 //! Build script for gRPC code generation.
+//!
+//! Proto code is pre-generated and committed to `src/transport/proto/`.
+//! This build script only regenerates if the generated file is missing.
+//! Use `make proto` to manually regenerate after updating proto files.
 
 fn main() {
     #[cfg(feature = "grpc")]
@@ -6,10 +10,17 @@ fn main() {
         // Path to the proto file (bundled with the SDK)
         let proto_file = "proto/inferadb.proto";
         let proto_dir = "proto";
+        let generated_file = "src/transport/proto/inferadb.v1.rs";
+
+        // Skip generation if the generated file already exists (it's committed to the repo)
+        // This prevents build.rs from modifying src/ during cargo publish
+        if std::path::Path::new(generated_file).exists() {
+            println!("cargo:rerun-if-changed={generated_file}");
+            return;
+        }
 
         // Check if proto file exists
         if !std::path::Path::new(proto_file).exists() {
-            // This shouldn't happen in a properly distributed crate
             println!(
                 "cargo:warning=Proto file not found at {proto_file}, skipping code generation"
             );
