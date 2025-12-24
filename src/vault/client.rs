@@ -1597,7 +1597,7 @@ impl<'a> ResourcesListBuilder<'a> {
         }
 
         // Fallback for when no transport is available (e.g., testing)
-        let _ = (self.consistency, self.page_size);
+        let _ = (self.consistency, self.page_size, cursor);
         Ok(ResourcesPage {
             resources: Vec::new(),
             next_cursor: None,
@@ -1697,6 +1697,7 @@ impl<'a> ResourceStream<'a> {
 impl<'a> Stream for ResourceStream<'a> {
     type Item = Result<String, Error>;
 
+    #[allow(unused_variables)]
     fn poll_next(
         self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -2048,7 +2049,7 @@ impl<'a> SubjectsListBuilder<'a> {
         }
 
         // Fallback for when no transport is available (e.g., testing)
-        let _ = (self.consistency, self.page_size);
+        let _ = (self.consistency, self.page_size, cursor);
         Ok(SubjectsPage {
             subjects: Vec::new(),
             next_cursor: None,
@@ -2148,6 +2149,7 @@ impl<'a> SubjectStream<'a> {
 impl<'a> Stream for SubjectStream<'a> {
     type Item = Result<String, Error>;
 
+    #[allow(unused_variables)]
     fn poll_next(
         self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,

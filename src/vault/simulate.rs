@@ -181,6 +181,7 @@ impl SimulateBuilder {
 
 /// Builder for simulated permission checks.
 pub struct SimulateCheckBuilder {
+    #[cfg_attr(not(feature = "rest"), allow(dead_code))]
     vault: super::VaultClient,
     additions: Vec<Relationship<'static>>,
     removals: Vec<Relationship<'static>>,
@@ -241,6 +242,7 @@ impl std::future::IntoFuture for SimulateCheckBuilder {
 
 /// Builder for comparing simulated state with current state.
 pub struct SimulateCompareBuilder {
+    #[cfg_attr(not(feature = "rest"), allow(dead_code))]
     vault: super::VaultClient,
     additions: Vec<Relationship<'static>>,
     removals: Vec<Relationship<'static>>,
