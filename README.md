@@ -2,9 +2,10 @@
     <p><a href="https://inferadb.com"><img src=".github/inferadb.png" width="100" /></a></p>
     <h1>InferaDB Rust SDK</h1>
     <p>
-      <a href="https://crates.io/crates/inferadb"><img src="https://img.shields.io/crates/v/inferadb.svg" /></a>
-      <a href="https://docs.rs/inferadb"><img src="https://docs.rs/inferadb/badge.svg" /></a>
-      <a href="./LICENSE"><img src="https://img.shields.io/crates/l/inferadb.svg"></a>
+        <a href="https://crates.io/crates/inferadb"><img src="https://img.shields.io/crates/v/inferadb.svg" /></a>
+        <a href="https://docs.rs/inferadb"><img src="https://docs.rs/inferadb/badge.svg" /></a>
+        <a href="https://codecov.io/github/inferadb/rust"><img src="https://codecov.io/github/inferadb/rust/branch/main/graph/badge.svg?token=HBlxbXsvny" /></a>
+        <a href="./LICENSE"><img src="https://img.shields.io/crates/l/inferadb.svg"></a>
     </p>
     <p>Ergonomic, type-safe access to InferaDB's authorization and management APIs</p>
 </div>
