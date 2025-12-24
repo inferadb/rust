@@ -595,6 +595,7 @@ impl ClientBuilder<HasUrl, HasCredentials> {
                 .connect_timeout(timeout);
 
             // Configure TLS if needed
+            #[cfg(feature = "rustls")]
             if parsed_url.scheme() == "https" {
                 builder = builder.use_rustls_tls();
             }
@@ -702,6 +703,7 @@ impl ClientBuilder<HasUrl, HasCredentials> {
                 .connect_timeout(timeout);
 
             // Configure TLS if needed
+            #[cfg(feature = "rustls")]
             if parsed_url.scheme() == "https" {
                 builder = builder.use_rustls_tls();
             }

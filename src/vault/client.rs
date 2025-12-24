@@ -6,6 +6,7 @@
 use std::borrow::Cow;
 use std::future::Future;
 use std::pin::Pin;
+#[cfg(feature = "rest")]
 use std::sync::Arc;
 
 use crate::client::Client;

@@ -513,6 +513,7 @@ impl ReconnectConfig {
 ///     .await?;
 /// ```
 pub struct WatchBuilder {
+    #[cfg_attr(not(feature = "rest"), allow(dead_code))]
     client: Client,
     organization_id: String,
     vault_id: String,

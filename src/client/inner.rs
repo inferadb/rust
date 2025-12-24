@@ -1,5 +1,6 @@
 //! Internal client implementation.
 
+#[cfg(any(feature = "grpc", feature = "rest"))]
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,6 +13,7 @@ use crate::auth::Credentials;
 use crate::config::{CacheConfig, DegradationConfig, RetryConfig, TlsConfig};
 #[cfg(feature = "rest")]
 use crate::error::{Error, ErrorKind};
+#[cfg(any(feature = "grpc", feature = "rest"))]
 use crate::transport::TransportClient;
 
 use super::health::ShutdownGuard;

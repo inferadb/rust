@@ -50,6 +50,9 @@ impl AccountClient {
         self.client.inner().control_get("/control/v1/account").await
     }
 
+    /// Gets the current user's account information.
+    ///
+    /// Requires the `rest` feature to be enabled.
     #[cfg(not(feature = "rest"))]
     pub async fn get(&self) -> Result<Account, Error> {
         Err(Error::configuration(

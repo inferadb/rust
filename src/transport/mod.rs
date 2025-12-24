@@ -48,10 +48,12 @@ pub use traits::{
 };
 
 // Internal re-exports (used when transport is integrated with client)
+#[cfg(feature = "rest")]
 pub(crate) use traits::{
     CheckRequest as TransportCheckRequest, SimulateRequest as TransportSimulateRequest,
-    TransportClient, WriteRequest as TransportWriteRequest,
+    WriteRequest as TransportWriteRequest,
 };
+pub(crate) use traits::TransportClient;
 
 // Re-export REST transport
 #[cfg(feature = "rest")]
