@@ -12,8 +12,7 @@ updates:
       timezone: "Etc/UTC"
     open-pull-requests-limit: 5
     labels:
-      - "dependencies"
-      - "rust"
+      - "area/deps"
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -51,9 +50,8 @@ updates:
       timezone: "Etc/UTC"
     open-pull-requests-limit: 5
     labels:
-      - "dependencies"
-      - "github-actions"
-      - "ci"
+      - "area/deps"
+      - "area/ci"
     commit-message:
       prefix: "ci"
       include: "scope"
