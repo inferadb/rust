@@ -78,7 +78,7 @@ getrandom = "0.2"
 rand = "0.8"
 
 # Derive macros (optional)
-inferadb-derive = { path = "inferadb-derive", optional = true }
+inferadb-derive = { version = "0.1", path = "inferadb-derive", optional = true }
 
 [build-dependencies]
 tonic-prost-build = { version = "0.14", optional = true }
