@@ -130,7 +130,7 @@ jobs:
         run: |
           if [ -d "inferadb-derive" ]; then
             cd inferadb-derive
-            cargo publish --token "$CARGO_REGISTRY_TOKEN" || echo "inferadb-derive may already be published"
+            cargo publish --token "$CARGO_REGISTRY_TOKEN" --allow-dirty || echo "inferadb-derive may already be published"
             cd ..
             # Wait for crates.io to index
             sleep 30
@@ -140,7 +140,7 @@ jobs:
       - name: Publish inferadb
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: cargo publish --token "$CARGO_REGISTRY_TOKEN"
+        run: cargo publish --token "$CARGO_REGISTRY_TOKEN" --allow-dirty
 
   # Build and publish documentation
   docs:
