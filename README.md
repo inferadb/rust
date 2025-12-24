@@ -20,37 +20,38 @@
 
 ## Quick Start
 
-Add the [inferadb](https://crates.io/crates/inferadb) crate to your `Cargo.toml`:
+1. Sign up for an account at [InferaDB](https://inferadb.com/) and create a new organization and vault.
 
-```toml
-[dependencies]
-inferadb = "0.1"
-```
+2. Run the following Cargo command in your project directory:
 
-Sign up for an account at [InferaDB](https://inferadb.com/) and create a new organization and vault. With these credentials, you can create a new client instance:
+    ```toml
+   cargo add inferadb
+   ```
 
-```rust
-use inferadb::prelude::*;
+3. In your project, create and configure a client instance:
 
-#[tokio::main]
-async fn main() -> Result<(), Error> {
-    let client = Client::builder()
-        .url("https://api.inferadb.com")
-        .credentials(ClientCredentialsConfig {
-            client_id: "my_service".into(),
-            private_key: Ed25519PrivateKey::from_pem_file("private-key.pem")?,
-        })
-        .build()
-        .await?;
+   ```rust
+   use inferadb::prelude::*;
 
-    let vault = client.organization("org_...").vault("vlt_...");
+   #[tokio::main]
+   async fn main() -> Result<(), Error> {
+       let client = Client::builder()
+           .url("https://api.inferadb.com")
+           .credentials(ClientCredentialsConfig {
+               client_id: "my_service".into(),
+               private_key: Ed25519PrivateKey::from_pem_file("private-key.pem")?,
+           })
+           .build()
+           .await?;
 
-    let allowed = vault.check("user:alice", "view", "document:readme").await?;
-    println!("Allowed: {allowed}");
+       let vault = client.organization("org_...").vault("vlt_...");
 
-    Ok(())
-}
-```
+       let allowed = vault.check("user:alice", "view", "document:readme").await?;
+       println!("Allowed: {allowed}");
+
+       Ok(())
+   }
+   ```
 
 ## Authorization API
 
