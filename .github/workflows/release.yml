@@ -155,7 +155,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@nightly
 
       - name: Install protobuf compiler
         run: |
@@ -168,7 +168,7 @@ jobs:
       - name: Build documentation
         env:
           RUSTDOCFLAGS: --cfg docsrs
-        run: cargo doc --workspace --no-deps --all-features
+        run: cargo +nightly doc --workspace --no-deps --all-features
 
       - name: Add index redirect
         run: |
