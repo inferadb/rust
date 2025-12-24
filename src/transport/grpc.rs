@@ -663,6 +663,8 @@ impl TransportClient for GrpcTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::TlsConfig;
+    use crate::transport::traits::PoolConfig;
 
     #[test]
     fn test_grpc_transport_builder() {
@@ -675,26 +677,397 @@ mod tests {
     }
 
     #[test]
+    fn test_grpc_transport_builder_all_methods() {
+        let url = Url::parse("https://api.example.com").unwrap();
+        let tls_config = TlsConfig::default();
+        let pool_config = PoolConfig {
+            max_connections: 100,
+            idle_timeout: Duration::from_secs(60),
+            max_idle_per_host: 20,
+            pool_timeout: Duration::from_secs(5),
+            http2_only: true,
+            http2_keepalive: Duration::from_secs(30),
+        };
+        let retry_config = RetryConfig::default();
+
+        let builder = GrpcTransport::builder(url)
+            .tls_config(tls_config)
+            .pool_config(pool_config)
+            .retry_config(retry_config)
+            .timeout(Duration::from_secs(120));
+
+        assert_eq!(builder.timeout, Duration::from_secs(120));
+        assert_eq!(builder.pool_config.max_connections, 100);
+        assert_eq!(builder.pool_config.max_idle_per_host, 20);
+    }
+
+    #[test]
     fn test_convert_decision() {
         assert!(GrpcTransport::convert_decision(pb::Decision::Allow as i32));
         assert!(!GrpcTransport::convert_decision(pb::Decision::Deny as i32));
         assert!(!GrpcTransport::convert_decision(
             pb::Decision::Unspecified as i32
         ));
+        // Test unknown decision values
+        assert!(!GrpcTransport::convert_decision(999));
+        assert!(!GrpcTransport::convert_decision(-1));
     }
 
     #[test]
-    fn test_convert_error() {
+    fn test_convert_error_invalid_argument() {
         let status = tonic::Status::invalid_argument("bad request");
         let error = GrpcTransport::convert_error(status);
         assert!(error.to_string().contains("bad request"));
+    }
 
+    #[test]
+    fn test_convert_error_not_found() {
         let status = tonic::Status::not_found("not found");
         let error = GrpcTransport::convert_error(status);
         assert!(error.to_string().contains("not found"));
+    }
 
+    #[test]
+    fn test_convert_error_unauthenticated() {
         let status = tonic::Status::unauthenticated("auth failed");
         let error = GrpcTransport::convert_error(status);
         assert!(error.to_string().contains("auth failed"));
+    }
+
+    #[test]
+    fn test_convert_error_permission_denied() {
+        let status = tonic::Status::permission_denied("forbidden");
+        let error = GrpcTransport::convert_error(status);
+        assert!(error.to_string().contains("forbidden"));
+    }
+
+    #[test]
+    fn test_convert_error_resource_exhausted() {
+        let status = tonic::Status::resource_exhausted("rate limited");
+        let error = GrpcTransport::convert_error(status);
+        assert!(error.to_string().to_lowercase().contains("rate"));
+    }
+
+    #[test]
+    fn test_convert_error_unavailable() {
+        let status = tonic::Status::unavailable("service down");
+        let error = GrpcTransport::convert_error(status);
+        assert!(error.to_string().contains("service down"));
+    }
+
+    #[test]
+    fn test_convert_error_deadline_exceeded() {
+        let status = tonic::Status::deadline_exceeded("timeout");
+        let error = GrpcTransport::convert_error(status);
+        assert!(error.to_string().contains("timeout"));
+    }
+
+    #[test]
+    fn test_convert_error_unknown() {
+        let status = tonic::Status::unknown("something went wrong");
+        let error = GrpcTransport::convert_error(status);
+        assert!(error.to_string().contains("something went wrong"));
+    }
+
+    #[test]
+    fn test_convert_error_internal() {
+        let status = tonic::Status::internal("internal error");
+        let error = GrpcTransport::convert_error(status);
+        assert!(error.to_string().contains("internal error"));
+    }
+
+    #[test]
+    fn test_convert_error_cancelled() {
+        let status = tonic::Status::cancelled("cancelled");
+        let error = GrpcTransport::convert_error(status);
+        assert!(error.to_string().contains("cancelled"));
+    }
+
+    #[test]
+    fn test_convert_error_already_exists() {
+        let status = tonic::Status::already_exists("already exists");
+        let error = GrpcTransport::convert_error(status);
+        assert!(error.to_string().contains("already exists"));
+    }
+
+    #[test]
+    fn test_convert_relationship() {
+        let pb_rel = pb::Relationship {
+            resource: "document:123".to_string(),
+            relation: "viewer".to_string(),
+            subject: "user:alice".to_string(),
+        };
+
+        let rel = GrpcTransport::convert_relationship(pb_rel);
+        assert_eq!(rel.resource(), "document:123");
+        assert_eq!(rel.relation(), "viewer");
+        assert_eq!(rel.subject(), "user:alice");
+    }
+
+    #[test]
+    fn test_convert_trace_empty() {
+        let trace = pb::DecisionTrace {
+            decision: pb::Decision::Allow as i32,
+            duration_micros: 100,
+            relationships_read: 5,
+            relations_evaluated: 3,
+            root: None,
+        };
+
+        let converted = GrpcTransport::convert_trace(trace);
+        assert_eq!(converted.duration_micros, 100);
+        assert_eq!(converted.relationships_read, 5);
+        assert_eq!(converted.relations_evaluated, 3);
+        assert!(converted.root.is_none());
+    }
+
+    #[test]
+    fn test_convert_trace_with_root() {
+        let trace = pb::DecisionTrace {
+            decision: pb::Decision::Deny as i32,
+            duration_micros: 200,
+            relationships_read: 10,
+            relations_evaluated: 8,
+            root: Some(pb::EvaluationNode {
+                node_type: None,
+                result: true,
+                children: vec![],
+            }),
+        };
+
+        let converted = GrpcTransport::convert_trace(trace);
+        assert_eq!(converted.duration_micros, 200);
+        assert!(converted.root.is_some());
+        assert!(converted.root.unwrap().result);
+    }
+
+    #[test]
+    fn test_convert_evaluation_node_direct_check() {
+        let node = pb::EvaluationNode {
+            node_type: Some(pb::NodeType {
+                r#type: Some(pb::node_type::Type::DirectCheck(pb::DirectCheck {
+                    resource: "doc:1".to_string(),
+                    relation: "owner".to_string(),
+                    subject: "user:bob".to_string(),
+                })),
+            }),
+            result: true,
+            children: vec![],
+        };
+
+        let converted = GrpcTransport::convert_evaluation_node(node);
+        assert!(converted.result);
+        match converted.node_type {
+            super::super::traits::EvaluationNodeType::DirectCheck {
+                resource,
+                relation,
+                subject,
+            } => {
+                assert_eq!(resource, "doc:1");
+                assert_eq!(relation, "owner");
+                assert_eq!(subject, "user:bob");
+            }
+            _ => panic!("Expected DirectCheck"),
+        }
+    }
+
+    #[test]
+    fn test_convert_evaluation_node_computed_userset() {
+        let node = pb::EvaluationNode {
+            node_type: Some(pb::NodeType {
+                r#type: Some(pb::node_type::Type::ComputedUserset(pb::ComputedUserset {
+                    relation: "editor".to_string(),
+                    relationship: "parent".to_string(),
+                })),
+            }),
+            result: false,
+            children: vec![],
+        };
+
+        let converted = GrpcTransport::convert_evaluation_node(node);
+        assert!(!converted.result);
+        match converted.node_type {
+            super::super::traits::EvaluationNodeType::ComputedUserset { relation } => {
+                assert_eq!(relation, "editor");
+            }
+            _ => panic!("Expected ComputedUserset"),
+        }
+    }
+
+    #[test]
+    fn test_convert_evaluation_node_related_object_userset() {
+        let node = pb::EvaluationNode {
+            node_type: Some(pb::NodeType {
+                r#type: Some(pb::node_type::Type::RelatedObjectUserset(
+                    pb::RelatedObjectUserset {
+                        relationship: "parent".to_string(),
+                        computed: "owner".to_string(),
+                    },
+                )),
+            }),
+            result: true,
+            children: vec![],
+        };
+
+        let converted = GrpcTransport::convert_evaluation_node(node);
+        match converted.node_type {
+            super::super::traits::EvaluationNodeType::RelatedObjectUserset {
+                relationship,
+                computed,
+            } => {
+                assert_eq!(relationship, "parent");
+                assert_eq!(computed, "owner");
+            }
+            _ => panic!("Expected RelatedObjectUserset"),
+        }
+    }
+
+    #[test]
+    fn test_convert_evaluation_node_union() {
+        let node = pb::EvaluationNode {
+            node_type: Some(pb::NodeType {
+                r#type: Some(pb::node_type::Type::Union(pb::Union {})),
+            }),
+            result: true,
+            children: vec![],
+        };
+
+        let converted = GrpcTransport::convert_evaluation_node(node);
+        assert!(matches!(
+            converted.node_type,
+            super::super::traits::EvaluationNodeType::Union
+        ));
+    }
+
+    #[test]
+    fn test_convert_evaluation_node_intersection() {
+        let node = pb::EvaluationNode {
+            node_type: Some(pb::NodeType {
+                r#type: Some(pb::node_type::Type::Intersection(pb::Intersection {})),
+            }),
+            result: true,
+            children: vec![],
+        };
+
+        let converted = GrpcTransport::convert_evaluation_node(node);
+        assert!(matches!(
+            converted.node_type,
+            super::super::traits::EvaluationNodeType::Intersection
+        ));
+    }
+
+    #[test]
+    fn test_convert_evaluation_node_exclusion() {
+        let node = pb::EvaluationNode {
+            node_type: Some(pb::NodeType {
+                r#type: Some(pb::node_type::Type::Exclusion(pb::Exclusion {})),
+            }),
+            result: false,
+            children: vec![],
+        };
+
+        let converted = GrpcTransport::convert_evaluation_node(node);
+        assert!(matches!(
+            converted.node_type,
+            super::super::traits::EvaluationNodeType::Exclusion
+        ));
+    }
+
+    #[test]
+    fn test_convert_evaluation_node_wasm_module() {
+        let node = pb::EvaluationNode {
+            node_type: Some(pb::NodeType {
+                r#type: Some(pb::node_type::Type::WasmModule(pb::WasmModule {
+                    module_name: "my_module".to_string(),
+                })),
+            }),
+            result: true,
+            children: vec![],
+        };
+
+        let converted = GrpcTransport::convert_evaluation_node(node);
+        match converted.node_type {
+            super::super::traits::EvaluationNodeType::WasmModule { module_name } => {
+                assert_eq!(module_name, "my_module");
+            }
+            _ => panic!("Expected WasmModule"),
+        }
+    }
+
+    #[test]
+    fn test_convert_evaluation_node_with_children() {
+        let child1 = pb::EvaluationNode {
+            node_type: Some(pb::NodeType {
+                r#type: Some(pb::node_type::Type::Union(pb::Union {})),
+            }),
+            result: true,
+            children: vec![],
+        };
+
+        let child2 = pb::EvaluationNode {
+            node_type: Some(pb::NodeType {
+                r#type: Some(pb::node_type::Type::Intersection(pb::Intersection {})),
+            }),
+            result: false,
+            children: vec![],
+        };
+
+        let parent = pb::EvaluationNode {
+            node_type: Some(pb::NodeType {
+                r#type: Some(pb::node_type::Type::Union(pb::Union {})),
+            }),
+            result: true,
+            children: vec![child1, child2],
+        };
+
+        let converted = GrpcTransport::convert_evaluation_node(parent);
+        assert_eq!(converted.children.len(), 2);
+        assert!(converted.children[0].result);
+        assert!(!converted.children[1].result);
+    }
+
+    #[test]
+    fn test_convert_evaluation_node_no_type() {
+        let node = pb::EvaluationNode {
+            node_type: None,
+            result: true,
+            children: vec![],
+        };
+
+        let converted = GrpcTransport::convert_evaluation_node(node);
+        // Should default to Union
+        assert!(matches!(
+            converted.node_type,
+            super::super::traits::EvaluationNodeType::Union
+        ));
+    }
+
+    #[test]
+    fn test_convert_evaluation_node_empty_type() {
+        let node = pb::EvaluationNode {
+            node_type: Some(pb::NodeType { r#type: None }),
+            result: true,
+            children: vec![],
+        };
+
+        let converted = GrpcTransport::convert_evaluation_node(node);
+        // Should default to Union
+        assert!(matches!(
+            converted.node_type,
+            super::super::traits::EvaluationNodeType::Union
+        ));
+    }
+
+    #[test]
+    fn test_user_agent_interceptor() {
+        let request = tonic::Request::new(());
+        let result = user_agent_interceptor(request);
+
+        assert!(result.is_ok());
+        let req = result.unwrap();
+        let user_agent = req.metadata().get("user-agent");
+        assert!(user_agent.is_some());
+        let ua_value = user_agent.unwrap().to_str().unwrap();
+        assert!(ua_value.contains("inferadb-rust"));
     }
 }

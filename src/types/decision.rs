@@ -496,4 +496,30 @@ mod tests {
     fn test_reason_default() {
         assert_eq!(DecisionReason::default(), DecisionReason::Unknown);
     }
+
+    #[test]
+    fn test_decision_request_id_none() {
+        let decision = Decision::allowed();
+        assert!(decision.request_id().is_none());
+    }
+
+    #[test]
+    fn test_decision_request_id_some() {
+        let metadata = DecisionMetadata {
+            request_id: Some("req_123".to_string()),
+            ..Default::default()
+        };
+        let decision = Decision::allowed().with_metadata(metadata);
+        assert_eq!(decision.request_id(), Some("req_123"));
+    }
+
+    #[test]
+    fn test_decision_request_id_metadata_without_id() {
+        let metadata = DecisionMetadata {
+            request_id: None,
+            ..Default::default()
+        };
+        let decision = Decision::allowed().with_metadata(metadata);
+        assert!(decision.request_id().is_none());
+    }
 }

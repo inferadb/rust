@@ -1336,6 +1336,148 @@ mod tests {
 
         assert_eq!(transport.transport_type(), Transport::Http);
     }
+
+    #[test]
+    fn test_auth_token_set_and_clear() {
+        let transport = RestTransportBuilder::new()
+            .base_url("https://api.example.com")
+            .unwrap()
+            .build()
+            .unwrap();
+
+        // Initially no token
+        assert!(transport.auth_token.read().is_none());
+
+        // Set token
+        transport.set_auth_token("test_token".to_string());
+        assert_eq!(transport.auth_token.read().as_deref(), Some("test_token"));
+
+        // Clear token
+        transport.clear_auth_token();
+        assert!(transport.auth_token.read().is_none());
+    }
+
+    #[test]
+    fn test_rest_transport_builder_with_retry_config() {
+        let transport = RestTransportBuilder::new()
+            .base_url("https://api.example.com")
+            .unwrap()
+            .retry_config(RetryConfig::new().with_max_retries(5))
+            .build()
+            .unwrap();
+
+        assert_eq!(transport.retry_config.max_retries, 5);
+    }
+
+    #[test]
+    fn test_rest_transport_builder_with_timeout() {
+        let transport = RestTransportBuilder::new()
+            .base_url("https://api.example.com")
+            .unwrap()
+            .timeout(Duration::from_secs(120))
+            .build();
+
+        assert!(transport.is_ok());
+    }
+
+    #[test]
+    fn test_rest_transport_builder_with_tls_config() {
+        let tls_config = TlsConfig {
+            skip_verification: true,
+            ..Default::default()
+        };
+
+        let transport = RestTransportBuilder::new()
+            .base_url("https://api.example.com")
+            .unwrap()
+            .tls_config(tls_config)
+            .build();
+
+        assert!(transport.is_ok());
+    }
+
+    #[test]
+    fn test_map_status_error_empty_body() {
+        let err = map_status_error(404, "");
+        assert!(err.to_string().contains("404"));
+    }
+
+    #[test]
+    fn test_map_status_error_json_body_with_error_field() {
+        let err = map_status_error(400, "{\"error\":\"Invalid input\"}");
+        assert!(err.to_string().contains("Invalid input"));
+    }
+
+    #[test]
+    fn test_map_status_error_json_body_without_error_field() {
+        let err = map_status_error(400, "{\"message\":\"Something wrong\"}");
+        // Should fall back to entire body
+        assert!(err.to_string().contains("message"));
+    }
+
+    #[test]
+    fn test_map_status_error_non_json_body() {
+        let err = map_status_error(500, "Internal server error");
+        assert!(err.to_string().contains("Internal server error"));
+    }
+
+    #[test]
+    fn test_rest_transport_debug_impl() {
+        let transport = RestTransportBuilder::new()
+            .base_url("https://api.example.com")
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let debug_str = format!("{:?}", transport);
+        assert!(debug_str.contains("RestTransport"));
+        assert!(debug_str.contains("api.example.com"));
+    }
+
+    #[test]
+    fn test_rest_transport_builder_static_method() {
+        // Test RestTransport::builder() static method
+        let builder = RestTransport::builder();
+        let transport = builder.base_url("https://api.example.com").unwrap().build();
+        assert!(transport.is_ok());
+    }
+
+    #[test]
+    fn test_map_status_error_401() {
+        let err = map_status_error(401, "Unauthorized");
+        assert!(matches!(err.kind(), ErrorKind::Unauthorized));
+    }
+
+    #[test]
+    fn test_map_status_error_404() {
+        let err = map_status_error(404, "Not found");
+        assert!(matches!(err.kind(), ErrorKind::NotFound));
+    }
+
+    #[test]
+    fn test_map_status_error_429() {
+        let err = map_status_error(429, "Rate limited");
+        assert!(matches!(err.kind(), ErrorKind::RateLimited));
+    }
+
+    #[test]
+    fn test_map_status_error_503() {
+        let err = map_status_error(503, "Service unavailable");
+        assert!(matches!(err.kind(), ErrorKind::Unavailable));
+    }
+
+    #[test]
+    fn test_map_status_error_502() {
+        let err = map_status_error(502, "Bad gateway");
+        assert!(matches!(err.kind(), ErrorKind::Unavailable));
+    }
+
+    #[test]
+    fn test_map_status_error_418() {
+        // Test unknown status code
+        let err = map_status_error(418, "I'm a teapot");
+        assert!(matches!(err.kind(), ErrorKind::Transport));
+    }
 }
 
 // Wiremock-based async tests

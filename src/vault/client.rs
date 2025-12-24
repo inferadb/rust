@@ -3486,4 +3486,13 @@ mod tests {
             .unwrap();
         assert!(subjects.is_empty());
     }
+
+    #[tokio::test]
+    async fn test_vault_schemas_method() {
+        let vault = create_test_vault().await;
+        let schemas = vault.schemas();
+        // Verify the schemas client is created correctly
+        assert_eq!(schemas.organization_id(), "org_test");
+        assert_eq!(schemas.vault_id(), "vlt_test");
+    }
 }
