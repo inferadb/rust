@@ -1,10 +1,18 @@
-# InferaDB Rust SDK
-
-Ergonomic, type-safe access to InferaDB's authorization and management APIs.
-
-[![Crates.io](https://img.shields.io/crates/v/inferadb.svg)](https://crates.io/crates/inferadb)
-[![Documentation](https://docs.rs/inferadb/badge.svg)](https://docs.rs/inferadb)
-[![License](https://img.shields.io/crates/l/inferadb.svg)](LICENSE)
+<div align="center">
+    <p><a href="https://inferadb.com"><img src=".github/inferadb.png" width="100" /></a></p>
+    
+    <h1>InferaDB Rust SDK</h1>
+  
+    <p>
+      <a href="https://crates.io/crates/inferadb"><img src="https://img.shields.io/crates/v/inferadb.svg" /></a>
+      
+      <a href="https://docs.rs/inferadb"><img src="https://docs.rs/inferadb/badge.svg" /></a>
+      
+      <a href="./LICENSE"><img src="https://img.shields.io/crates/l/inferadb.svg"></a>
+    </p>
+    
+    <p>Ergonomic, type-safe access to InferaDB's authorization and management APIs</p>
+</div>
 
 ## Quick Start
 
