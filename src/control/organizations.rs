@@ -121,15 +121,15 @@ impl OrganizationControlClient {
     /// ## Example
     ///
     /// ```rust,ignore
-    /// let logs = org.audit_logs();
+    /// let audit = org.audit();
     ///
     /// // List recent events
-    /// let events = logs.list().await?;
+    /// let events = audit.list().await?;
     ///
     /// // Filter by actor
-    /// let user_events = logs.list().actor("user_abc123").await?;
+    /// let user_events = audit.list().actor("user_abc123").await?;
     /// ```
-    pub fn audit_logs(&self) -> AuditLogsClient {
+    pub fn audit(&self) -> AuditLogsClient {
         AuditLogsClient::new(self.client.clone(), self.organization_id.clone())
     }
 
@@ -543,7 +543,7 @@ mod tests {
         let _members = org.members();
         let _teams = org.teams();
         let _invitations = org.invitations();
-        let _audit_logs = org.audit_logs();
+        let _audit_logs = org.audit();
     }
 
     #[tokio::test]

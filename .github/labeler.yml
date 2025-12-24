@@ -1,18 +1,18 @@
 # Documentation
-documentation:
+"kind/documentation":
   - changed-files:
       - any-glob-to-any-file:
           - "**/*.md"
           - "docs/**/*"
 
 # CI/CD
-ci:
+"area/ci":
   - changed-files:
       - any-glob-to-any-file:
           - ".github/**/*"
 
 # Configuration
-config:
+"area/config":
   - changed-files:
       - any-glob-to-any-file:
           - "**/*.toml"
@@ -21,72 +21,70 @@ config:
           - "!.github/**/*"
 
 # Dependencies
-dependencies:
+"area/deps":
   - changed-files:
       - any-glob-to-any-file:
           - "**/Cargo.toml"
           - "**/Cargo.lock"
 
 # Testing
-testing:
+"area/testing":
   - changed-files:
       - any-glob-to-any-file:
           - "**/tests/**/*"
           - "**/*_test.rs"
           - "**/*_tests.rs"
-
-# Source code
-source:
-  - changed-files:
-      - any-glob-to-any-file:
-          - "src/**/*"
+          - "src/testing/**/*"
 
 # Client
-client:
+"area/client":
   - changed-files:
       - any-glob-to-any-file:
           - "src/client/**/*"
           - "src/client.rs"
+          - "src/vault/**/*"
 
-# Transport
-transport:
+# Protocol buffers and gRPC
+"area/proto":
   - changed-files:
       - any-glob-to-any-file:
           - "src/transport/**/*"
-          - "src/grpc/**/*"
-          - "src/rest/**/*"
+          - "proto/**/*"
+          - "build.rs"
 
 # Authentication
-auth:
+"area/auth":
   - changed-files:
       - any-glob-to-any-file:
           - "src/auth/**/*"
           - "src/credentials/**/*"
 
 # API
-api:
+"area/api":
   - changed-files:
       - any-glob-to-any-file:
           - "src/api/**/*"
           - "src/check/**/*"
           - "src/relationships/**/*"
           - "src/expand/**/*"
+          - "src/control/**/*"
+
+# Data models and types
+"area/models":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/types/**/*"
+          - "src/models/**/*"
+          - "src/error/**/*"
 
 # Derive macros
-macros:
+"area/derive":
   - changed-files:
       - any-glob-to-any-file:
           - "inferadb-derive/**/*"
 
 # Examples
-examples:
+"area/examples":
   - changed-files:
       - any-glob-to-any-file:
           - "examples/**/*"
-
-# Proto/gRPC
-proto:
-  - changed-files:
-      - any-glob-to-any-file:
-          - "proto/**/*"
-          - "build.rs"

@@ -8,12 +8,12 @@ use crate::Error;
 
 /// Client for querying audit logs.
 ///
-/// Access via `org.audit_logs()`.
+/// Access via `org.audit()`.
 ///
 /// ## Example
 ///
 /// ```rust,ignore
-/// let logs = org.audit_logs();
+/// let audit = org.audit();
 ///
 /// // List recent events
 /// let events = logs.list().await?;
@@ -54,7 +54,7 @@ impl AuditLogsClient {
     /// ## Example
     ///
     /// ```rust,ignore
-    /// let events = org.audit_logs().list().await?;
+    /// let events = org.audit().list().await?;
     /// for event in events.items {
     ///     println!("{}: {} {} on {}",
     ///         event.timestamp,
@@ -85,7 +85,7 @@ impl AuditLogsClient {
     /// ## Example
     ///
     /// ```rust,ignore
-    /// let event = org.audit_logs().get("evt_abc123").await?;
+    /// let event = org.audit().get("evt_abc123").await?;
     /// ```
     #[cfg(feature = "rest")]
     pub async fn get(&self, event_id: impl Into<String>) -> Result<AuditEvent, Error> {
@@ -111,7 +111,7 @@ impl AuditLogsClient {
     /// ## Example
     ///
     /// ```rust,ignore
-    /// org.audit_logs().export()
+    /// org.audit().export()
     ///     .after(start_date)
     ///     .before(end_date)
     ///     .format(ExportFormat::Csv)

@@ -39,7 +39,8 @@ pub use health::{
 use std::sync::Arc;
 
 use crate::control::{
-    AccountClient, ApiClientsClient, JwksClient, OrganizationControlClient, OrganizationsClient,
+    AccountClient, ApiClientsClient, AuditLogsClient, InvitationsClient, JwksClient, MembersClient,
+    OrganizationControlClient, OrganizationsClient, TeamsClient, VaultsClient,
 };
 use crate::vault::VaultClient;
 
@@ -471,6 +472,66 @@ impl OrganizationClient {
     /// ```
     pub fn clients(&self) -> ApiClientsClient {
         ApiClientsClient::new(self.client.clone(), self.organization_id.clone())
+    }
+
+    /// Returns a client for vault management.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let vaults = org.vaults();
+    /// let list = vaults.list().await?;
+    /// ```
+    pub fn vaults(&self) -> VaultsClient {
+        VaultsClient::new(self.client.clone(), self.organization_id.clone())
+    }
+
+    /// Returns a client for member management.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let members = org.members();
+    /// members.invite(InviteMemberRequest::new("alice@example.com", OrgRole::Admin)).await?;
+    /// ```
+    pub fn members(&self) -> MembersClient {
+        MembersClient::new(self.client.clone(), self.organization_id.clone())
+    }
+
+    /// Returns a client for team management.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let teams = org.teams();
+    /// teams.create(CreateTeamRequest::new("Engineering")).await?;
+    /// ```
+    pub fn teams(&self) -> TeamsClient {
+        TeamsClient::new(self.client.clone(), self.organization_id.clone())
+    }
+
+    /// Returns a client for invitation management.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let invitations = org.invitations();
+    /// let pending = invitations.list().await?;
+    /// ```
+    pub fn invitations(&self) -> InvitationsClient {
+        InvitationsClient::new(self.client.clone(), self.organization_id.clone())
+    }
+
+    /// Returns a client for audit log queries.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let audit = org.audit();
+    /// let events = audit.list().await?;
+    /// ```
+    pub fn audit(&self) -> AuditLogsClient {
+        AuditLogsClient::new(self.client.clone(), self.organization_id.clone())
     }
 }
 

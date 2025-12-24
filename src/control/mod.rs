@@ -32,7 +32,7 @@
 //! let members = org.members();
 //! let teams = org.teams();
 //! let invitations = org.invitations();
-//! let audit_logs = org.audit_logs();
+//! let audit = org.audit();
 //! let api_clients = org.clients();
 //!
 //! // Vault operations

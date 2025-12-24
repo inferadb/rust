@@ -9,6 +9,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use crate::client::Client;
+use crate::control::SchemasClient;
 #[cfg(feature = "rest")]
 use crate::transport::{TransportCheckRequest, TransportClient, TransportWriteRequest};
 use crate::types::{ConsistencyToken, Context, Decision, Relationship};
@@ -367,6 +368,34 @@ impl VaultClient {
     /// ```
     pub fn watch(&self) -> super::watch::WatchBuilder {
         super::watch::WatchBuilder::new(self)
+    }
+
+    /// Returns a client for schema management operations.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // Push a new schema
+    /// let result = vault.schemas().push(r#"
+    ///     type user {}
+    ///     type document {
+    ///         relation viewer: user
+    ///         permission view = viewer
+    ///     }
+    /// "#).await?;
+    ///
+    /// // Validate a schema
+    /// let validation = vault.schemas().validate(schema).await?;
+    ///
+    /// // Get the active schema
+    /// let schema = vault.schemas().get_active().await?;
+    /// ```
+    pub fn schemas(&self) -> SchemasClient {
+        SchemasClient::new(
+            self.client.clone(),
+            self.organization_id.clone(),
+            self.vault_id.clone(),
+        )
     }
 }
 

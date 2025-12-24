@@ -1,6 +1,6 @@
-# Control API
+# Management API
 
-Manage organizations, vaults, schemas, members, and audit logs.
+Manage organizations, vaults, schemas, members, teams, API clients, and audit logs.
 
 ## API Hierarchy
 
@@ -228,7 +228,7 @@ teams.remove_member(&team_id, &user_id).await?;
 Query audit logs for compliance and debugging.
 
 ```rust
-let logs = client.organization("org_...").audit_logs();
+let logs = client.organization("org_...").audit();
 
 // List recent events
 let events = logs.list().await?;

@@ -8,6 +8,7 @@ Supplementary documentation for the InferaDB Rust SDK. For the main README and q
 | ------------------------------------------------------ | ------------------------------------------------------ |
 | [Installation](guides/installation.md)                 | Feature flags, optimized builds, TLS options, MSRV     |
 | [Authentication](guides/authentication.md)             | Client credentials, bearer tokens, key management      |
+| [Authorization API](guides/authorization-api.md)       | Permission checks, relationships, lookups, watch       |
 | [Integration Patterns](guides/integration-patterns.md) | Framework integration (Axum, Actix-web, GraphQL, gRPC) |
 | [Error Handling](guides/errors.md)                     | Error types, retries, graceful degradation             |
 | [Testing](guides/testing.md)                           | MockClient, InMemoryClient, TestVault                  |
@@ -31,7 +32,7 @@ Supplementary documentation for the InferaDB Rust SDK. For the main README and q
 
 | Guide                                   | Description                                        |
 | --------------------------------------- | -------------------------------------------------- |
-| [Control API](guides/control-api.md)    | Organizations, vaults, schemas, members, audit     |
+| [Management API](guides/management-api.md) | Organizations, vaults, schemas, members, audit     |
 | [Advanced Features](guides/advanced.md) | Simulation, explain, export/import, type-safe APIs |
 
 ## Production

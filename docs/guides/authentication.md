@@ -255,4 +255,4 @@ match client.auth_status().await {
 
 - [Production Checklist](production-checklist.md) - Security requirements
 - [Error Handling](errors.md) - Auth error types
-- [Control API](control-api.md) - Managing API clients and keys
+- [Management API](management-api.md) - Managing API clients and keys

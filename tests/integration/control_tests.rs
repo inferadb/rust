@@ -239,7 +239,7 @@ async fn test_audit_log() {
     let org = client.organization(fixture.org_id_str());
 
     // Try to query audit log via control API
-    let result = org.control().audit_logs().list().await;
+    let result = org.control().audit().list().await;
 
     match result {
         Ok(page) => {

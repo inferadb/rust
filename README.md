@@ -60,36 +60,11 @@ let vault = org.vault("vlt_...");
 
 ### Permission Checks
 
-#### Check a Permission
-
 ```rust
 let allowed = vault.check("user:alice", "view", "doc:1").await?;
 ```
 
-#### Check with ABAC Context
-
-```rust
-let allowed = vault.check("user:alice", "view", "doc:confidential")
-    .with_context(Context::new()
-        .with("ip_address", "10.0.0.50")
-        .with("mfa_verified", true))
-    .await?;
-```
-
-#### Require Permission (Guard Clause)
-
-```rust
-vault.check("user:alice", "edit", "doc:1").require().await?;
-```
-
-#### Check Multiple Permissions
-
-```rust
-let results = vault.check_batch([
-    ("user:alice", "view", "doc:1"),
-    ("user:alice", "edit", "doc:1"),
-]).await?;
-```
+See the [Authorization API Guide](docs/guides/authorization-api.md) for ABAC context, batch checks, guard clauses, and more.
 
 ### Relationships
 
@@ -205,125 +180,40 @@ while let Some(event) = stream.next().await {
 
 ```rust
 let org = client.organization("org_...");
-let vault = org.vault("vlt_...");
-```
-
-### Organizations
-
-#### Get Current Organization
-
-```rust
-let info = org.control().get().await?;
 ```
 
 ### Vaults
-
-#### Create a Vault
 
 ```rust
 let vault = org.vaults().create(CreateVaultRequest::new("production")).await?;
 ```
 
-#### List Vaults
-
-```rust
-let vaults = org.vaults().list().collect().await?;
-```
-
 ### Schemas
 
-#### Push a Schema
-
 ```rust
-let result = vault.schemas().push(r#"
+vault.schemas().push(r#"
     type user {}
     type document {
         relation viewer: user
-        relation editor: user
-        permission view = viewer + editor
-        permission edit = editor
+        permission view = viewer
     }
 "#).await?;
 ```
 
-#### Validate a Schema
-
-```rust
-let validation = vault.schemas().validate(schema_content).await?;
-```
-
-#### Activate a Schema Version
-
-```rust
-vault.schemas().activate("v2").await?;
-```
-
-#### Compare Schema Versions
-
-```rust
-let diff = vault.schemas().diff("v1", "v2").await?;
-```
-
-### Members
-
-#### Invite a Member
+### Members & Teams
 
 ```rust
 org.members().invite(InviteMemberRequest::new("alice@example.com", OrgRole::Admin)).await?;
-```
-
-### Teams
-
-#### Create a Team
-
-```rust
 org.teams().create(CreateTeamRequest::new("Engineering")).await?;
-```
-
-#### Add Member to Team
-
-```rust
-org.teams().add_member("team_...", "user_...", TeamRole::Member).await?;
-```
-
-### API Clients
-
-#### Create an API Client
-
-```rust
-let api_client = org.clients().create(
-    CreateApiClientRequest::new("payment-service")
-).await?;
-```
-
-#### Rotate Client Credentials
-
-```rust
-org.clients().certificates("client_...").rotate(
-    RotateCertificateRequest::new(public_key_pem)
-).await?;
 ```
 
 ### Audit Logs
 
-#### Query Audit Events
-
 ```rust
-let events = org.audit().list()
-    .action(AuditAction::RelationshipCreated)
-    .since(one_hour_ago)
-    .collect()
-    .await?;
+let events = org.audit().list().collect().await?;
 ```
 
-#### Export Audit Logs
-
-```rust
-org.audit().export()
-    .format(ExportFormat::Json)
-    .write_to_file("audit.json")
-    .await?;
-```
+See the [Management API Guide](docs/guides/management-api.md) for organizations, API clients, schema versioning, and more.
 
 ## Local Development
 
@@ -373,6 +263,7 @@ See the [Testing Guide](docs/guides/testing.md) for `InMemoryClient` (full polic
 | ----------------------------------------------------------- | ------------------------------------------------- |
 | [Installation](docs/guides/installation.md)                 | Feature flags, optimized builds, TLS, MSRV        |
 | [Authentication](docs/guides/authentication.md)             | Client credentials, bearer tokens, key management |
+| [Authorization API](docs/guides/authorization-api.md)       | Permission checks, relationships, lookups, watch  |
 | [Integration Patterns](docs/guides/integration-patterns.md) | Axum, Actix-web, GraphQL, gRPC middleware         |
 | [Error Handling](docs/guides/errors.md)                     | Error types, retries, graceful degradation        |
 | [Testing](docs/guides/testing.md)                           | MockClient, InMemoryClient, TestVault             |
