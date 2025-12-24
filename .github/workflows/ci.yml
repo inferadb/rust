@@ -141,14 +141,14 @@ jobs:
         with:
           shared-key: test-${{ matrix.os }}
 
-      - name: Run tests (default features)
-        run: cargo test --workspace
+      - name: Run unit tests (default features)
+        run: cargo test --lib
 
-      - name: Run tests (all features)
-        run: cargo test --workspace --all-features
+      - name: Run unit tests (all features)
+        run: cargo test --lib --all-features
 
       - name: Run doc tests
-        run: cargo test --workspace --doc --all-features
+        run: cargo test --doc --all-features
 
   # Test feature combinations
   features:
@@ -173,25 +173,25 @@ jobs:
           shared-key: features
 
       - name: Test no default features
-        run: cargo test --no-default-features
+        run: cargo test --lib --no-default-features
 
       - name: Test gRPC only
-        run: cargo test --no-default-features --features grpc,rustls
+        run: cargo test --lib --no-default-features --features grpc,rustls
 
       - name: Test REST only
-        run: cargo test --no-default-features --features rest,rustls
+        run: cargo test --lib --no-default-features --features rest,rustls
 
       - name: Test with native-tls
-        run: cargo test --no-default-features --features rest,native-tls
+        run: cargo test --lib --no-default-features --features rest,native-tls
 
       - name: Test with tracing
-        run: cargo test --features tracing
+        run: cargo test --lib --features tracing
 
       - name: Test with derive macros
-        run: cargo test --features derive
+        run: cargo test --lib --features derive
 
       - name: Test with blocking
-        run: cargo test --features blocking
+        run: cargo test --lib --features blocking
 
   # Code coverage
   coverage:
@@ -221,7 +221,7 @@ jobs:
           shared-key: coverage
 
       - name: Generate coverage
-        run: cargo tarpaulin --workspace --all-features --timeout 300 --out xml
+        run: cargo tarpaulin --lib --all-features --timeout 300 --out xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -238,8 +238,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
 
       - name: Install protobuf compiler
         run: |
@@ -254,7 +254,7 @@ jobs:
       - name: Build documentation
         env:
           RUSTDOCFLAGS: -D warnings --cfg docsrs
-        run: cargo doc --workspace --no-deps --all-features
+        run: cargo +nightly doc --workspace --no-deps --all-features
 
   # Check examples compile
   examples:

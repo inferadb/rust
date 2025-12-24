@@ -832,6 +832,7 @@ mod tests {
     use crate::transport::mock::MockTransport;
     use std::sync::Arc;
 
+    #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_simulate_builder_add_relationship() {
         let mock_transport = Arc::new(MockTransport::new());
@@ -880,6 +881,7 @@ mod tests {
         assert!(!result.allowed);
     }
 
+    #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_simulate_builder_add_all() {
         let mock_transport = Arc::new(MockTransport::new());
@@ -937,6 +939,7 @@ mod tests {
         assert!(!result.allowed);
     }
 
+    #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_simulate_builder_compare() {
         let mock_transport = Arc::new(MockTransport::new());
@@ -963,6 +966,7 @@ mod tests {
         assert!(diff.simulated_allowed);
     }
 
+    #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_simulate_builder_chaining() {
         let mock_transport = Arc::new(MockTransport::new());
@@ -993,6 +997,7 @@ mod tests {
         assert!(!result.hypothetical_additions.is_empty());
     }
 
+    #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_simulate_compare_now_denied() {
         let mock_transport = Arc::new(MockTransport::new());
@@ -1023,6 +1028,7 @@ mod tests {
         assert!(!diff.simulated_allowed);
     }
 
+    #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_simulate_compare_no_change() {
         let mock_transport = Arc::new(MockTransport::new());

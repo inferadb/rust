@@ -3045,6 +3045,7 @@ mod tests {
         assert!(!explanation.denial_reasons.is_empty());
     }
 
+    #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_explain_permission_allowed() {
         let vault = create_test_vault_with_relationships().await;
@@ -3211,6 +3212,7 @@ mod tests {
     }
 
     // Additional require tests
+    #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_require_denied_returns_error() {
         // require() should return Err when access is denied
@@ -3223,6 +3225,7 @@ mod tests {
     }
 
     // Test detailed check denied
+    #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_detailed_check_denied() {
         let vault = create_test_vault().await;
@@ -3245,6 +3248,7 @@ mod tests {
     }
 
     // Test CheckRequest result - denied
+    #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_check_request_result_denied() {
         let vault = create_test_vault().await;

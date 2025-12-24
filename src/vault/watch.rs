@@ -44,6 +44,8 @@ use serde::{Deserialize, Serialize};
 use crate::client::Client;
 use crate::vault::VaultClient;
 use crate::Error;
+#[cfg(not(feature = "rest"))]
+use crate::ErrorKind;
 use crate::Relationship;
 
 /// Type alias for the inner watch stream to reduce complexity.
@@ -1410,6 +1412,7 @@ mod tests {
         assert!(result.is_none());
     }
 
+    #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_watch_builder_run() {
         use crate::auth::BearerCredentialsConfig;

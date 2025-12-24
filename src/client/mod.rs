@@ -37,6 +37,8 @@ pub use health::{
 };
 
 use std::sync::Arc;
+#[cfg(not(feature = "rest"))]
+use std::time::Duration;
 
 use crate::control::{
     AccountClient, ApiClientsClient, AuditLogsClient, InvitationsClient, JwksClient, MembersClient,
