@@ -51,21 +51,7 @@ async fn main() -> Result<(), Error> {
 }
 ```
 
-## Philosophy
-
-We designed this SDK with predictability and safety in mind:
-
-**Denial is not an error.** `check()` returns `Ok(false)` for denied access—never throws. Network failures are errors; permission denials are business logic.
-
-**Fail-closed by default.** When something goes wrong, access is denied. Fail-open requires explicit opt-in.
-
-**Results preserve order.** Batch operations return results matching input order—no ID correlation needed.
-
-**Writes are acknowledged.** Write operations return only after server confirmation. No fire-and-forget surprises.
-
-**Errors include request IDs.** Every server error exposes `request_id()` for debugging and support.
-
-## Core API
+## Authorization API
 
 ### Authorization Checks
 
@@ -133,6 +119,8 @@ let users = vault.subjects()
     .await?;
 ```
 
+## Management API
+
 ## Local Development
 
 ```rust
@@ -146,17 +134,7 @@ let client = Client::builder()
     .await?;
 ```
 
-```yaml
-# docker-compose.yml
-services:
-  inferadb:
-    image: ghcr.io/inferadb/inferadb:latest
-    ports:
-      - "8080:8080"
-    environment:
-      INFERADB__STORAGE__BACKEND: memory
-      INFERADB__AUTH__SKIP_VERIFICATION: true
-```
+Run a local instance of InferaDB using [our deployment script](https://github.com/inferadb/deploy/).
 
 ## Testing
 
