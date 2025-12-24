@@ -1,0 +1,59 @@
+# Codecov configuration
+# https://docs.codecov.com/docs/codecovyml-reference
+
+coverage:
+  # Coverage precision (number of decimal places)
+  precision: 2
+
+  # Round coverage values
+  round: down
+
+  # Range of coverage colors (red to green)
+  range: "70...100"
+
+  status:
+    # Project-level coverage requirements
+    project:
+      default:
+        target: 95%
+        threshold: 1%
+        # Only check against the files that were changed + existing coverage
+        if_ci_failed: error
+
+    # Patch coverage (for new code in PRs)
+    patch:
+      default:
+        target: 90%
+        threshold: 1%
+        if_ci_failed: error
+
+# Ignore generated and non-essential files
+ignore:
+  - "src/transport/proto/**/*"
+  - "examples/**/*"
+  - "benches/**/*"
+  - "tests/**/*"
+
+# Comment configuration for PRs
+comment:
+  layout: "reach,diff,flags,files"
+  behavior: default
+  require_changes: true
+  require_base: false
+  require_head: true
+
+# Flag management for different test types
+flags:
+  unit:
+    paths:
+      - src/
+    carryforward: true
+
+  integration:
+    paths:
+      - src/
+    carryforward: true
+
+# GitHub integration settings
+github_checks:
+  annotations: true
