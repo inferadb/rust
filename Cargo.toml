@@ -93,7 +93,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Integration test dependencies
 anyhow = "1"
-jsonwebtoken = { version = "10", features = ["rust_crypto"] }
+jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 
 
 [[test]]
