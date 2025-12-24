@@ -53,57 +53,85 @@ async fn main() -> Result<(), Error> {
 
 ## Authorization API
 
-### Authorization Checks
+```rust
+let org = client.organization("org_...");
+let vault = org.vault("vlt_...");
+```
+
+### Permission Checks
 
 ```rust
-let vault = client.organization("org_...").vault("vlt_...");
-
-// Simple check
+// Simple check - returns bool
 let allowed = vault.check("user:alice", "view", "doc:1").await?;
 
 // With ABAC context
-vault.check("user:alice", "view", "doc:confidential")
+let allowed = vault.check("user:alice", "view", "doc:confidential")
     .with_context(Context::new()
         .with("ip_address", "10.0.0.50")
         .with("mfa_verified", true))
     .await?;
 
+// Guard clause - returns Err(AccessDenied) if denied
+vault.check("user:alice", "edit", "doc:1").require().await?;
+
 // Batch checks - single round-trip
-let results: Vec<bool> = vault
-    .check_batch([
-        ("user:alice", "view", "doc:1"),
-        ("user:alice", "edit", "doc:1"),
-    ])
+let results = vault.check_batch([
+    ("user:alice", "view", "doc:1"),
+    ("user:alice", "edit", "doc:1"),
+]).await?;
+```
+
+### Relationships
+
+#### List Relationships
+
+```rust
+let rels = vault.relationships()
+    .list()
+    .resource("document:readme")
+    .collect()
     .await?;
 ```
 
-### Relationship Management
+#### Write a Relationship
 
 ```rust
-// Write a single relationship
-vault
-    .relationships()
-    .write(Relationship::new(
-        "document:readme",
-        "viewer",
-        "user:alice",
-    ))
+vault.relationships()
+    .write(Relationship::new("document:readme", "viewer", "user:alice"))
     .await?;
+```
 
-// Batch write
-vault
-    .relationships()
-    .write_batch([
-        Relationship::new("folder:docs", "viewer", "group:engineering#member"),
-        Relationship::new("document:readme", "parent", "folder:docs"),
-    ])
+#### Write Multiple Relationships
+
+```rust
+vault.relationships().write_batch([
+    Relationship::new("folder:docs", "viewer", "group:engineering#member"),
+    Relationship::new("document:readme", "parent", "folder:docs"),
+]).await?;
+```
+
+#### Delete a Relationship
+
+```rust
+vault.relationships()
+    .delete(Relationship::new("document:readme", "viewer", "user:alice"))
+    .await?;
+```
+
+#### Delete Multiple Relationships
+
+```rust
+vault.relationships()
+    .delete_where()
+    .resource("document:readme")
+    .execute()
     .await?;
 ```
 
 ### Lookups
 
 ```rust
-// Resources a user can access
+// What can a user access?
 let docs = vault.resources()
     .accessible_by("user:alice")
     .with_permission("view")
@@ -111,7 +139,7 @@ let docs = vault.resources()
     .collect()
     .await?;
 
-// Users who can access a resource
+// Who can access a resource?
 let users = vault.subjects()
     .with_permission("view")
     .on_resource("document:readme")
@@ -119,7 +147,137 @@ let users = vault.subjects()
     .await?;
 ```
 
+### Explain & Simulate
+
+```rust
+// Debug why a permission was granted or denied
+let explanation = vault.explain_permission()
+    .subject("user:alice")
+    .permission("edit")
+    .resource("document:readme")
+    .execute()
+    .await?;
+println!("{}", explanation.summary());
+
+// Test what-if scenarios without persisting changes
+let result = vault.simulate()
+    .add_relationship(Relationship::new("doc:1", "editor", "user:bob"))
+    .check("user:bob", "edit", "doc:1")
+    .await?;
+```
+
+### Watch for Changes
+
+```rust
+// Real-time stream of relationship changes
+let mut stream = vault.watch()
+    .filter(WatchFilter::resource_type("document"))
+    .run()
+    .await?;
+
+while let Some(event) = stream.next().await {
+    let event = event?;
+    println!("{}: {} {} {}",
+        event.operation, event.resource, event.relation, event.subject);
+}
+```
+
 ## Management API
+
+```rust
+let org = client.organization("org_...");
+let vault = org.vault("vlt_...");
+```
+
+### Organizations & Vaults
+
+### Get Current Organization
+
+```rust
+let info = org.control().get().await?;
+```
+
+### Vaults
+
+#### Create a Vault
+
+```rust
+let vault = org.vaults().create(CreateVaultRequest::new("production")).await?;
+```
+
+#### List Vaults
+
+```rust
+let vaults = org.vaults().list().collect().await?;
+```
+
+### Schemas
+
+```rust
+// Push a new schema version
+let result = org.vault("vlt_...").schemas().push(r#"
+    type user {}
+    type document {
+        relation viewer: user
+        relation editor: user
+        permission view = viewer + editor
+        permission edit = editor
+    }
+"#).await?;
+
+// Validate without persisting
+let validation = org.vault("vlt_...").schemas().validate(schema_content).await?;
+
+// Activate a version
+org.vault("vlt_...").schemas().activate("v2").await?;
+
+// Compare versions
+let diff = org.vault("vlt_...").schemas().diff("v1", "v2").await?;
+```
+
+### Members & Teams
+
+```rust
+// Invite a member
+org.members().invite(InviteMemberRequest::new("alice@example.com", OrgRole::Admin)).await?;
+
+// Create a team
+org.teams().create(CreateTeamRequest::new("Engineering")).await?;
+
+// Add member to team
+org.teams().add_member("team_...", "user_...", TeamRole::Member).await?;
+```
+
+### API Clients
+
+```rust
+// Create an API client for service-to-service auth
+let api_client = org.clients().create(
+    CreateApiClientRequest::new("payment-service")
+).await?;
+
+// Rotate credentials
+org.clients().certificates("client_...").rotate(
+    RotateCertificateRequest::new(public_key_pem)
+).await?;
+```
+
+### Audit Logs
+
+```rust
+// Query audit events
+let events = org.audit().list()
+    .action(AuditAction::RelationshipCreated)
+    .since(one_hour_ago)
+    .collect()
+    .await?;
+
+// Export to file
+org.audit().export()
+    .format(ExportFormat::Json)
+    .write_to_file("audit.json")
+    .await?;
+```
 
 ## Local Development
 
