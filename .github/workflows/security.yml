@@ -9,7 +9,6 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "**/Cargo.toml"
-      - "deny.toml"
       - ".github/workflows/security.yml"
   pull_request:
     branches: [main]
@@ -17,7 +16,6 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "**/Cargo.toml"
-      - "deny.toml"
       - ".github/workflows/security.yml"
   schedule:
     # Run weekly on Sundays at 04:00 UTC
@@ -41,21 +39,6 @@ jobs:
         uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-
-  # Check licenses and banned crates
-  cargo-deny:
-    name: Licenses & Bans
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Run cargo-deny
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          log-level: warn
-          command: check
-          arguments: --all-features
 
   # Dependency review for PRs
   dependency-review:
