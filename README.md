@@ -24,7 +24,7 @@
 
 2. Run the following Cargo command in your project directory:
 
-    ```toml
+    ```shell
    cargo add inferadb
    ```
 
