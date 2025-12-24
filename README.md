@@ -92,26 +92,34 @@ let org = client.organization("org_...");
 ### Vaults
 
 ```rust
-let vault = org.vaults().create(CreateVaultRequest::new("production")).await?;
+let vault = org.vaults()
+    .create(CreateVaultRequest::new("production"))
+    .await?;
 ```
 
 ### Schemas
 
 ```rust
 vault.schemas().push(r#"
-    type user {}
-    type document {
-        relation viewer: user
-        permission view = viewer
-    }
+type user {}
+
+type document {
+    relation viewer: user
+    permission view = viewer
+}
 "#).await?;
 ```
 
 ### Members & Teams
 
 ```rust
-org.members().invite(InviteMemberRequest::new("alice@example.com", OrgRole::Admin)).await?;
-org.teams().create(CreateTeamRequest::new("Engineering")).await?;
+org.members()
+    .invite(InviteMemberRequest::new("alice@example.com", OrgRole::Admin))
+    .await?;
+
+org.teams()
+    .create(CreateTeamRequest::new("Engineering"))
+    .await?;
 ```
 
 ### Audit Logs

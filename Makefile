@@ -53,13 +53,13 @@ build: ## Build the project
 test: test-unit ## Run unit tests (alias for test-unit)
 
 test-unit: ## Run unit tests only
-	cargo test --lib --features insecure
+	cargo test --lib
 
 test-integration: ## Run integration tests (requires dev environment)
-	cargo test --test integration --features insecure
+	cargo test --test integration
 
 test-all: ## Run all tests (unit + integration)
-	cargo test --lib --test integration --features insecure
+	cargo test --lib --test integration
 
 clean: ## Clean build artifacts
 	cargo clean
@@ -70,10 +70,10 @@ clean: ## Clean build artifacts
 #───────────────────────────────────────────────────────────────────────────────
 
 coverage: ## Run tests with coverage report
-	cargo llvm-cov --lib --features insecure --ignore-filename-regex 'proto|inferadb\.v1'
+	cargo llvm-cov --lib --ignore-filename-regex 'proto|inferadb\.v1'
 
 coverage-html: ## Generate HTML coverage report
-	cargo llvm-cov --lib --features insecure --ignore-filename-regex 'proto|inferadb\.v1' --html
+	cargo llvm-cov --lib --ignore-filename-regex 'proto|inferadb\.v1' --html
 	@echo "$(GREEN)Report: target/llvm-cov/html/index.html$(RESET)"
 
 #───────────────────────────────────────────────────────────────────────────────
