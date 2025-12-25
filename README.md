@@ -53,6 +53,78 @@
    }
    ```
 
+## In Action
+
+### "Can this user do this?"
+
+The most common question in any app. One line:
+
+```rust
+if vault.check("user:alice", "edit", "document:readme").await? {
+    // allow the edit
+}
+```
+
+### "Who can access this?"
+
+Building a share dialog or audit view? List everyone with access:
+
+```rust
+let viewers = vault.subjects()
+    .with_permission("view")
+    .on_resource("document:readme")
+    .collect()
+    .await?;
+// ["user:alice", "user:bob", "team:engineering"]
+```
+
+### "What can this user see?"
+
+Filtering a dashboard or search results by what the user can actually access:
+
+```rust
+let docs = vault.resources()
+    .accessible_by("user:alice")
+    .with_permission("view")
+    .of_type("document")
+    .collect()
+    .await?;
+```
+
+### "Grant access to a team"
+
+When Alice shares a folder with her team, everyone on that team gets access:
+
+```rust
+vault.relationships()
+    .write(Relationship::new("folder:designs", "viewer", "team:engineering"))
+    .await?;
+```
+
+### "Inherit permissions from a parent"
+
+Documents inside a folder should inherit the folder's permissions:
+
+```rust
+vault.relationships()
+    .write(Relationship::new("document:spec", "parent", "folder:designs"))
+    .await?;
+
+// Now anyone who can view the folder can view the document
+```
+
+### "Check multiple permissions at once"
+
+Rendering a UI with edit, delete, and share buttons? Check them all in one round-trip:
+
+```rust
+let [can_edit, can_delete, can_share] = vault.batch_check(&[
+    ("user:alice", "edit", "document:readme"),
+    ("user:alice", "delete", "document:readme"),
+    ("user:alice", "share", "document:readme"),
+]).await?[..] else { unreachable!() };
+```
+
 ## Authorization API
 
 ```rust
