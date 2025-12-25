@@ -125,19 +125,21 @@ let [can_edit, can_delete, can_share] = vault.batch_check(&[
 ]).await?[..] else { unreachable!() };
 ```
 
-## Authorization API
+## Usage
+
+### Authorization API
 
 ```rust
 let vault = client.organization("org_...").vault("vlt_...");
 ```
 
-### Permission Checks
+#### Permission Checks
 
 ```rust
 let allowed = vault.check("user:alice", "view", "doc:1").await?;
 ```
 
-### Relationships
+#### Relationships
 
 ```rust
 vault.relationships()
@@ -145,7 +147,7 @@ vault.relationships()
     .await?;
 ```
 
-### Lookups
+#### Lookups
 
 ```rust
 let docs = vault.resources()
@@ -157,13 +159,13 @@ let docs = vault.resources()
 
 See the [Authorization API Guide](docs/guides/authorization-api.md) for ABAC context, batch checks, explain, simulate, watch, and more.
 
-## Management API
+### Management API
 
 ```rust
 let org = client.organization("org_...");
 ```
 
-### Vaults
+#### Vaults
 
 ```rust
 let vault = org.vaults()
@@ -171,7 +173,7 @@ let vault = org.vaults()
     .await?;
 ```
 
-### Schemas
+#### Schemas
 
 ```rust
 vault.schemas().push(r#"
@@ -184,7 +186,7 @@ type document {
 "#).await?;
 ```
 
-### Members & Teams
+#### Members & Teams
 
 ```rust
 org.members()
@@ -196,7 +198,7 @@ org.teams()
     .await?;
 ```
 
-### Audit Logs
+#### Audit Logs
 
 ```rust
 let events = org.audit().list().collect().await?;
