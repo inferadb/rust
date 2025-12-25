@@ -3,7 +3,7 @@ members = ["inferadb-derive", "examples"]
 
 [package]
 name = "inferadb"
-version = "0.1.4"
+version = "0.1.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
