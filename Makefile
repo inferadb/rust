@@ -70,10 +70,10 @@ clean: ## Clean build artifacts
 #───────────────────────────────────────────────────────────────────────────────
 
 coverage: ## Run tests with coverage report
-	cargo llvm-cov --lib --ignore-filename-regex 'proto|inferadb\.v1'
+	cargo llvm-cov --lib --ignore-filename-regex 'proto|inferadb\.authorization\.v1'
 
 coverage-html: ## Generate HTML coverage report
-	cargo llvm-cov --lib --ignore-filename-regex 'proto|inferadb\.v1' --html
+	cargo llvm-cov --lib --ignore-filename-regex 'proto|inferadb\.authorization\.v1' --html
 	@echo "$(GREEN)Report: target/llvm-cov/html/index.html$(RESET)"
 
 #───────────────────────────────────────────────────────────────────────────────
@@ -114,7 +114,7 @@ doc-check: ## Check documentation for warnings/errors
 
 proto: ## Regenerate protobuf code and format
 	@echo "$(BLUE)Regenerating protobuf code...$(RESET)"
-	@touch proto/inferadb.proto
+	@rm -f src/transport/proto/inferadb.authorization.v1.rs
 	cargo build --features grpc
 	$(MAKE) fmt
 	@echo "$(GREEN)Protobuf code regenerated and formatted!$(RESET)"

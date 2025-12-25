@@ -6,7 +6,7 @@
 #![allow(clippy::all)]
 #![allow(missing_docs)]
 
-#[path = "inferadb.v1.rs"]
-pub mod inferadb_v1;
+#[path = "inferadb.authorization.v1.rs"]
+pub mod inferadb_authorization_v1;
 
-pub use inferadb_v1::*;
+pub use inferadb_authorization_v1::*;

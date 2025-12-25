@@ -225,7 +225,7 @@ jobs:
       - name: Generate coverage
         run: |
           cargo llvm-cov --lib \
-            --ignore-filename-regex 'proto|inferadb\.v1' \
+            --ignore-filename-regex 'proto|inferadb\.authorization\.v1' \
             --codecov \
             --output-path codecov.json
 

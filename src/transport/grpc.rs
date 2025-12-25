@@ -18,7 +18,7 @@ use url::Url;
 
 use tonic::service::interceptor::InterceptedService;
 
-use super::proto::inferadb_service_client::InferadbServiceClient;
+use super::proto::authorization_service_client::AuthorizationServiceClient;
 use super::proto::{self as pb};
 use crate::config::{RetryConfig, TlsConfig};
 use crate::transport::traits::{
@@ -45,7 +45,7 @@ fn user_agent_interceptor(
 }
 
 /// Type alias for the intercepted gRPC client.
-type InterceptedClient = InferadbServiceClient<
+type InterceptedClient = AuthorizationServiceClient<
     InterceptedService<
         Channel,
         fn(tonic::Request<()>) -> Result<tonic::Request<()>, tonic::Status>,
@@ -126,7 +126,7 @@ impl GrpcTransport {
         // Create client with user-agent interceptor
         let interceptor: fn(tonic::Request<()>) -> Result<tonic::Request<()>, tonic::Status> =
             user_agent_interceptor;
-        let client = InferadbServiceClient::with_interceptor(channel, interceptor);
+        let client = AuthorizationServiceClient::with_interceptor(channel, interceptor);
 
         Ok(Self {
             client,

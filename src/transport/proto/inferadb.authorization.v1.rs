@@ -540,7 +540,7 @@ impl ChangeOperation {
     }
 }
 /// Generated client implementations.
-pub mod inferadb_service_client {
+pub mod authorization_service_client {
     #![allow(
         unused_variables,
         dead_code,
@@ -552,10 +552,10 @@ pub mod inferadb_service_client {
     use tonic::codegen::*;
     /// The main Infera authorization service
     #[derive(Debug, Clone)]
-    pub struct InferadbServiceClient<T> {
+    pub struct AuthorizationServiceClient<T> {
         inner: tonic::client::Grpc<T>,
     }
-    impl InferadbServiceClient<tonic::transport::Channel> {
+    impl AuthorizationServiceClient<tonic::transport::Channel> {
         /// Attempt to create a new client by connecting to a given endpoint.
         pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
         where
@@ -566,7 +566,7 @@ pub mod inferadb_service_client {
             Ok(Self::new(conn))
         }
     }
-    impl<T> InferadbServiceClient<T>
+    impl<T> AuthorizationServiceClient<T>
     where
         T: tonic::client::GrpcService<tonic::body::Body>,
         T::Error: Into<StdError>,
@@ -584,7 +584,7 @@ pub mod inferadb_service_client {
         pub fn with_interceptor<F>(
             inner: T,
             interceptor: F,
-        ) -> InferadbServiceClient<InterceptedService<T, F>>
+        ) -> AuthorizationServiceClient<InterceptedService<T, F>>
         where
             F: tonic::service::Interceptor,
             T::ResponseBody: Default,
@@ -597,7 +597,7 @@ pub mod inferadb_service_client {
             <T as tonic::codegen::Service<http::Request<tonic::body::Body>>>::Error:
                 Into<StdError> + std::marker::Send + std::marker::Sync,
         {
-            InferadbServiceClient::new(InterceptedService::new(inner, interceptor))
+            AuthorizationServiceClient::new(InterceptedService::new(inner, interceptor))
         }
         /// Compress requests with the given encoding.
         ///
@@ -643,11 +643,14 @@ pub mod inferadb_service_client {
                 tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
             })?;
             let codec = tonic_prost::ProstCodec::default();
-            let path =
-                http::uri::PathAndQuery::from_static("/inferadb.v1.InferadbService/Evaluate");
+            let path = http::uri::PathAndQuery::from_static(
+                "/inferadb.authorization.v1.AuthorizationService/Evaluate",
+            );
             let mut req = request.into_streaming_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("inferadb.v1.InferadbService", "Evaluate"));
+            req.extensions_mut().insert(GrpcMethod::new(
+                "inferadb.authorization.v1.AuthorizationService",
+                "Evaluate",
+            ));
             self.inner.streaming(req, path, codec).await
         }
         /// Expand a relation into its userset tree
@@ -662,10 +665,14 @@ pub mod inferadb_service_client {
                 tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
             })?;
             let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/inferadb.v1.InferadbService/Expand");
+            let path = http::uri::PathAndQuery::from_static(
+                "/inferadb.authorization.v1.AuthorizationService/Expand",
+            );
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("inferadb.v1.InferadbService", "Expand"));
+            req.extensions_mut().insert(GrpcMethod::new(
+                "inferadb.authorization.v1.AuthorizationService",
+                "Expand",
+            ));
             self.inner.server_streaming(req, path, codec).await
         }
         /// Write relationships to the store
@@ -678,11 +685,11 @@ pub mod inferadb_service_client {
             })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/inferadb.v1.InferadbService/WriteRelationships",
+                "/inferadb.authorization.v1.AuthorizationService/WriteRelationships",
             );
             let mut req = request.into_streaming_request();
             req.extensions_mut().insert(GrpcMethod::new(
-                "inferadb.v1.InferadbService",
+                "inferadb.authorization.v1.AuthorizationService",
                 "WriteRelationships",
             ));
             self.inner.client_streaming(req, path, codec).await
@@ -697,11 +704,11 @@ pub mod inferadb_service_client {
             })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/inferadb.v1.InferadbService/DeleteRelationships",
+                "/inferadb.authorization.v1.AuthorizationService/DeleteRelationships",
             );
             let mut req = request.into_streaming_request();
             req.extensions_mut().insert(GrpcMethod::new(
-                "inferadb.v1.InferadbService",
+                "inferadb.authorization.v1.AuthorizationService",
                 "DeleteRelationships",
             ));
             self.inner.client_streaming(req, path, codec).await
@@ -715,10 +722,14 @@ pub mod inferadb_service_client {
                 tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
             })?;
             let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/inferadb.v1.InferadbService/Health");
+            let path = http::uri::PathAndQuery::from_static(
+                "/inferadb.authorization.v1.AuthorizationService/Health",
+            );
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("inferadb.v1.InferadbService", "Health"));
+            req.extensions_mut().insert(GrpcMethod::new(
+                "inferadb.authorization.v1.AuthorizationService",
+                "Health",
+            ));
             self.inner.unary(req, path, codec).await
         }
         /// List resources accessible by a subject
@@ -733,11 +744,12 @@ pub mod inferadb_service_client {
                 tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
             })?;
             let codec = tonic_prost::ProstCodec::default();
-            let path =
-                http::uri::PathAndQuery::from_static("/inferadb.v1.InferadbService/ListResources");
+            let path = http::uri::PathAndQuery::from_static(
+                "/inferadb.authorization.v1.AuthorizationService/ListResources",
+            );
             let mut req = request.into_request();
             req.extensions_mut().insert(GrpcMethod::new(
-                "inferadb.v1.InferadbService",
+                "inferadb.authorization.v1.AuthorizationService",
                 "ListResources",
             ));
             self.inner.server_streaming(req, path, codec).await
@@ -755,11 +767,11 @@ pub mod inferadb_service_client {
             })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/inferadb.v1.InferadbService/ListRelationships",
+                "/inferadb.authorization.v1.AuthorizationService/ListRelationships",
             );
             let mut req = request.into_request();
             req.extensions_mut().insert(GrpcMethod::new(
-                "inferadb.v1.InferadbService",
+                "inferadb.authorization.v1.AuthorizationService",
                 "ListRelationships",
             ));
             self.inner.server_streaming(req, path, codec).await
@@ -776,11 +788,12 @@ pub mod inferadb_service_client {
                 tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
             })?;
             let codec = tonic_prost::ProstCodec::default();
-            let path =
-                http::uri::PathAndQuery::from_static("/inferadb.v1.InferadbService/ListSubjects");
+            let path = http::uri::PathAndQuery::from_static(
+                "/inferadb.authorization.v1.AuthorizationService/ListSubjects",
+            );
             let mut req = request.into_request();
             req.extensions_mut().insert(GrpcMethod::new(
-                "inferadb.v1.InferadbService",
+                "inferadb.authorization.v1.AuthorizationService",
                 "ListSubjects",
             ));
             self.inner.server_streaming(req, path, codec).await
@@ -797,10 +810,14 @@ pub mod inferadb_service_client {
                 tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
             })?;
             let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/inferadb.v1.InferadbService/Watch");
+            let path = http::uri::PathAndQuery::from_static(
+                "/inferadb.authorization.v1.AuthorizationService/Watch",
+            );
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("inferadb.v1.InferadbService", "Watch"));
+            req.extensions_mut().insert(GrpcMethod::new(
+                "inferadb.authorization.v1.AuthorizationService",
+                "Watch",
+            ));
             self.inner.server_streaming(req, path, codec).await
         }
         /// Simulate authorization with ephemeral relationships (what-if testing)
@@ -812,11 +829,14 @@ pub mod inferadb_service_client {
                 tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
             })?;
             let codec = tonic_prost::ProstCodec::default();
-            let path =
-                http::uri::PathAndQuery::from_static("/inferadb.v1.InferadbService/Simulate");
+            let path = http::uri::PathAndQuery::from_static(
+                "/inferadb.authorization.v1.AuthorizationService/Simulate",
+            );
             let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("inferadb.v1.InferadbService", "Simulate"));
+            req.extensions_mut().insert(GrpcMethod::new(
+                "inferadb.authorization.v1.AuthorizationService",
+                "Simulate",
+            ));
             self.inner.unary(req, path, codec).await
         }
     }

@@ -7,10 +7,10 @@
 fn main() {
     #[cfg(feature = "grpc")]
     {
-        // Path to the proto file (bundled with the SDK)
-        let proto_file = "proto/inferadb.proto";
+        // Path to the proto file (bundled with the SDK via git submodule)
+        let proto_file = "proto/inferadb/authorization/v1/authorization.proto";
         let proto_dir = "proto";
-        let generated_file = "src/transport/proto/inferadb.v1.rs";
+        let generated_file = "src/transport/proto/inferadb.authorization.v1.rs";
 
         // Skip generation if the generated file already exists (it's committed to the repo)
         // This prevents build.rs from modifying src/ during cargo publish
