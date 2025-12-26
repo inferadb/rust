@@ -28,4 +28,4 @@ inferadb = { path = "..", features = ["rest"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 
 # Web framework for axum example
-axum = "0.7"
+axum = "0.8"
