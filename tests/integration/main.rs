@@ -1,13 +1,13 @@
 //! Integration tests for the InferaDB Rust SDK.
 //!
 //! These tests run against the dev environment deployed via:
-//!   deploy/scripts/dev-up.sh
+//!   inferadb dev start
 //!
 //! # Running Tests
 //!
 //! ```bash
 //! # Start the dev environment first
-//! cd deploy && ./scripts/dev-up.sh
+//! inferadb dev start
 //!
 //! # Run integration tests (single-threaded to avoid conflicts)
 //! cargo test --test integration -- --test-threads=1
@@ -26,7 +26,7 @@
 //! # Prerequisites
 //!
 //! 1. Tailscale must be installed and connected to your tailnet
-//! 2. The dev environment must be running (`deploy/scripts/dev-up.sh`)
+//! 2. The dev environment must be running (`inferadb dev start`)
 
 mod client_tests;
 mod common;

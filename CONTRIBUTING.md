@@ -59,12 +59,8 @@ make help
 Integration tests require a running InferaDB instance. Use the official development environment from [inferadb/deploy](https://github.com/inferadb/deploy):
 
 ```bash
-# Clone the deploy repository (if you haven't already)
-git clone https://github.com/inferadb/deploy
-cd deploy
-
-# Start the development environment
-./scripts/dev-up.sh
+# Start the development environment using the InferaDB CLI
+inferadb dev start
 
 # The environment includes:
 # - InferaDB Engine (authorization API)

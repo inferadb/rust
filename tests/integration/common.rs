@@ -120,7 +120,7 @@ pub async fn validate_environment() -> Result<()> {
 
     let health_url = format!("{}/healthz", base_url);
     let response = client.get(&health_url).send().await.context(format!(
-        "Failed to connect to API at {}. Is the dev environment running? Run: deploy/scripts/dev-up.sh",
+        "Failed to connect to API at {}. Is the dev environment running? Run: inferadb dev start",
         health_url
     ))?;
 
