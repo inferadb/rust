@@ -58,8 +58,7 @@
 //! }
 //! ```
 
-use std::borrow::Cow;
-use std::fmt;
+use std::{borrow::Cow, fmt};
 
 /// A trait for types that can be used as resources in authorization checks.
 ///
@@ -135,12 +134,7 @@ pub trait Subject {
     /// This is used for group membership checks where subjects are
     /// defined through a relation (e.g., "group:admins#member").
     fn as_userset_ref(&self, relation: &str) -> String {
-        format!(
-            "{}:{}#{}",
-            Self::subject_type(),
-            self.subject_id(),
-            relation
-        )
+        format!("{}:{}#{}", Self::subject_type(), self.subject_id(), relation)
     }
 }
 
@@ -181,7 +175,7 @@ impl fmt::Display for ParseError {
             ParseError::EmptyId => write!(f, "empty entity ID"),
             ParseError::InvalidTypeChars(s) => {
                 write!(f, "invalid characters in entity type: {}", s)
-            }
+            },
             ParseError::InvalidIdChars(s) => write!(f, "invalid characters in entity ID: {}", s),
             ParseError::InvalidUserset(s) => write!(f, "invalid userset format: {}", s),
         }
@@ -210,10 +204,7 @@ impl<'a> EntityRef<'a> {
             return Err(ParseError::EmptyId);
         }
 
-        Ok(Self {
-            entity_type: Cow::Borrowed(entity_type),
-            entity_id: Cow::Borrowed(entity_id),
-        })
+        Ok(Self { entity_type: Cow::Borrowed(entity_type), entity_id: Cow::Borrowed(entity_id) })
     }
 
     /// Create an entity reference from type and ID components.
@@ -227,10 +218,7 @@ impl<'a> EntityRef<'a> {
     /// assert_eq!(entity.to_string(), "user:alice");
     /// ```
     pub fn new(entity_type: impl Into<Cow<'a, str>>, entity_id: impl Into<Cow<'a, str>>) -> Self {
-        Self {
-            entity_type: entity_type.into(),
-            entity_id: entity_id.into(),
-        }
+        Self { entity_type: entity_type.into(), entity_id: entity_id.into() }
     }
 
     /// Returns the entity type.
@@ -305,19 +293,11 @@ impl<'a> SubjectRef<'a> {
         if let Some((entity_part, relation)) = s.split_once('#') {
             let entity = EntityRef::parse(entity_part)?;
             if relation.is_empty() {
-                return Err(ParseError::InvalidUserset(
-                    "empty relation in userset".to_string(),
-                ));
+                return Err(ParseError::InvalidUserset("empty relation in userset".to_string()));
             }
-            Ok(Self {
-                entity,
-                relation: Some(Cow::Borrowed(relation)),
-            })
+            Ok(Self { entity, relation: Some(Cow::Borrowed(relation)) })
         } else {
-            Ok(Self {
-                entity: EntityRef::parse(s)?,
-                relation: None,
-            })
+            Ok(Self { entity: EntityRef::parse(s)?, relation: None })
         }
     }
 
@@ -326,10 +306,7 @@ impl<'a> SubjectRef<'a> {
         entity_type: impl Into<Cow<'a, str>>,
         entity_id: impl Into<Cow<'a, str>>,
     ) -> Self {
-        Self {
-            entity: EntityRef::new(entity_type, entity_id),
-            relation: None,
-        }
+        Self { entity: EntityRef::new(entity_type, entity_id), relation: None }
     }
 
     /// Create a userset reference with a relation.
@@ -338,10 +315,7 @@ impl<'a> SubjectRef<'a> {
         entity_id: impl Into<Cow<'a, str>>,
         relation: impl Into<Cow<'a, str>>,
     ) -> Self {
-        Self {
-            entity: EntityRef::new(entity_type, entity_id),
-            relation: Some(relation.into()),
-        }
+        Self { entity: EntityRef::new(entity_type, entity_id), relation: Some(relation.into()) }
     }
 
     /// Returns the entity part of this subject reference.
@@ -369,10 +343,7 @@ impl<'a> SubjectRef<'a> {
 
     /// Create from a Subject implementation.
     pub fn from_subject<S: Subject>(subject: &S) -> SubjectRef<'static> {
-        SubjectRef {
-            entity: EntityRef::from_subject(subject),
-            relation: None,
-        }
+        SubjectRef { entity: EntityRef::from_subject(subject), relation: None }
     }
 
     /// Create a userset from a Subject implementation.
@@ -498,9 +469,7 @@ mod tests {
 
     #[test]
     fn test_resource_trait() {
-        let doc = Document {
-            id: "readme".into(),
-        };
+        let doc = Document { id: "readme".into() };
         assert_eq!(Document::resource_type(), "document");
         assert_eq!(doc.resource_id(), "readme");
         assert_eq!(doc.as_resource_ref(), "document:readme");
@@ -516,9 +485,7 @@ mod tests {
 
     #[test]
     fn test_subject_userset() {
-        let group = Group {
-            id: "admins".into(),
-        };
+        let group = Group { id: "admins".into() };
         assert_eq!(group.as_userset_ref("member"), "group:admins#member");
     }
 
@@ -539,18 +506,9 @@ mod tests {
 
     #[test]
     fn test_entity_ref_parse_errors() {
-        assert!(matches!(
-            EntityRef::parse("no-colon"),
-            Err(ParseError::MissingColon)
-        ));
-        assert!(matches!(
-            EntityRef::parse(":id"),
-            Err(ParseError::EmptyType)
-        ));
-        assert!(matches!(
-            EntityRef::parse("type:"),
-            Err(ParseError::EmptyId)
-        ));
+        assert!(matches!(EntityRef::parse("no-colon"), Err(ParseError::MissingColon)));
+        assert!(matches!(EntityRef::parse(":id"), Err(ParseError::EmptyType)));
+        assert!(matches!(EntityRef::parse("type:"), Err(ParseError::EmptyId)));
     }
 
     #[test]
@@ -564,9 +522,7 @@ mod tests {
 
     #[test]
     fn test_entity_ref_from_resource() {
-        let doc = Document {
-            id: "readme".into(),
-        };
+        let doc = Document { id: "readme".into() };
         let entity = EntityRef::from_resource(&doc);
         assert_eq!(entity.entity_type(), "document");
         assert_eq!(entity.entity_id(), "readme");
@@ -619,9 +575,7 @@ mod tests {
 
     #[test]
     fn test_subject_ref_from_subject_userset() {
-        let group = Group {
-            id: "admins".into(),
-        };
+        let group = Group { id: "admins".into() };
         let subject = SubjectRef::from_subject_userset(&group, "member");
         assert_eq!(subject.to_string(), "group:admins#member");
     }
@@ -651,15 +605,9 @@ mod tests {
         assert!(ParseError::MissingColon.to_string().contains("colon"));
         assert!(ParseError::EmptyType.to_string().contains("empty"));
         assert!(ParseError::EmptyId.to_string().contains("empty"));
-        assert!(ParseError::InvalidTypeChars("bad".to_string())
-            .to_string()
-            .contains("bad"));
-        assert!(ParseError::InvalidIdChars("invalid".to_string())
-            .to_string()
-            .contains("invalid"));
-        assert!(ParseError::InvalidUserset("format".to_string())
-            .to_string()
-            .contains("format"));
+        assert!(ParseError::InvalidTypeChars("bad".to_string()).to_string().contains("bad"));
+        assert!(ParseError::InvalidIdChars("invalid".to_string()).to_string().contains("invalid"));
+        assert!(ParseError::InvalidUserset("format".to_string()).to_string().contains("format"));
     }
 
     #[test]
@@ -791,10 +739,8 @@ mod tests {
         assert_eq!(entity1.to_string(), "user:alice");
 
         // Test with owned strings
-        let entity2 = EntityRef::new(
-            Cow::Owned("group".to_string()),
-            Cow::Owned("admins".to_string()),
-        );
+        let entity2 =
+            EntityRef::new(Cow::Owned("group".to_string()), Cow::Owned("admins".to_string()));
         assert_eq!(entity2.to_string(), "group:admins");
     }
 

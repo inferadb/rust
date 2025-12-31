@@ -5,8 +5,10 @@
 
 use std::time::{Duration, Instant};
 
-use crate::types::{ConsistencyToken, Context, Decision, Relationship};
-use crate::Error;
+use crate::{
+    Error,
+    types::{ConsistencyToken, Context, Decision, Relationship},
+};
 
 // ============================================================================
 // Transport Enum
@@ -109,9 +111,7 @@ pub enum TransportStrategy {
 
 impl Default for TransportStrategy {
     fn default() -> Self {
-        TransportStrategy::PreferGrpc {
-            fallback_on: FallbackTrigger::default(),
-        }
+        TransportStrategy::PreferGrpc { fallback_on: FallbackTrigger::default() }
     }
 }
 
@@ -312,10 +312,10 @@ impl std::fmt::Display for TransportEvent {
         match self {
             TransportEvent::FallbackTriggered { from, to, reason } => {
                 write!(f, "fallback {} -> {}: {}", from, to, reason)
-            }
+            },
             TransportEvent::Restored { transport } => {
                 write!(f, "restored {}", transport)
-            }
+            },
         }
     }
 }
@@ -380,18 +380,11 @@ pub struct EvaluationNode {
 #[derive(Debug, Clone)]
 pub enum EvaluationNodeType {
     /// Direct relationship check.
-    DirectCheck {
-        resource: String,
-        relation: String,
-        subject: String,
-    },
+    DirectCheck { resource: String, relation: String, subject: String },
     /// Computed userset.
     ComputedUserset { relation: String },
     /// Related object userset (tupleset rewrite).
-    RelatedObjectUserset {
-        relationship: String,
-        computed: String,
-    },
+    RelatedObjectUserset { relationship: String, computed: String },
     /// Union of child nodes.
     Union,
     /// Intersection of child nodes.
@@ -641,14 +634,8 @@ mod tests {
 
     #[test]
     fn test_fallback_reason_display() {
-        assert_eq!(
-            FallbackReason::ConnectionRefused.to_string(),
-            "connection refused"
-        );
-        assert_eq!(
-            FallbackReason::StatusCode(502).to_string(),
-            "HTTP status 502"
-        );
+        assert_eq!(FallbackReason::ConnectionRefused.to_string(), "connection refused");
+        assert_eq!(FallbackReason::StatusCode(502).to_string(), "HTTP status 502");
     }
 
     #[test]
@@ -668,9 +655,7 @@ mod tests {
         assert!(fallback_event.to_string().contains("gRPC"));
         assert!(fallback_event.to_string().contains("HTTP"));
 
-        let restored_event = TransportEvent::Restored {
-            transport: Transport::Grpc,
-        };
+        let restored_event = TransportEvent::Restored { transport: Transport::Grpc };
         assert!(restored_event.to_string().contains("restored"));
         assert!(restored_event.to_string().contains("gRPC"));
     }
@@ -704,10 +689,7 @@ mod tests {
 
     #[test]
     fn test_fallback_reason_connect_timeout() {
-        assert_eq!(
-            FallbackReason::ConnectTimeout.to_string(),
-            "connect timeout"
-        );
+        assert_eq!(FallbackReason::ConnectTimeout.to_string(), "connect timeout");
     }
 
     #[test]
@@ -727,9 +709,7 @@ mod tests {
 
     #[test]
     fn test_transport_strategy_prefer_rest() {
-        let strategy = TransportStrategy::PreferRest {
-            fallback_on: FallbackTrigger::default(),
-        };
+        let strategy = TransportStrategy::PreferRest { fallback_on: FallbackTrigger::default() };
         assert_eq!(strategy.preferred_transport(), Transport::Http);
         assert_eq!(strategy.fallback_transport(), Some(Transport::Grpc));
         assert!(strategy.has_fallback());

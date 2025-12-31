@@ -1,7 +1,6 @@
 //! Context type for ABAC (Attribute-Based Access Control).
 
-use std::collections::HashMap;
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
 
@@ -177,7 +176,7 @@ impl fmt::Display for ContextValue {
                     write!(f, "{}", v)?;
                 }
                 write!(f, "]")
-            }
+            },
             ContextValue::Object(obj) => {
                 write!(f, "{{")?;
                 for (i, (k, v)) in obj.iter().enumerate() {
@@ -187,7 +186,7 @@ impl fmt::Display for ContextValue {
                     write!(f, "\"{}\": {}", k, v)?;
                 }
                 write!(f, "}}")
-            }
+            },
         }
     }
 }
@@ -256,16 +255,12 @@ impl Context {
     /// assert!(context.is_empty());
     /// ```
     pub fn new() -> Self {
-        Self {
-            values: HashMap::new(),
-        }
+        Self { values: HashMap::new() }
     }
 
     /// Creates a context with the given capacity.
     pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            values: HashMap::with_capacity(capacity),
-        }
+        Self { values: HashMap::with_capacity(capacity) }
     }
 
     /// Adds a key-value pair to the context.
@@ -353,9 +348,7 @@ impl Context {
 
 impl FromIterator<(String, ContextValue)> for Context {
     fn from_iter<T: IntoIterator<Item = (String, ContextValue)>>(iter: T) -> Self {
-        Self {
-            values: iter.into_iter().collect(),
-        }
+        Self { values: iter.into_iter().collect() }
     }
 }
 
@@ -424,10 +417,7 @@ mod tests {
 
     #[test]
     fn test_context_with() {
-        let ctx = Context::new()
-            .with("env", "prod")
-            .with("debug", false)
-            .with("count", 10);
+        let ctx = Context::new().with("env", "prod").with("debug", false).with("count", 10);
 
         assert_eq!(ctx.len(), 3);
         assert_eq!(ctx.get("env").and_then(|v| v.as_str()), Some("prod"));
@@ -473,10 +463,7 @@ mod tests {
 
     #[test]
     fn test_context_serialization() {
-        let ctx = Context::new()
-            .with("string", "hello")
-            .with("number", 42)
-            .with("bool", true);
+        let ctx = Context::new().with("string", "hello").with("number", 42).with("bool", true);
 
         let json = serde_json::to_string(&ctx).unwrap();
         let parsed: Context = serde_json::from_str(&json).unwrap();
@@ -500,10 +487,7 @@ mod tests {
         let ctx = Context::new().with("outer", ContextValue::Object(inner));
 
         let obj = ctx.get("outer").and_then(|v| v.as_object()).unwrap();
-        assert_eq!(
-            obj.get("nested_key").and_then(|v| v.as_str()),
-            Some("nested_value")
-        );
+        assert_eq!(obj.get("nested_key").and_then(|v| v.as_str()), Some("nested_value"));
     }
 
     #[test]

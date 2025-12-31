@@ -1,8 +1,6 @@
 //! AccessDenied error type for authorization denial.
 
-use std::borrow::Cow;
-use std::error::Error as StdError;
-use std::fmt;
+use std::{borrow::Cow, error::Error as StdError, fmt};
 
 /// Error returned when authorization is explicitly denied.
 ///
@@ -189,11 +187,7 @@ impl AccessDenied {
 
 impl fmt::Display for AccessDenied {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "access denied: {} cannot {} {}",
-            self.subject, self.permission, self.resource
-        )?;
+        write!(f, "access denied: {} cannot {} {}", self.subject, self.permission, self.resource)?;
 
         if let Some(ref reason) = self.reason {
             write!(f, " ({})", reason)?;
@@ -215,10 +209,7 @@ impl From<AccessDenied> for super::Error {
     fn from(denied: AccessDenied) -> Self {
         super::Error::new(
             super::ErrorKind::Forbidden,
-            format!(
-                "{} cannot {} {}",
-                denied.subject, denied.permission, denied.resource
-            ),
+            format!("{} cannot {} {}", denied.subject, denied.permission, denied.resource),
         )
     }
 }

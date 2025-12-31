@@ -1,7 +1,6 @@
 //! ConsistencyToken for read-after-write consistency.
 
-use std::fmt;
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
@@ -72,9 +71,7 @@ impl ConsistencyToken {
     /// let token = ConsistencyToken::new("MXxhYmMxMjM=");
     /// ```
     pub fn new(value: impl Into<String>) -> Self {
-        Self {
-            value: value.into(),
-        }
+        Self { value: value.into() }
     }
 
     /// Returns the raw token value.

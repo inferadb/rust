@@ -5,10 +5,11 @@
 
 use std::sync::Arc;
 
-use crate::transport::mock::MockTransport;
-use crate::transport::traits::TransportClient;
-use crate::types::{ConsistencyToken, Context, Relationship};
-use crate::Error;
+use crate::{
+    Error,
+    transport::{mock::MockTransport, traits::TransportClient},
+    types::{ConsistencyToken, Context, Relationship},
+};
 
 /// An in-memory vault for testing.
 ///
@@ -44,9 +45,7 @@ pub struct TestVault {
 impl TestVault {
     /// Creates a new empty test vault.
     pub fn new() -> Self {
-        Self {
-            transport: Arc::new(MockTransport::new()),
-        }
+        Self { transport: Arc::new(MockTransport::new()) }
     }
 
     /// Creates a test vault pre-populated with relationships.
@@ -138,23 +137,17 @@ impl TestVault {
 
     /// Returns a relationships client for the test vault.
     pub fn relationships(&self) -> TestRelationshipsClient {
-        TestRelationshipsClient {
-            transport: self.transport.clone(),
-        }
+        TestRelationshipsClient { transport: self.transport.clone() }
     }
 
     /// Returns a resources query client for the test vault.
     pub fn resources(&self) -> TestResourcesClient {
-        TestResourcesClient {
-            transport: self.transport.clone(),
-        }
+        TestResourcesClient { transport: self.transport.clone() }
     }
 
     /// Returns a subjects query client for the test vault.
     pub fn subjects(&self) -> TestSubjectsClient {
-        TestSubjectsClient {
-            transport: self.transport.clone(),
-        }
+        TestSubjectsClient { transport: self.transport.clone() }
     }
 }
 
@@ -166,9 +159,7 @@ impl Default for TestVault {
 
 impl std::fmt::Debug for TestVault {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TestVault")
-            .field("request_count", &self.request_count())
-            .finish()
+        f.debug_struct("TestVault").field("request_count", &self.request_count()).finish()
     }
 }
 
@@ -219,10 +210,8 @@ impl TestRelationshipsClient {
         relation: Option<&str>,
         subject: Option<&str>,
     ) -> Result<Vec<Relationship<'static>>, Error> {
-        let response = self
-            .transport
-            .list_relationships(resource, relation, subject, None, None)
-            .await?;
+        let response =
+            self.transport.list_relationships(resource, relation, subject, None, None).await?;
         Ok(response.relationships)
     }
 }
@@ -240,10 +229,8 @@ impl TestResourcesClient {
         permission: &str,
         resource_type: Option<&str>,
     ) -> Result<Vec<String>, Error> {
-        let response = self
-            .transport
-            .list_resources(subject, permission, resource_type, None, None)
-            .await?;
+        let response =
+            self.transport.list_resources(subject, permission, resource_type, None, None).await?;
         Ok(response.resources)
     }
 }
@@ -261,10 +248,8 @@ impl TestSubjectsClient {
         resource: &str,
         subject_type: Option<&str>,
     ) -> Result<Vec<String>, Error> {
-        let response = self
-            .transport
-            .list_subjects(permission, resource, subject_type, None, None)
-            .await?;
+        let response =
+            self.transport.list_subjects(permission, resource, subject_type, None, None).await?;
         Ok(response.subjects)
     }
 }
@@ -307,10 +292,7 @@ mod tests {
         let rels = vault.relationships();
 
         // Write a relationship
-        let token = rels
-            .write(Relationship::new("doc:1", "viewer", "user:alice"))
-            .await
-            .unwrap();
+        let token = rels.write(Relationship::new("doc:1", "viewer", "user:alice")).await.unwrap();
         assert!(!token.is_empty());
 
         // List relationships
@@ -318,9 +300,7 @@ mod tests {
         assert_eq!(list.len(), 1);
 
         // Delete the relationship
-        rels.delete(Relationship::new("doc:1", "viewer", "user:alice"))
-            .await
-            .unwrap();
+        rels.delete(Relationship::new("doc:1", "viewer", "user:alice")).await.unwrap();
 
         // Should be empty now
         let list = rels.list(Some("doc:1"), None, None).await.unwrap();
@@ -392,10 +372,8 @@ mod tests {
         vault.add_relationship(Relationship::new("doc:1", "view", "user:alice"));
 
         let context = Context::new().with("env", "production");
-        let allowed = vault
-            .check_with_context("user:alice", "view", "doc:1", context)
-            .await
-            .unwrap();
+        let allowed =
+            vault.check_with_context("user:alice", "view", "doc:1", context).await.unwrap();
         assert!(allowed);
     }
 
@@ -424,10 +402,7 @@ mod tests {
         vault.add_relationship(Relationship::new("doc:2", "view", "user:alice"));
 
         let resources = vault.resources();
-        let accessible = resources
-            .accessible_by("user:alice", "view", None)
-            .await
-            .unwrap();
+        let accessible = resources.accessible_by("user:alice", "view", None).await.unwrap();
         assert_eq!(accessible.len(), 2);
     }
 
@@ -438,10 +413,7 @@ mod tests {
         vault.add_relationship(Relationship::new("doc:1", "view", "user:bob"));
 
         let subjects = vault.subjects();
-        let with_perm = subjects
-            .with_permission("view", "doc:1", None)
-            .await
-            .unwrap();
+        let with_perm = subjects.with_permission("view", "doc:1", None).await.unwrap();
         assert_eq!(with_perm.len(), 2);
     }
 }

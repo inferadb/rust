@@ -5,8 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::client::Client;
-use crate::Error;
+use crate::{Error, client::Client};
 
 /// Client for JWKS operations.
 ///
@@ -61,10 +60,7 @@ impl JwksClient {
     /// ```
     #[cfg(feature = "rest")]
     pub async fn get_well_known(&self) -> Result<Jwks, Error> {
-        self.client
-            .inner()
-            .control_get("/.well-known/jwks.json")
-            .await
+        self.client.inner().control_get("/.well-known/jwks.json").await
     }
 
     /// Gets the JWKS from the well-known endpoint.
@@ -140,10 +136,7 @@ impl Jwks {
     /// let ed25519_keys = jwks.find_by_algorithm("EdDSA");
     /// ```
     pub fn find_by_algorithm(&self, alg: &str) -> Vec<&Jwk> {
-        self.keys
-            .iter()
-            .filter(|k| k.alg.as_deref() == Some(alg))
-            .collect()
+        self.keys.iter().filter(|k| k.alg.as_deref() == Some(alg)).collect()
     }
 
     /// Finds keys by use.
@@ -154,10 +147,7 @@ impl Jwks {
     /// let signing_keys = jwks.find_by_use("sig");
     /// ```
     pub fn find_by_use(&self, use_: &str) -> Vec<&Jwk> {
-        self.keys
-            .iter()
-            .filter(|k| k.use_.as_deref() == Some(use_))
-            .collect()
+        self.keys.iter().filter(|k| k.use_.as_deref() == Some(use_)).collect()
     }
 
     /// Returns the number of keys in the set.
@@ -350,10 +340,10 @@ impl Jwk {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::transport::mock::MockTransport;
     use std::sync::Arc;
+
+    use super::*;
+    use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
     async fn create_test_client() -> Client {
         let mock_transport = Arc::new(MockTransport::new());
@@ -377,9 +367,7 @@ mod tests {
     fn test_jwks_with_keys() {
         let jwks = Jwks::with_keys(vec![
             Jwk::ed25519("x_value").with_kid("key1"),
-            Jwk::rsa("n_value", "e_value")
-                .with_kid("key2")
-                .with_alg("RS256"),
+            Jwk::rsa("n_value", "e_value").with_kid("key2").with_alg("RS256"),
         ]);
 
         assert!(!jwks.is_empty());
@@ -516,10 +504,13 @@ mod tests {
 
 #[cfg(all(test, feature = "rest"))]
 mod wiremock_tests {
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+
     use super::*;
     use crate::auth::BearerCredentialsConfig;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     async fn create_mock_client(server: &MockServer) -> Client {
         Client::builder()

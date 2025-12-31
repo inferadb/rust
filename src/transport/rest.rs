@@ -4,26 +4,26 @@
 //! handling both standard JSON responses and Server-Sent Events (SSE)
 //! for streaming endpoints.
 
-use std::pin::Pin;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{pin::Pin, sync::Arc, time::Duration};
 
 use futures::{Stream, StreamExt};
 use parking_lot::RwLock;
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use url::Url;
 
-use crate::config::{RetryConfig, TlsConfig};
-use crate::error::ErrorKind;
-use crate::transport::traits::{
-    CheckRequest, CheckResponse, ListRelationshipsResponse, ListResourcesResponse,
-    ListSubjectsResponse, PoolConfig, RestStats, SimulateRequest, SimulateResponse, Transport,
-    TransportClient, TransportStats, WriteRequest, WriteResponse,
+use crate::{
+    Error,
+    config::{RetryConfig, TlsConfig},
+    error::ErrorKind,
+    transport::traits::{
+        CheckRequest, CheckResponse, ListRelationshipsResponse, ListResourcesResponse,
+        ListSubjectsResponse, PoolConfig, RestStats, SimulateRequest, SimulateResponse, Transport,
+        TransportClient, TransportStats, WriteRequest, WriteResponse,
+    },
+    types::{ConsistencyToken, Decision, Relationship},
+    user_agent,
 };
-use crate::types::{ConsistencyToken, Decision, Relationship};
-use crate::user_agent;
-use crate::Error;
 
 // ============================================================================
 // REST Transport
@@ -96,19 +96,13 @@ impl RestTransport {
         // Add CA certificate from PEM data if provided
         if let Some(ref ca_cert_pem) = tls_config.ca_cert_pem {
             let cert = reqwest::Certificate::from_pem(ca_cert_pem.as_bytes()).map_err(|e| {
-                Error::new(
-                    ErrorKind::Configuration,
-                    format!("Invalid CA certificate PEM: {}", e),
-                )
+                Error::new(ErrorKind::Configuration, format!("Invalid CA certificate PEM: {}", e))
             })?;
             client_builder = client_builder.add_root_certificate(cert);
         }
 
         let client = client_builder.build().map_err(|e| {
-            Error::new(
-                ErrorKind::Configuration,
-                format!("Failed to create HTTP client: {}", e),
-            )
+            Error::new(ErrorKind::Configuration, format!("Failed to create HTTP client: {}", e))
         })?;
 
         Ok(Self {
@@ -164,12 +158,7 @@ impl RestTransport {
 
         let response = self
             .execute_with_retry(|| async {
-                self.client
-                    .post(url.clone())
-                    .headers(headers.clone())
-                    .json(body)
-                    .send()
-                    .await
+                self.client.post(url.clone()).headers(headers.clone()).json(body).send().await
             })
             .await?;
 
@@ -186,11 +175,7 @@ impl RestTransport {
 
         let response = self
             .execute_with_retry(|| async {
-                self.client
-                    .delete(url.clone())
-                    .headers(headers.clone())
-                    .send()
-                    .await
+                self.client.delete(url.clone()).headers(headers.clone()).send().await
             })
             .await?;
 
@@ -316,7 +301,7 @@ impl RestTransport {
 
                     tokio::time::sleep(delay).await;
                     delay = std::cmp::min(delay * 2, self.retry_config.max_delay);
-                }
+                },
                 Err(e) => {
                     if attempt >= max_attempts {
                         let mut stats = self.stats.write();
@@ -336,7 +321,7 @@ impl RestTransport {
                     stats.requests_sent += 1;
                     stats.requests_failed += 1;
                     return Err(map_reqwest_error(e));
-                }
+                },
             }
         }
     }
@@ -354,10 +339,7 @@ impl RestTransport {
         }
 
         response.json::<R>().await.map_err(|e| {
-            Error::new(
-                ErrorKind::InvalidResponse,
-                format!("Failed to parse response: {}", e),
-            )
+            Error::new(ErrorKind::InvalidResponse, format!("Failed to parse response: {}", e))
         })
     }
 
@@ -624,9 +606,7 @@ fn convert_evaluation_node(node: EvaluationNodeResponse) -> super::traits::Evalu
                 subject: dc.subject,
             }
         } else if let Some(cu) = nt.computed_userset {
-            super::traits::EvaluationNodeType::ComputedUserset {
-                relation: cu.relation,
-            }
+            super::traits::EvaluationNodeType::ComputedUserset { relation: cu.relation }
         } else if let Some(rou) = nt.related_object_userset {
             super::traits::EvaluationNodeType::RelatedObjectUserset {
                 relationship: rou.relationship,
@@ -639,9 +619,7 @@ fn convert_evaluation_node(node: EvaluationNodeResponse) -> super::traits::Evalu
         } else if nt.exclusion.is_some() {
             super::traits::EvaluationNodeType::Exclusion
         } else if let Some(wm) = nt.wasm_module {
-            super::traits::EvaluationNodeType::WasmModule {
-                module_name: wm.module_name,
-            }
+            super::traits::EvaluationNodeType::WasmModule { module_name: wm.module_name }
         } else {
             // Default to union if unknown
             super::traits::EvaluationNodeType::Union
@@ -653,11 +631,7 @@ fn convert_evaluation_node(node: EvaluationNodeResponse) -> super::traits::Evalu
     super::traits::EvaluationNode {
         node_type,
         result: node.result,
-        children: node
-            .children
-            .into_iter()
-            .map(convert_evaluation_node)
-            .collect(),
+        children: node.children.into_iter().map(convert_evaluation_node).collect(),
     }
 }
 
@@ -679,9 +653,8 @@ impl TransportClient for RestTransport {
         };
 
         // Use SSE endpoint for streaming
-        let mut stream = self
-            .post_sse::<_, EvaluateResponse>("/access/v1/evaluate", &api_request)
-            .await?;
+        let mut stream =
+            self.post_sse::<_, EvaluateResponse>("/access/v1/evaluate", &api_request).await?;
 
         // Get the first result
         if let Some(result) = stream.next().await {
@@ -689,19 +662,12 @@ impl TransportClient for RestTransport {
             let allowed = response.decision == "allow";
             return Ok(CheckResponse {
                 allowed,
-                decision: if allowed {
-                    Decision::allowed()
-                } else {
-                    Decision::denied()
-                },
+                decision: if allowed { Decision::allowed() } else { Decision::denied() },
                 trace: response.trace.map(convert_trace_response),
             });
         }
 
-        Err(Error::new(
-            ErrorKind::InvalidResponse,
-            "No response from evaluate endpoint",
-        ))
+        Err(Error::new(ErrorKind::InvalidResponse, "No response from evaluate endpoint"))
     }
 
     async fn check_batch(&self, requests: Vec<CheckRequest>) -> Result<Vec<CheckResponse>, Error> {
@@ -722,9 +688,8 @@ impl TransportClient for RestTransport {
                 .collect(),
         };
 
-        let mut stream = self
-            .post_sse::<_, EvaluateResponse>("/access/v1/evaluate", &api_request)
-            .await?;
+        let mut stream =
+            self.post_sse::<_, EvaluateResponse>("/access/v1/evaluate", &api_request).await?;
 
         let mut results = vec![None; requests.len()];
 
@@ -734,11 +699,7 @@ impl TransportClient for RestTransport {
                 let allowed = response.decision == "allow";
                 results[response.index] = Some(CheckResponse {
                     allowed,
-                    decision: if allowed {
-                        Decision::allowed()
-                    } else {
-                        Decision::denied()
-                    },
+                    decision: if allowed { Decision::allowed() } else { Decision::denied() },
                     trace: response.trace.map(convert_trace_response),
                 });
             }
@@ -769,20 +730,15 @@ impl TransportClient for RestTransport {
             expected_revision: None,
         };
 
-        let response: WriteRelationshipsResponse = self
-            .post("/access/v1/relationships/write", &api_request)
-            .await?;
+        let response: WriteRelationshipsResponse =
+            self.post("/access/v1/relationships/write", &api_request).await?;
 
-        Ok(WriteResponse {
-            consistency_token: ConsistencyToken::new(response.revision),
-        })
+        Ok(WriteResponse { consistency_token: ConsistencyToken::new(response.revision) })
     }
 
     async fn write_batch(&self, requests: Vec<WriteRequest>) -> Result<WriteResponse, Error> {
         if requests.is_empty() {
-            return Ok(WriteResponse {
-                consistency_token: ConsistencyToken::new(""),
-            });
+            return Ok(WriteResponse { consistency_token: ConsistencyToken::new("") });
         }
 
         let api_request = WriteRelationshipsRequest {
@@ -797,13 +753,10 @@ impl TransportClient for RestTransport {
             expected_revision: None,
         };
 
-        let response: WriteRelationshipsResponse = self
-            .post("/access/v1/relationships/write", &api_request)
-            .await?;
+        let response: WriteRelationshipsResponse =
+            self.post("/access/v1/relationships/write", &api_request).await?;
 
-        Ok(WriteResponse {
-            consistency_token: ConsistencyToken::new(response.revision),
-        })
+        Ok(WriteResponse { consistency_token: ConsistencyToken::new(response.revision) })
     }
 
     async fn delete(&self, relationship: Relationship<'static>) -> Result<(), Error> {
@@ -842,21 +795,18 @@ impl TransportClient for RestTransport {
             match result {
                 Ok(dto) => {
                     relationships.push(Relationship::new(dto.resource, dto.relation, dto.subject));
-                }
+                },
                 Err(e) => {
                     // Check if this is the summary event (we'd need special handling)
                     // For now, just skip errors that might be from summary parsing
                     if !e.to_string().contains("summary") {
                         return Err(e);
                     }
-                }
+                },
             }
         }
 
-        Ok(ListRelationshipsResponse {
-            relationships,
-            next_cursor: None,
-        })
+        Ok(ListRelationshipsResponse { relationships, next_cursor: None })
     }
 
     async fn list_resources(
@@ -876,9 +826,8 @@ impl TransportClient for RestTransport {
             resource_id_pattern: None,
         };
 
-        let mut stream = self
-            .post_sse::<_, String>("/access/v1/resources/list", &api_request)
-            .await?;
+        let mut stream =
+            self.post_sse::<_, String>("/access/v1/resources/list", &api_request).await?;
 
         let mut resources = Vec::new();
 
@@ -886,17 +835,14 @@ impl TransportClient for RestTransport {
             match result {
                 Ok(resource) => {
                     resources.push(resource);
-                }
+                },
                 Err(_) => {
                     // Skip summary/non-data events
-                }
+                },
             }
         }
 
-        Ok(ListResourcesResponse {
-            resources,
-            next_cursor: None,
-        })
+        Ok(ListResourcesResponse { resources, next_cursor: None })
     }
 
     async fn list_subjects(
@@ -915,9 +861,8 @@ impl TransportClient for RestTransport {
             cursor: cursor.map(String::from),
         };
 
-        let mut stream = self
-            .post_sse::<_, String>("/access/v1/subjects/list", &api_request)
-            .await?;
+        let mut stream =
+            self.post_sse::<_, String>("/access/v1/subjects/list", &api_request).await?;
 
         let mut subjects = Vec::new();
 
@@ -925,17 +870,14 @@ impl TransportClient for RestTransport {
             match result {
                 Ok(subject) => {
                     subjects.push(subject);
-                }
+                },
                 Err(_) => {
                     // Skip summary/non-data events
-                }
+                },
             }
         }
 
-        Ok(ListSubjectsResponse {
-            subjects,
-            next_cursor: None,
-        })
+        Ok(ListSubjectsResponse { subjects, next_cursor: None })
     }
 
     fn transport_type(&self) -> Transport {
@@ -959,12 +901,7 @@ impl TransportClient for RestTransport {
             .join("/healthz")
             .map_err(|e| Error::new(ErrorKind::Configuration, format!("Invalid URL: {}", e)))?;
 
-        let response = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(map_reqwest_error)?;
+        let response = self.client.get(url).send().await.map_err(map_reqwest_error)?;
 
         if response.status().is_success() {
             Ok(())
@@ -1077,12 +1014,12 @@ fn parse_sse_stream<T: DeserializeOwned + 'static>(
                             match serde_json::from_str::<T>(&data) {
                                 Ok(item) => {
                                     return Some((Ok(item), (stream, buffer, stats, done)));
-                                }
+                                },
                                 Err(_) => {
                                     // If we can't parse, might be a different event type
                                     // Continue to next event
                                     continue;
-                                }
+                                },
                             }
                         }
                     }
@@ -1095,7 +1032,7 @@ fn parse_sse_stream<T: DeserializeOwned + 'static>(
                         if let Ok(s) = std::str::from_utf8(&bytes) {
                             buf.push_str(s);
                         }
-                    }
+                    },
                     Some(Err(e)) => {
                         {
                             let mut s = stats.write();
@@ -1103,12 +1040,12 @@ fn parse_sse_stream<T: DeserializeOwned + 'static>(
                             s.requests_failed += 1;
                         }
                         return Some((Err(map_reqwest_error(e)), (stream, buffer, stats, true)));
-                    }
+                    },
                     None => {
                         let mut s = stats.write();
                         s.sse_active = s.sse_active.saturating_sub(1);
                         return None;
-                    }
+                    },
                 }
             }
         },
@@ -1136,10 +1073,7 @@ fn map_reqwest_error(e: reqwest::Error) -> Error {
     } else if e.is_connect() {
         Error::new(ErrorKind::Connection, format!("Connection failed: {}", e))
     } else if e.is_request() {
-        Error::new(
-            ErrorKind::InvalidArgument,
-            format!("Invalid request: {}", e),
-        )
+        Error::new(ErrorKind::InvalidArgument, format!("Invalid request: {}", e))
     } else {
         Error::new(ErrorKind::Transport, format!("HTTP error: {}", e))
     }
@@ -1152,11 +1086,7 @@ fn map_status_error(status: u16, body: &str) -> Error {
     } else {
         // Try to parse as JSON error
         if let Ok(error) = serde_json::from_str::<serde_json::Value>(body) {
-            error
-                .get("error")
-                .and_then(|e| e.as_str())
-                .unwrap_or(body)
-                .to_string()
+            error.get("error").and_then(|e| e.as_str()).unwrap_or(body).to_string()
         } else {
             body.to_string()
         }
@@ -1186,10 +1116,7 @@ mod tests {
     fn test_parse_sse_event() {
         let event = "data: {\"decision\":\"allow\",\"index\":0}";
         let data = parse_sse_event(event);
-        assert_eq!(
-            data,
-            Some("{\"decision\":\"allow\",\"index\":0}".to_string())
-        );
+        assert_eq!(data, Some("{\"decision\":\"allow\",\"index\":0}".to_string()));
     }
 
     #[test]
@@ -1382,10 +1309,7 @@ mod tests {
 
     #[test]
     fn test_rest_transport_builder_with_tls_config() {
-        let tls_config = TlsConfig {
-            skip_verification: true,
-            ..Default::default()
-        };
+        let tls_config = TlsConfig { skip_verification: true, ..Default::default() };
 
         let transport = RestTransportBuilder::new()
             .base_url("https://api.example.com")
@@ -1483,10 +1407,13 @@ mod tests {
 // Wiremock-based async tests
 #[cfg(test)]
 mod wiremock_tests {
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+
     use super::*;
     use crate::Context;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     async fn create_test_transport(server: &MockServer) -> RestTransport {
         RestTransportBuilder::new()
@@ -1615,10 +1542,7 @@ mod wiremock_tests {
 
         let result = transport.check(request).await;
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err().kind(),
-            ErrorKind::Unauthorized
-        ));
+        assert!(matches!(result.unwrap_err().kind(), ErrorKind::Unauthorized));
     }
 
     #[tokio::test]
@@ -1637,10 +1561,8 @@ mod wiremock_tests {
 
         let transport = create_test_transport(&server).await;
         let relationship = Relationship::new("document:readme", "viewer", "user:alice");
-        let request = WriteRequest {
-            relationship: relationship.into_owned(),
-            idempotency_key: None,
-        };
+        let request =
+            WriteRequest { relationship: relationship.into_owned(), idempotency_key: None };
 
         let result = transport.write(request).await;
         assert!(result.is_ok());
@@ -1682,9 +1604,7 @@ mod wiremock_tests {
 
         // delete uses path with URL-encoded components
         Mock::given(method("DELETE"))
-            .and(path(
-                "/access/v1/relationships/document%3Areadme/viewer/user%3Aalice",
-            ))
+            .and(path("/access/v1/relationships/document%3Areadme/viewer/user%3Aalice"))
             .respond_with(ResponseTemplate::new(204))
             .mount(&server)
             .await;
@@ -1702,9 +1622,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("DELETE"))
-            .and(path(
-                "/access/v1/relationships/document%3Amissing/viewer/user%3Aalice",
-            ))
+            .and(path("/access/v1/relationships/document%3Amissing/viewer/user%3Aalice"))
             .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
                 "error": "Relationship not found"
             })))
@@ -1740,7 +1658,7 @@ mod wiremock_tests {
             resource: "document:readme".to_string(),
             context: None,
             additions: vec![
-                Relationship::new("document:readme", "viewer", "user:alice").into_owned()
+                Relationship::new("document:readme", "viewer", "user:alice").into_owned(),
             ],
             removals: vec![],
         };
@@ -1879,10 +1797,8 @@ mod wiremock_tests {
 
         let transport = create_test_transport(&server).await;
         let relationship = Relationship::new("document:readme", "viewer", "user:alice");
-        let request = WriteRequest {
-            relationship: relationship.into_owned(),
-            idempotency_key: None,
-        };
+        let request =
+            WriteRequest { relationship: relationship.into_owned(), idempotency_key: None };
 
         let result = transport.write(request).await;
         assert!(result.is_err());
@@ -1932,10 +1848,7 @@ mod wiremock_tests {
         let result = transport.check(request).await;
         assert!(result.is_err());
         // 400 errors are mapped to InvalidRequest in rest.rs
-        assert!(matches!(
-            result.unwrap_err().kind(),
-            ErrorKind::InvalidArgument
-        ));
+        assert!(matches!(result.unwrap_err().kind(), ErrorKind::InvalidArgument));
     }
 
     #[tokio::test]
@@ -2027,9 +1940,7 @@ mod wiremock_tests {
             .await;
 
         let transport = create_test_transport(&server).await;
-        let result = transport
-            .list_relationships(None, None, None, Some(10), None)
-            .await;
+        let result = transport.list_relationships(None, None, None, Some(10), None).await;
 
         assert!(result.is_ok());
         let response = result.unwrap();
@@ -2054,9 +1965,8 @@ mod wiremock_tests {
             .await;
 
         let transport = create_test_transport(&server).await;
-        let result = transport
-            .list_resources("user:alice", "view", Some("doc"), Some(10), None)
-            .await;
+        let result =
+            transport.list_resources("user:alice", "view", Some("doc"), Some(10), None).await;
 
         assert!(result.is_ok());
         let response = result.unwrap();
@@ -2081,9 +1991,8 @@ mod wiremock_tests {
             .await;
 
         let transport = create_test_transport(&server).await;
-        let result = transport
-            .list_subjects("view", "doc:readme", Some("user"), Some(10), None)
-            .await;
+        let result =
+            transport.list_subjects("view", "doc:readme", Some("user"), Some(10), None).await;
 
         assert!(result.is_ok());
         let response = result.unwrap();
@@ -2185,10 +2094,7 @@ mod wiremock_tests {
 
         let result = transport.check(request).await;
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err().kind(),
-            ErrorKind::Unauthorized
-        ));
+        assert!(matches!(result.unwrap_err().kind(), ErrorKind::Unauthorized));
     }
 
     #[tokio::test]
@@ -2219,10 +2125,10 @@ mod wiremock_tests {
             resource: "document:readme".to_string(),
             context: None,
             additions: vec![
-                Relationship::new("document:readme", "editor", "user:alice").into_owned()
+                Relationship::new("document:readme", "editor", "user:alice").into_owned(),
             ],
             removals: vec![
-                Relationship::new("document:readme", "viewer", "user:alice").into_owned()
+                Relationship::new("document:readme", "viewer", "user:alice").into_owned(),
             ],
         };
 
@@ -2247,9 +2153,7 @@ mod wiremock_tests {
             .await;
 
         let transport = create_test_transport(&server).await;
-        let result = transport
-            .list_subjects("view", "doc:readme", None, None, None)
-            .await;
+        let result = transport.list_subjects("view", "doc:readme", None, None, None).await;
 
         assert!(result.is_ok());
         let response = result.unwrap();
@@ -2342,10 +2246,7 @@ mod wiremock_tests {
         // Verify User-Agent matches expected format: inferadb-rust/X.Y.Z (...)
         Mock::given(method("GET"))
             .and(path("/healthz"))
-            .and(header_regex(
-                "user-agent",
-                r"^inferadb-rust/\d+\.\d+\.\d+ \(.+\)$",
-            ))
+            .and(header_regex("user-agent", r"^inferadb-rust/\d+\.\d+\.\d+ \(.+\)$"))
             .respond_with(
                 ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "ok"})),
             )

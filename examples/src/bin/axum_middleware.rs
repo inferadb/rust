@@ -20,15 +20,14 @@
 //! curl -X DELETE http://localhost:3000/documents/readme
 //! ```
 
-use std::env;
-use std::net::SocketAddr;
+use std::{env, net::SocketAddr};
 
 use axum::{
+    Router,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get},
-    Router,
 };
 use inferadb::prelude::*;
 
@@ -84,11 +83,7 @@ async fn view_document(
     let resource = format!("document:{doc_id}");
 
     // Use require() pattern - converts denial to error
-    state
-        .vault
-        .check(user_id, "view", &resource)
-        .require()
-        .await?;
+    state.vault.check(user_id, "view", &resource).require().await?;
 
     // User is authorized - return document content
     Ok(format!("Document content for: {doc_id}"))
@@ -103,11 +98,7 @@ async fn delete_document(
     let resource = format!("document:{doc_id}");
 
     // Check authorization first
-    state
-        .vault
-        .check(user_id, "delete", &resource)
-        .require()
-        .await?;
+    state.vault.check(user_id, "delete", &resource).require().await?;
 
     // User is authorized - delete the document
     Ok(format!("Deleted document: {doc_id}"))
@@ -157,7 +148,7 @@ impl IntoResponse for AppError {
                     ),
                 )
                     .into_response()
-            }
+            },
             AppError::InferaDb(err) => {
                 // Map SDK errors to HTTP status codes
                 let status = match err.kind() {
@@ -176,7 +167,7 @@ impl IntoResponse for AppError {
                 };
 
                 (status, message).into_response()
-            }
+            },
         }
     }
 }

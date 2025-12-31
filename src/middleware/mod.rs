@@ -68,13 +68,9 @@
 //!     .await?;
 //! ```
 
-use std::collections::HashMap;
-use std::fmt;
-use std::future::Future;
-use std::pin::Pin;
+use std::{collections::HashMap, fmt, future::Future, pin::Pin};
 
-use crate::error::ErrorKind;
-use crate::Error;
+use crate::{Error, error::ErrorKind};
 
 /// Type alias for the response future returned by middleware handlers.
 pub type ResponseFuture<'a> = Pin<Box<dyn Future<Output = Result<Response, Error>> + Send + 'a>>;
@@ -139,20 +135,12 @@ pub struct Request {
 impl Request {
     /// Create a new request.
     pub fn new(operation: impl Into<String>) -> Self {
-        Self {
-            operation: operation.into(),
-            metadata: RequestMetadata::default(),
-            body: Vec::new(),
-        }
+        Self { operation: operation.into(), metadata: RequestMetadata::default(), body: Vec::new() }
     }
 
     /// Create a new request with body.
     pub fn with_body(operation: impl Into<String>, body: Vec<u8>) -> Self {
-        Self {
-            operation: operation.into(),
-            metadata: RequestMetadata::default(),
-            body,
-        }
+        Self { operation: operation.into(), metadata: RequestMetadata::default(), body }
     }
 
     /// Get the operation name.
@@ -379,19 +367,13 @@ impl TraceContext {
 
     fn random_trace_id() -> String {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         format!("{:032x}", now)
     }
 
     fn random_span_id() -> String {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         format!("{:016x}", now & 0xFFFFFFFFFFFFFFFF)
     }
 }
@@ -424,18 +406,12 @@ pub struct Response {
 impl Response {
     /// Create a new successful response.
     pub fn ok(body: Vec<u8>) -> Self {
-        Self {
-            metadata: ResponseMetadata::success(),
-            body,
-        }
+        Self { metadata: ResponseMetadata::success(), body }
     }
 
     /// Create a new error response.
     pub fn error(kind: ErrorKind, body: Vec<u8>) -> Self {
-        Self {
-            metadata: ResponseMetadata::error(kind),
-            body,
-        }
+        Self { metadata: ResponseMetadata::error(kind), body }
     }
 
     /// Check if the response indicates success.
@@ -496,20 +472,12 @@ pub struct ResponseMetadata {
 impl ResponseMetadata {
     /// Create successful response metadata.
     pub fn success() -> Self {
-        Self {
-            status: ResponseStatus::Success,
-            headers: HashMap::new(),
-            request_id: None,
-        }
+        Self { status: ResponseStatus::Success, headers: HashMap::new(), request_id: None }
     }
 
     /// Create error response metadata.
     pub fn error(kind: ErrorKind) -> Self {
-        Self {
-            status: ResponseStatus::Error(kind),
-            headers: HashMap::new(),
-            request_id: None,
-        }
+        Self { status: ResponseStatus::Error(kind), headers: HashMap::new(), request_id: None }
     }
 }
 
@@ -569,9 +537,7 @@ impl<'a> Next<'a> {
         F: FnOnce(Request) -> Fut + Send + 'a,
         Fut: Future<Output = Result<Response, Error>> + Send + 'a,
     {
-        Self {
-            inner: Box::new(move |req| Box::pin(f(req))),
-        }
+        Self { inner: Box::new(move |req| Box::pin(f(req))) }
     }
 
     /// Call the next middleware or transport.
@@ -594,9 +560,7 @@ pub struct MiddlewareStack {
 impl MiddlewareStack {
     /// Create a new empty middleware stack.
     pub fn new() -> Self {
-        Self {
-            middlewares: Vec::new(),
-        }
+        Self { middlewares: Vec::new() }
     }
 
     /// Add a middleware to the stack.
@@ -673,9 +637,7 @@ impl Default for MiddlewareStack {
 
 impl fmt::Debug for MiddlewareStack {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("MiddlewareStack")
-            .field("len", &self.middlewares.len())
-            .finish()
+        f.debug_struct("MiddlewareStack").field("len", &self.middlewares.len()).finish()
     }
 }
 
@@ -697,9 +659,12 @@ impl Middleware for PassthroughMiddleware {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
 
     #[test]
     fn test_request_creation() {
@@ -719,14 +684,9 @@ mod tests {
 
     #[test]
     fn test_request_builder_pattern() {
-        let req = Request::new("check")
-            .header("X-Custom", "value")
-            .request_id("req-123");
+        let req = Request::new("check").header("X-Custom", "value").request_id("req-123");
 
-        assert_eq!(
-            req.metadata().headers.get("X-Custom"),
-            Some(&"value".to_string())
-        );
+        assert_eq!(req.metadata().headers.get("X-Custom"), Some(&"value".to_string()));
         assert_eq!(req.metadata().request_id, Some("req-123".to_string()));
     }
 
@@ -747,10 +707,7 @@ mod tests {
     fn test_response_error() {
         let resp = Response::error(ErrorKind::Unauthorized, vec![]);
         assert!(!resp.is_ok());
-        assert_eq!(
-            resp.metadata().status.error_kind(),
-            Some(ErrorKind::Unauthorized)
-        );
+        assert_eq!(resp.metadata().status.error_kind(), Some(ErrorKind::Unauthorized));
     }
 
     #[test]
@@ -800,20 +757,15 @@ mod tests {
         .unwrap();
 
         let (traceparent, tracestate) = ctx.to_headers();
-        assert_eq!(
-            traceparent,
-            "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
-        );
+        assert_eq!(traceparent, "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
         assert_eq!(tracestate, Some("congo=t61rcWkgMzE".to_string()));
     }
 
     #[test]
     fn test_trace_context_child() {
-        let parent = TraceContext::parse(
-            "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
-            None,
-        )
-        .unwrap();
+        let parent =
+            TraceContext::parse("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01", None)
+                .unwrap();
 
         let child = parent.child();
         assert_eq!(child.trace_id, parent.trace_id);
@@ -835,16 +787,11 @@ mod tests {
 
     #[test]
     fn test_trace_context_display() {
-        let ctx = TraceContext::parse(
-            "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
-            None,
-        )
-        .unwrap();
+        let ctx =
+            TraceContext::parse("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01", None)
+                .unwrap();
 
-        assert_eq!(
-            format!("{}", ctx),
-            "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
-        );
+        assert_eq!(format!("{}", ctx), "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
     }
 
     #[test]
@@ -856,11 +803,10 @@ mod tests {
         assert!(TraceContext::parse("00-abc-def-01", None).is_err());
 
         // Invalid version
-        assert!(TraceContext::parse(
-            "zz-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
-            None
-        )
-        .is_err());
+        assert!(
+            TraceContext::parse("zz-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01", None)
+                .is_err()
+        );
     }
 
     #[test]
@@ -892,9 +838,7 @@ mod tests {
 
     #[test]
     fn test_middleware_stack_with() {
-        let stack = MiddlewareStack::new()
-            .with(PassthroughMiddleware)
-            .with(PassthroughMiddleware);
+        let stack = MiddlewareStack::new().with(PassthroughMiddleware).with(PassthroughMiddleware);
         assert_eq!(stack.len(), 2);
     }
 
@@ -914,10 +858,8 @@ mod tests {
         let stack = MiddlewareStack::new().with(PassthroughMiddleware);
         let req = Request::new("test");
 
-        let resp = stack
-            .process(req, |_| async { Ok(Response::ok(b"done".to_vec())) })
-            .await
-            .unwrap();
+        let resp =
+            stack.process(req, |_| async { Ok(Response::ok(b"done".to_vec())) }).await.unwrap();
 
         assert!(resp.is_ok());
         assert_eq!(resp.body(), b"done");
@@ -934,9 +876,7 @@ mod tests {
                 next: Next<'a>,
             ) -> Pin<Box<dyn Future<Output = Result<Response, Error>> + Send + 'a>> {
                 Box::pin(async move {
-                    req.metadata_mut()
-                        .headers
-                        .insert("X-Added".to_string(), "true".to_string());
+                    req.metadata_mut().headers.insert("X-Added".to_string(), "true".to_string());
                     next.call(req).await
                 })
             }
@@ -946,10 +886,7 @@ mod tests {
         let req = Request::new("test");
         let next = Next::new(|req| async move {
             // Verify the header was added
-            assert_eq!(
-                req.metadata().headers.get("X-Added"),
-                Some(&"true".to_string())
-            );
+            assert_eq!(req.metadata().headers.get("X-Added"), Some(&"true".to_string()));
             Ok(Response::ok(vec![]))
         });
 
@@ -981,10 +918,7 @@ mod tests {
         let next = Next::new(|_| async { Ok(Response::ok(vec![])) });
 
         let resp = middleware.handle(req, next).await.unwrap();
-        assert_eq!(
-            resp.metadata().headers.get("X-Response"),
-            Some(&"added".to_string())
-        );
+        assert_eq!(resp.metadata().headers.get("X-Response"), Some(&"added".to_string()));
     }
 
     #[tokio::test]
@@ -1033,9 +967,7 @@ mod tests {
         }
 
         let call_count = Arc::new(AtomicUsize::new(0));
-        let middleware = TimingMiddleware {
-            call_count: call_count.clone(),
-        };
+        let middleware = TimingMiddleware { call_count: call_count.clone() };
 
         let req = Request::new("test");
         let next = Next::new(|_| async { Ok(Response::ok(vec![])) });
@@ -1055,23 +987,15 @@ mod tests {
     #[test]
     fn test_request_metadata_mut() {
         let mut req = Request::new("check");
-        req.metadata_mut()
-            .headers
-            .insert("X-Custom".to_string(), "value".to_string());
-        assert_eq!(
-            req.metadata().headers.get("X-Custom"),
-            Some(&"value".to_string())
-        );
+        req.metadata_mut().headers.insert("X-Custom".to_string(), "value".to_string());
+        assert_eq!(req.metadata().headers.get("X-Custom"), Some(&"value".to_string()));
     }
 
     #[test]
     fn test_request_trace_context() {
         let ctx = TraceContext::new();
         let req = Request::new("check").trace_context(ctx.clone());
-        assert_eq!(
-            req.metadata().trace_context.as_ref().unwrap().trace_id,
-            ctx.trace_id
-        );
+        assert_eq!(req.metadata().trace_context.as_ref().unwrap().trace_id, ctx.trace_id);
     }
 
     #[test]
@@ -1084,10 +1008,7 @@ mod tests {
     #[test]
     fn test_response_header() {
         let resp = Response::ok(vec![]).header("X-Custom", "value");
-        assert_eq!(
-            resp.metadata().headers.get("X-Custom"),
-            Some(&"value".to_string())
-        );
+        assert_eq!(resp.metadata().headers.get("X-Custom"), Some(&"value".to_string()));
     }
 
     #[test]
@@ -1099,22 +1020,14 @@ mod tests {
     #[test]
     fn test_response_metadata_mut() {
         let mut resp = Response::ok(vec![]);
-        resp.metadata_mut()
-            .headers
-            .insert("X-Custom".to_string(), "value".to_string());
-        assert_eq!(
-            resp.metadata().headers.get("X-Custom"),
-            Some(&"value".to_string())
-        );
+        resp.metadata_mut().headers.insert("X-Custom".to_string(), "value".to_string());
+        assert_eq!(resp.metadata().headers.get("X-Custom"), Some(&"value".to_string()));
     }
 
     #[test]
     fn test_response_status_display() {
         assert_eq!(format!("{}", ResponseStatus::Success), "Success");
-        assert_eq!(
-            format!("{}", ResponseStatus::Error(ErrorKind::Timeout)),
-            "Error(Timeout)"
-        );
+        assert_eq!(format!("{}", ResponseStatus::Error(ErrorKind::Timeout)), "Error(Timeout)");
     }
 
     #[test]
@@ -1210,31 +1123,22 @@ mod tests {
     #[test]
     fn test_trace_context_parse_invalid_flags() {
         // Invalid flags
-        let result = TraceContext::parse(
-            "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-zz",
-            None,
-        );
+        let result =
+            TraceContext::parse("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-zz", None);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_request_clone() {
-        let req = Request::new("check")
-            .header("X-Custom", "value")
-            .request_id("req-123");
+        let req = Request::new("check").header("X-Custom", "value").request_id("req-123");
         let cloned = req.clone();
         assert_eq!(cloned.operation(), "check");
-        assert_eq!(
-            cloned.metadata().headers.get("X-Custom"),
-            Some(&"value".to_string())
-        );
+        assert_eq!(cloned.metadata().headers.get("X-Custom"), Some(&"value".to_string()));
     }
 
     #[test]
     fn test_response_clone() {
-        let resp = Response::ok(b"data".to_vec())
-            .header("X-Custom", "value")
-            .request_id("req-123");
+        let resp = Response::ok(b"data".to_vec()).header("X-Custom", "value").request_id("req-123");
         let cloned = resp.clone();
         assert!(cloned.is_ok());
         assert_eq!(cloned.body(), b"data");
@@ -1249,9 +1153,8 @@ mod tests {
 
     #[test]
     fn test_request_metadata_clone() {
-        let metadata = RequestMetadata::new()
-            .with_header("X-Custom", "value")
-            .with_request_id("req-123");
+        let metadata =
+            RequestMetadata::new().with_header("X-Custom", "value").with_request_id("req-123");
         let cloned = metadata.clone();
         assert_eq!(cloned.headers.get("X-Custom"), Some(&"value".to_string()));
     }
@@ -1261,10 +1164,8 @@ mod tests {
         let stack = MiddlewareStack::new();
         let req = Request::new("test");
 
-        let resp = stack
-            .process(req, |_| async { Ok(Response::ok(b"done".to_vec())) })
-            .await
-            .unwrap();
+        let resp =
+            stack.process(req, |_| async { Ok(Response::ok(b"done".to_vec())) }).await.unwrap();
 
         assert!(resp.is_ok());
         assert_eq!(resp.body(), b"done");
@@ -1276,9 +1177,7 @@ mod tests {
         let req = Request::new("test");
 
         let result = stack
-            .process(req, |_| async {
-                Err(Error::new(ErrorKind::Timeout, "timed out"))
-            })
+            .process(req, |_| async { Err(Error::new(ErrorKind::Timeout, "timed out")) })
             .await;
 
         assert!(result.is_err());

@@ -3,7 +3,8 @@
 //! [`VaultClient`] provides the primary API for authorization checks:
 //!
 //! - [`check()`](VaultClient::check): Check if a subject has permission on a resource
-//! - [`explain_permission()`](VaultClient::explain_permission): Explain why access is allowed/denied
+//! - [`explain_permission()`](VaultClient::explain_permission): Explain why access is
+//!   allowed/denied
 //! - [`simulate()`](VaultClient::simulate): Test hypothetical changes
 //! - [`watch()`](VaultClient::watch): Subscribe to relationship changes
 //! - [`relationships()`](VaultClient::relationships): Manage relationships

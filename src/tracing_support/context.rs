@@ -110,13 +110,7 @@ impl TraceContext {
         let span_id = SpanId::from_hex(parts[2])?;
         let flags = TraceFlags::from_hex(parts[3])?;
 
-        Ok(Self {
-            trace_id,
-            span_id,
-            parent_span_id: None,
-            flags,
-            tracestate: None,
-        })
+        Ok(Self { trace_id, span_id, parent_span_id: None, flags, tracestate: None })
     }
 
     /// Returns the traceparent header value.
@@ -390,10 +384,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(
-            ctx.trace_id().to_string(),
-            "4bf92f3577b34da6a3ce929d0e0e4736"
-        );
+        assert_eq!(ctx.trace_id().to_string(), "4bf92f3577b34da6a3ce929d0e0e4736");
         assert_eq!(ctx.span_id().to_string(), "00f067aa0ba902b7");
         assert!(ctx.is_sampled());
     }
@@ -405,10 +396,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(
-            ctx.to_traceparent(),
-            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-        );
+        assert_eq!(ctx.to_traceparent(), "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
     }
 
     #[test]
@@ -498,10 +486,7 @@ mod tests {
         )
         .unwrap();
         let display = format!("{}", ctx);
-        assert_eq!(
-            display,
-            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-        );
+        assert_eq!(display, "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
     }
 
     #[test]
@@ -626,26 +611,14 @@ mod tests {
 
     #[test]
     fn test_trace_context_error_display() {
-        assert_eq!(
-            TraceContextError::InvalidFormat.to_string(),
-            "invalid traceparent format"
-        );
+        assert_eq!(TraceContextError::InvalidFormat.to_string(), "invalid traceparent format");
         assert_eq!(
             TraceContextError::UnsupportedVersion.to_string(),
             "unsupported trace context version"
         );
-        assert_eq!(
-            TraceContextError::InvalidTraceId.to_string(),
-            "invalid trace ID"
-        );
-        assert_eq!(
-            TraceContextError::InvalidSpanId.to_string(),
-            "invalid span ID"
-        );
-        assert_eq!(
-            TraceContextError::InvalidFlags.to_string(),
-            "invalid trace flags"
-        );
+        assert_eq!(TraceContextError::InvalidTraceId.to_string(), "invalid trace ID");
+        assert_eq!(TraceContextError::InvalidSpanId.to_string(), "invalid span ID");
+        assert_eq!(TraceContextError::InvalidFlags.to_string(), "invalid trace flags");
     }
 
     #[test]

@@ -35,7 +35,8 @@
 //!
 //! - **Client Hierarchy**: `Client` → `OrganizationClient` → `VaultClient`
 //! - **Argument Order**: `check(subject, permission, resource)` - "Can subject do X to resource?"
-//! - **Relationship Order**: `Relationship::new(resource, relation, subject)` - "resource has relation subject"
+//! - **Relationship Order**: `Relationship::new(resource, relation, subject)` - "resource has
+//!   relation subject"
 //! - **Denial ≠ Error**: `check()` returns `Ok(false)` for denied access, not `Err`
 //!
 //! ## Features
@@ -105,37 +106,33 @@ pub mod wasm;
 pub mod prelude;
 
 // Re-export main types at crate root for convenience
-pub use client::{
-    Client, ClientBuilder, ComponentHealth, HealthResponse, HealthStatus, ReadinessCriteria,
-    ShutdownGuard, ShutdownHandle,
-};
-pub use error::{AccessDenied, Error, ErrorKind};
-pub use types::{
-    ConsistencyToken, Context, ContextValue, Decision, DecisionMetadata, DecisionReason, EntityRef,
-    ParseError, Relationship, Resource, Subject, SubjectRef,
-};
-pub use vault::VaultClient;
-
 // Re-export auth types
 pub use auth::{
     BearerCredentialsConfig, ClientCredentialsConfig, Credentials, CredentialsProvider,
     Ed25519PrivateKey,
 };
-
+pub use client::{
+    Client, ClientBuilder, ComponentHealth, HealthResponse, HealthStatus, ReadinessCriteria,
+    ShutdownGuard, ShutdownHandle,
+};
 // Re-export config types
 pub use config::{
     CacheConfig, CircuitBreakerConfig, CircuitEvent, CircuitState, CircuitStats, DegradationConfig,
     FailureMode, FailurePredicate, RetryConfig, TlsConfig,
 };
-
+pub use error::{AccessDenied, Error, ErrorKind};
+// Testing support
+pub use testing::{AuthorizationClient, InMemoryClient, MockClient};
 // Re-export transport types
 pub use transport::{
     FallbackReason, FallbackTrigger, GrpcStats, PoolConfig, RestStats, Transport, TransportEvent,
     TransportStats, TransportStrategy,
 };
-
-// Testing support
-pub use testing::{AuthorizationClient, InMemoryClient, MockClient};
+pub use types::{
+    ConsistencyToken, Context, ContextValue, Decision, DecisionMetadata, DecisionReason, EntityRef,
+    ParseError, Relationship, Resource, Subject, SubjectRef,
+};
+pub use vault::VaultClient;
 
 // Re-export derive macros when feature is enabled
 #[cfg(feature = "derive")]

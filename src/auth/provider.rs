@@ -1,8 +1,6 @@
 //! Credentials provider trait for dynamic credential management.
 
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
+use std::{future::Future, pin::Pin, sync::Arc};
 
 use crate::Error;
 
@@ -164,9 +162,7 @@ pub struct StaticTokenProvider {
 impl StaticTokenProvider {
     /// Creates a new static token provider.
     pub fn new(token: impl Into<String>) -> Self {
-        Self {
-            token: Arc::from(token.into()),
-        }
+        Self { token: Arc::from(token.into()) }
     }
 }
 
@@ -226,17 +222,13 @@ mod tests {
 
     impl CustomProvider {
         fn new() -> Self {
-            Self {
-                counter: std::sync::atomic::AtomicU32::new(0),
-            }
+            Self { counter: std::sync::atomic::AtomicU32::new(0) }
         }
     }
 
     impl CredentialsProvider for CustomProvider {
         fn get_token(&self) -> CredentialsFuture<'_> {
-            let count = self
-                .counter
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let count = self.counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Box::pin(async move { Ok(format!("token_{}", count)) })
         }
 
@@ -253,10 +245,7 @@ mod tests {
     async fn test_custom_provider() {
         let provider = CustomProvider::new();
         assert!(provider.supports_refresh());
-        assert_eq!(
-            provider.refresh_hint(),
-            Some(std::time::Duration::from_secs(300))
-        );
+        assert_eq!(provider.refresh_hint(), Some(std::time::Duration::from_secs(300)));
 
         let token1 = provider.get_token().await.unwrap();
         let token2 = provider.get_token().await.unwrap();
@@ -269,10 +258,7 @@ mod tests {
         let provider: Arc<dyn CredentialsProvider> = Arc::new(CustomProvider::new());
         // Test that Arc properly delegates all methods
         assert!(provider.supports_refresh());
-        assert_eq!(
-            provider.refresh_hint(),
-            Some(std::time::Duration::from_secs(300))
-        );
+        assert_eq!(provider.refresh_hint(), Some(std::time::Duration::from_secs(300)));
         let token = provider.get_token().await.unwrap();
         assert_eq!(token, "token_0");
     }
@@ -282,10 +268,7 @@ mod tests {
         let provider: Box<dyn CredentialsProvider> = Box::new(CustomProvider::new());
         // Test that Box properly delegates all methods
         assert!(provider.supports_refresh());
-        assert_eq!(
-            provider.refresh_hint(),
-            Some(std::time::Duration::from_secs(300))
-        );
+        assert_eq!(provider.refresh_hint(), Some(std::time::Duration::from_secs(300)));
         let token = provider.get_token().await.unwrap();
         assert_eq!(token, "token_0");
     }

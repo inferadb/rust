@@ -1,9 +1,8 @@
 //! Ed25519 private key handling for JWT signing.
 
-use std::fmt;
-use std::path::Path;
+use std::{fmt, path::Path};
 
-use ed25519_dalek::{SigningKey, SECRET_KEY_LENGTH};
+use ed25519_dalek::{SECRET_KEY_LENGTH, SigningKey};
 use zeroize::Zeroizing;
 
 use crate::Error;
@@ -74,9 +73,7 @@ impl Ed25519PrivateKey {
     /// ```
     pub fn generate() -> Self {
         let mut csprng = rand::rngs::OsRng;
-        Self {
-            key: SigningKey::generate(&mut csprng),
-        }
+        Self { key: SigningKey::generate(&mut csprng) }
     }
 
     /// Creates a key from raw bytes.
@@ -111,9 +108,7 @@ impl Ed25519PrivateKey {
         // Wrap in Zeroizing for secure cleanup
         let zeroizing_bytes = Zeroizing::new(key_bytes);
 
-        Ok(Self {
-            key: SigningKey::from_bytes(&zeroizing_bytes),
-        })
+        Ok(Self { key: SigningKey::from_bytes(&zeroizing_bytes) })
     }
 
     /// Creates a key from a hex-encoded string.

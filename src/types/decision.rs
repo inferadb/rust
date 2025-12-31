@@ -1,7 +1,6 @@
 //! Decision types for authorization check results.
 
-use std::fmt;
-use std::time::Duration;
+use std::{fmt, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
@@ -70,11 +69,7 @@ impl fmt::Display for DecisionReason {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DecisionMetadata {
     /// Time taken to evaluate the authorization check.
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        with = "duration_millis",
-        default
-    )]
+    #[serde(skip_serializing_if = "Option::is_none", with = "duration_millis", default)]
     pub evaluation_time: Option<Duration>,
 
     /// The reason for the decision.
@@ -200,11 +195,7 @@ pub struct Decision {
 impl Decision {
     /// Creates a new decision with the given result.
     pub fn new(allowed: bool) -> Self {
-        Self {
-            allowed,
-            metadata: None,
-            consistency_token: None,
-        }
+        Self { allowed, metadata: None, consistency_token: None }
     }
 
     /// Creates an "allowed" decision.
@@ -316,8 +307,9 @@ impl fmt::Display for Decision {
 
 // Custom serialization for Duration as milliseconds
 mod duration_millis {
-    use serde::{Deserialize, Deserializer, Serializer};
     use std::time::Duration;
+
+    use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S>(duration: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -414,10 +406,7 @@ mod tests {
 
         let allowed_with_reason = Decision::allowed()
             .with_metadata(DecisionMetadata::new().with_reason(DecisionReason::DirectRelationship));
-        assert_eq!(
-            allowed_with_reason.to_string(),
-            "allowed (direct relationship)"
-        );
+        assert_eq!(allowed_with_reason.to_string(), "allowed (direct relationship)");
 
         let denied_with_reason = Decision::denied()
             .with_metadata(DecisionMetadata::new().with_reason(DecisionReason::NoRelationship));
@@ -426,27 +415,12 @@ mod tests {
 
     #[test]
     fn test_decision_reason_display() {
-        assert_eq!(
-            DecisionReason::DirectRelationship.to_string(),
-            "direct relationship"
-        );
-        assert_eq!(
-            DecisionReason::InheritedRelationship.to_string(),
-            "inherited relationship"
-        );
-        assert_eq!(
-            DecisionReason::ComputedPermission.to_string(),
-            "computed permission"
-        );
+        assert_eq!(DecisionReason::DirectRelationship.to_string(), "direct relationship");
+        assert_eq!(DecisionReason::InheritedRelationship.to_string(), "inherited relationship");
+        assert_eq!(DecisionReason::ComputedPermission.to_string(), "computed permission");
         assert_eq!(DecisionReason::ConditionMet.to_string(), "condition met");
-        assert_eq!(
-            DecisionReason::NoRelationship.to_string(),
-            "no relationship"
-        );
-        assert_eq!(
-            DecisionReason::ConditionNotMet.to_string(),
-            "condition not met"
-        );
+        assert_eq!(DecisionReason::NoRelationship.to_string(), "no relationship");
+        assert_eq!(DecisionReason::ConditionNotMet.to_string(), "condition not met");
         assert_eq!(DecisionReason::ExplicitDeny.to_string(), "explicit deny");
         assert_eq!(DecisionReason::Unknown.to_string(), "unknown");
     }
@@ -505,20 +479,15 @@ mod tests {
 
     #[test]
     fn test_decision_request_id_some() {
-        let metadata = DecisionMetadata {
-            request_id: Some("req_123".to_string()),
-            ..Default::default()
-        };
+        let metadata =
+            DecisionMetadata { request_id: Some("req_123".to_string()), ..Default::default() };
         let decision = Decision::allowed().with_metadata(metadata);
         assert_eq!(decision.request_id(), Some("req_123"));
     }
 
     #[test]
     fn test_decision_request_id_metadata_without_id() {
-        let metadata = DecisionMetadata {
-            request_id: None,
-            ..Default::default()
-        };
+        let metadata = DecisionMetadata { request_id: None, ..Default::default() };
         let decision = Decision::allowed().with_metadata(metadata);
         assert!(decision.request_id().is_none());
     }

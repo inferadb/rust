@@ -5,9 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::client::Client;
-use crate::control::Page;
-use crate::Error;
+use crate::{Error, client::Client, control::Page};
 
 /// Client for managing the current user's account.
 ///
@@ -55,9 +53,7 @@ impl AccountClient {
     /// Requires the `rest` feature to be enabled.
     #[cfg(not(feature = "rest"))]
     pub async fn get(&self) -> Result<Account, Error> {
-        Err(Error::configuration(
-            "REST feature is required for account API",
-        ))
+        Err(Error::configuration("REST feature is required for account API"))
     }
 
     /// Updates the current user's account.
@@ -72,11 +68,7 @@ impl AccountClient {
     pub async fn update(&self, request: UpdateAccountRequest) -> Result<Account, Error> {
         #[cfg(feature = "rest")]
         {
-            return self
-                .client
-                .inner()
-                .control_patch("/control/v1/users/me", &request)
-                .await;
+            return self.client.inner().control_patch("/control/v1/users/me", &request).await;
         }
         #[cfg(not(feature = "rest"))]
         {
@@ -87,16 +79,12 @@ impl AccountClient {
 
     /// Returns a client for managing email addresses.
     pub fn emails(&self) -> EmailsClient {
-        EmailsClient {
-            client: self.client.clone(),
-        }
+        EmailsClient { client: self.client.clone() }
     }
 
     /// Returns a client for managing sessions.
     pub fn sessions(&self) -> SessionsClient {
-        SessionsClient {
-            client: self.client.clone(),
-        }
+        SessionsClient { client: self.client.clone() }
     }
 
     /// Changes the account password.
@@ -115,11 +103,8 @@ impl AccountClient {
         #[cfg(feature = "rest")]
         {
             // Password changes may return an empty response or the updated account
-            let _: serde_json::Value = self
-                .client
-                .inner()
-                .control_post("/control/v1/users/me/password", &request)
-                .await?;
+            let _: serde_json::Value =
+                self.client.inner().control_post("/control/v1/users/me/password", &request).await?;
             Ok(())
         }
         #[cfg(not(feature = "rest"))]
@@ -227,10 +212,7 @@ pub struct ChangePasswordRequest {
 impl ChangePasswordRequest {
     /// Creates a new password change request.
     pub fn new(current_password: impl Into<String>, new_password: impl Into<String>) -> Self {
-        Self {
-            current_password: current_password.into(),
-            new_password: new_password.into(),
-        }
+        Self { current_password: current_password.into(), new_password: new_password.into() }
     }
 }
 
@@ -267,11 +249,7 @@ impl EmailsClient {
     pub async fn list(&self) -> Result<Page<Email>, Error> {
         #[cfg(feature = "rest")]
         {
-            return self
-                .client
-                .inner()
-                .control_get("/control/v1/users/emails")
-                .await;
+            return self.client.inner().control_get("/control/v1/users/emails").await;
         }
         #[cfg(not(feature = "rest"))]
         Err(Error::configuration("REST feature is required"))
@@ -298,10 +276,7 @@ impl EmailsClient {
             return self
                 .client
                 .inner()
-                .control_post(
-                    "/control/v1/users/emails",
-                    &AddEmailRequest { email: address },
-                )
+                .control_post("/control/v1/users/emails", &AddEmailRequest { email: address })
                 .await;
         }
         #[cfg(not(feature = "rest"))]
@@ -439,11 +414,7 @@ impl SessionsClient {
     pub async fn list(&self) -> Result<Page<Session>, Error> {
         #[cfg(feature = "rest")]
         {
-            return self
-                .client
-                .inner()
-                .control_get("/control/v1/users/sessions")
-                .await;
+            return self.client.inner().control_get("/control/v1/users/sessions").await;
         }
         #[cfg(not(feature = "rest"))]
         Err(Error::configuration("REST feature is required"))
@@ -525,10 +496,10 @@ impl std::fmt::Debug for SessionsClient {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::transport::mock::MockTransport;
     use std::sync::Arc;
+
+    use super::*;
+    use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
     async fn create_test_client() -> Client {
         let mock_transport = Arc::new(MockTransport::new());
@@ -556,10 +527,7 @@ mod tests {
     fn test_account_status_display() {
         assert_eq!(AccountStatus::Active.to_string(), "active");
         assert_eq!(AccountStatus::Suspended.to_string(), "suspended");
-        assert_eq!(
-            AccountStatus::PendingVerification.to_string(),
-            "pending_verification"
-        );
+        assert_eq!(AccountStatus::PendingVerification.to_string(), "pending_verification");
     }
 
     #[test]
@@ -742,11 +710,13 @@ mod tests {
 #[cfg(test)]
 #[cfg(feature = "rest")]
 mod wiremock_tests {
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+
     use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::Client;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use crate::{Client, auth::BearerCredentialsConfig};
 
     async fn create_mock_client(server: &MockServer) -> Client {
         Client::builder()

@@ -2,9 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::client::Client;
-use crate::control::{Page, SortOrder};
-use crate::Error;
+use crate::{
+    Error,
+    client::Client,
+    control::{Page, SortOrder},
+};
 
 /// Client for team management operations.
 ///
@@ -33,10 +35,7 @@ pub struct TeamsClient {
 impl TeamsClient {
     /// Creates a new teams client.
     pub(crate) fn new(client: Client, organization_id: impl Into<String>) -> Self {
-        Self {
-            client,
-            organization_id: organization_id.into(),
-        }
+        Self { client, organization_id: organization_id.into() }
     }
 
     /// Returns the organization ID.
@@ -82,9 +81,7 @@ impl TeamsClient {
     /// Creates a new team.
     #[cfg(not(feature = "rest"))]
     pub async fn create(&self, _request: CreateTeamRequest) -> Result<TeamInfo, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Gets a team by ID.
@@ -96,20 +93,15 @@ impl TeamsClient {
     /// ```
     #[cfg(feature = "rest")]
     pub async fn get(&self, team_id: impl Into<String>) -> Result<TeamInfo, Error> {
-        let path = format!(
-            "/control/v1/organizations/{}/teams/{}",
-            self.organization_id,
-            team_id.into()
-        );
+        let path =
+            format!("/control/v1/organizations/{}/teams/{}", self.organization_id, team_id.into());
         self.client.inner().control_get(&path).await
     }
 
     /// Gets a team by ID.
     #[cfg(not(feature = "rest"))]
     pub async fn get(&self, _team_id: impl Into<String>) -> Result<TeamInfo, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Updates a team.
@@ -127,11 +119,8 @@ impl TeamsClient {
         team_id: impl Into<String>,
         request: UpdateTeamRequest,
     ) -> Result<TeamInfo, Error> {
-        let path = format!(
-            "/control/v1/organizations/{}/teams/{}",
-            self.organization_id,
-            team_id.into()
-        );
+        let path =
+            format!("/control/v1/organizations/{}/teams/{}", self.organization_id, team_id.into());
         self.client.inner().control_patch(&path, &request).await
     }
 
@@ -142,9 +131,7 @@ impl TeamsClient {
         _team_id: impl Into<String>,
         _request: UpdateTeamRequest,
     ) -> Result<TeamInfo, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Deletes a team.
@@ -156,20 +143,15 @@ impl TeamsClient {
     /// ```
     #[cfg(feature = "rest")]
     pub async fn delete(&self, team_id: impl Into<String>) -> Result<(), Error> {
-        let path = format!(
-            "/control/v1/organizations/{}/teams/{}",
-            self.organization_id,
-            team_id.into()
-        );
+        let path =
+            format!("/control/v1/organizations/{}/teams/{}", self.organization_id, team_id.into());
         self.client.inner().control_delete(&path).await
     }
 
     /// Deletes a team.
     #[cfg(not(feature = "rest"))]
     pub async fn delete(&self, _team_id: impl Into<String>) -> Result<(), Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Adds a member to a team.
@@ -194,13 +176,8 @@ impl TeamsClient {
             self.organization_id,
             team_id.into()
         );
-        let body = AddMemberBody {
-            user_id: user_id.into(),
-        };
-        self.client
-            .inner()
-            .control_post::<_, ()>(&path, &body)
-            .await
+        let body = AddMemberBody { user_id: user_id.into() };
+        self.client.inner().control_post::<_, ()>(&path, &body).await
     }
 
     /// Adds a member to a team.
@@ -210,9 +187,7 @@ impl TeamsClient {
         _team_id: impl Into<String>,
         _user_id: impl Into<String>,
     ) -> Result<(), Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Removes a member from a team.
@@ -244,9 +219,7 @@ impl TeamsClient {
         _team_id: impl Into<String>,
         _user_id: impl Into<String>,
     ) -> Result<(), Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Lists members of a team.
@@ -347,10 +320,7 @@ pub struct CreateTeamRequest {
 impl CreateTeamRequest {
     /// Creates a new request with the given name.
     pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            description: None,
-        }
+        Self { name: name.into(), description: None }
     }
 
     /// Sets the description.
@@ -447,9 +417,7 @@ impl ListTeamsRequest {
 
     #[cfg(not(feature = "rest"))]
     async fn execute(self) -> Result<Page<TeamInfo>, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 }
 
@@ -511,9 +479,7 @@ impl ListTeamMembersRequest {
 
     #[cfg(not(feature = "rest"))]
     async fn execute(self) -> Result<Page<TeamMemberInfo>, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 }
 
@@ -528,10 +494,10 @@ impl std::future::IntoFuture for ListTeamMembersRequest {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::transport::mock::MockTransport;
     use std::sync::Arc;
+
+    use super::*;
+    use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
     async fn create_test_client() -> Client {
         let mock_transport = Arc::new(MockTransport::new());
@@ -561,9 +527,8 @@ mod tests {
 
     #[test]
     fn test_update_team_request() {
-        let req = UpdateTeamRequest::new()
-            .with_name("New Name")
-            .with_description("New description");
+        let req =
+            UpdateTeamRequest::new().with_name("New Name").with_description("New description");
 
         assert_eq!(req.name, Some("New Name".to_string()));
         assert_eq!(req.description, Some("New description".to_string()));
@@ -591,11 +556,7 @@ mod tests {
         let teams = TeamsClient::new(client, "org_test");
 
         // Test all builder methods
-        let _request = teams
-            .list()
-            .limit(50)
-            .cursor("cursor_xyz")
-            .sort(SortOrder::Descending);
+        let _request = teams.list().limit(50).cursor("cursor_xyz").sort(SortOrder::Descending);
 
         // Just verify the builder compiles and returns a request
     }
@@ -606,10 +567,7 @@ mod tests {
         let teams = TeamsClient::new(client, "org_test");
 
         // Test all builder methods
-        let _request = teams
-            .list_members("team_abc123")
-            .limit(50)
-            .cursor("cursor_xyz");
+        let _request = teams.list_members("team_abc123").limit(50).cursor("cursor_xyz");
 
         // Just verify the builder compiles and returns a request
     }
@@ -719,11 +677,13 @@ mod tests {
 
 #[cfg(all(test, feature = "rest"))]
 mod wiremock_tests {
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+
     use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::Client;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use crate::{Client, auth::BearerCredentialsConfig};
 
     async fn create_mock_client(server: &MockServer) -> Client {
         Client::builder()
@@ -791,12 +751,7 @@ mod wiremock_tests {
 
         let client = create_mock_client(&server).await;
         let teams = TeamsClient::new(client, "org_123");
-        let result = teams
-            .list()
-            .limit(10)
-            .cursor("cursor_abc")
-            .sort(SortOrder::Descending)
-            .await;
+        let result = teams.list().limit(10).cursor("cursor_abc").sort(SortOrder::Descending).await;
 
         assert!(result.is_ok());
     }
@@ -821,9 +776,8 @@ mod wiremock_tests {
 
         let client = create_mock_client(&server).await;
         let teams = TeamsClient::new(client, "org_123");
-        let result = teams
-            .create(CreateTeamRequest::new("New Team").with_description("A new team"))
-            .await;
+        let result =
+            teams.create(CreateTeamRequest::new("New Team").with_description("A new team")).await;
 
         assert!(result.is_ok());
         let team = result.unwrap();
@@ -877,12 +831,8 @@ mod wiremock_tests {
 
         let client = create_mock_client(&server).await;
         let teams = TeamsClient::new(client, "org_123");
-        let result = teams
-            .update(
-                "team_abc",
-                UpdateTeamRequest::new().with_name("Updated Team"),
-            )
-            .await;
+        let result =
+            teams.update("team_abc", UpdateTeamRequest::new().with_name("Updated Team")).await;
 
         assert!(result.is_ok());
         let team = result.unwrap();
@@ -911,9 +861,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
-            .and(path(
-                "/control/v1/organizations/org_123/teams/team_abc/members",
-            ))
+            .and(path("/control/v1/organizations/org_123/teams/team_abc/members"))
             .respond_with(ResponseTemplate::new(200).set_body_string("null"))
             .mount(&server)
             .await;
@@ -930,9 +878,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("DELETE"))
-            .and(path(
-                "/control/v1/organizations/org_123/teams/team_abc/members/user_xyz",
-            ))
+            .and(path("/control/v1/organizations/org_123/teams/team_abc/members/user_xyz"))
             .respond_with(ResponseTemplate::new(204))
             .mount(&server)
             .await;
@@ -949,9 +895,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(path(
-                "/control/v1/organizations/org_123/teams/team_abc/members",
-            ))
+            .and(path("/control/v1/organizations/org_123/teams/team_abc/members"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [
                     {

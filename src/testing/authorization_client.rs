@@ -1,10 +1,8 @@
 //! AuthorizationClient trait for dependency injection.
 
-use std::future::Future;
-use std::pin::Pin;
+use std::{future::Future, pin::Pin};
 
-use crate::types::Context;
-use crate::Error;
+use crate::{Error, types::Context};
 
 /// Object-safe trait for authorization operations.
 ///
@@ -107,9 +105,7 @@ mod tests {
     async fn test_check_with_context() {
         let client = TestClient { allow_all: true };
         let context = Context::new().with("env", "test");
-        let result = client
-            .check_with_context("user:alice", "view", "doc:1", &context)
-            .await;
+        let result = client.check_with_context("user:alice", "view", "doc:1", &context).await;
         assert!(result.unwrap());
     }
 
@@ -117,9 +113,7 @@ mod tests {
     async fn test_check_with_context_deny() {
         let client = TestClient { allow_all: false };
         let context = Context::new().with("env", "prod");
-        let result = client
-            .check_with_context("user:alice", "view", "doc:1", &context)
-            .await;
+        let result = client.check_with_context("user:alice", "view", "doc:1", &context).await;
         assert!(!result.unwrap());
     }
 }

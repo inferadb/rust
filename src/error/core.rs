@@ -1,9 +1,6 @@
 //! Main error type for the InferaDB SDK.
 
-use std::borrow::Cow;
-use std::error::Error as StdError;
-use std::fmt;
-use std::time::Duration;
+use std::{borrow::Cow, error::Error as StdError, fmt, time::Duration};
 
 use super::ErrorKind;
 
@@ -85,13 +82,7 @@ impl Error {
     /// assert_eq!(err.kind(), ErrorKind::InvalidArgument);
     /// ```
     pub fn new(kind: ErrorKind, message: impl Into<Cow<'static, str>>) -> Self {
-        Self {
-            kind,
-            message: message.into(),
-            request_id: None,
-            retry_after: None,
-            source: None,
-        }
+        Self { kind, message: message.into(), request_id: None, retry_after: None, source: None }
     }
 
     /// Creates an error from a kind with a default message.
@@ -316,9 +307,7 @@ impl fmt::Display for Error {
 
 impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        self.source
-            .as_ref()
-            .map(|e| e.as_ref() as &(dyn StdError + 'static))
+        self.source.as_ref().map(|e| e.as_ref() as &(dyn StdError + 'static))
     }
 }
 
@@ -413,14 +402,8 @@ mod tests {
         assert_eq!(Error::unauthorized("test").kind(), ErrorKind::Unauthorized);
         assert_eq!(Error::forbidden("test").kind(), ErrorKind::Forbidden);
         assert_eq!(Error::not_found("test").kind(), ErrorKind::NotFound);
-        assert_eq!(
-            Error::invalid_argument("test").kind(),
-            ErrorKind::InvalidArgument
-        );
-        assert_eq!(
-            Error::schema_violation("test").kind(),
-            ErrorKind::SchemaViolation
-        );
+        assert_eq!(Error::invalid_argument("test").kind(), ErrorKind::InvalidArgument);
+        assert_eq!(Error::schema_violation("test").kind(), ErrorKind::SchemaViolation);
         assert_eq!(Error::unavailable("test").kind(), ErrorKind::Unavailable);
         assert_eq!(Error::timeout("test").kind(), ErrorKind::Timeout);
         assert_eq!(Error::internal("test").kind(), ErrorKind::Internal);
@@ -428,10 +411,7 @@ mod tests {
         assert_eq!(Error::circuit_open().kind(), ErrorKind::CircuitOpen);
         assert_eq!(Error::connection("test").kind(), ErrorKind::Connection);
         assert_eq!(Error::protocol("test").kind(), ErrorKind::Protocol);
-        assert_eq!(
-            Error::configuration("test").kind(),
-            ErrorKind::Configuration
-        );
+        assert_eq!(Error::configuration("test").kind(), ErrorKind::Configuration);
     }
 
     #[test]

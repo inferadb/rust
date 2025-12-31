@@ -2,13 +2,17 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::client::Client;
-use crate::control::audit::AuditLogsClient;
-use crate::control::members::{InvitationsClient, MembersClient};
-use crate::control::teams::TeamsClient;
-use crate::control::vaults::VaultsClient;
-use crate::control::{Page, SortOrder};
-use crate::Error;
+use crate::{
+    Error,
+    client::Client,
+    control::{
+        Page, SortOrder,
+        audit::AuditLogsClient,
+        members::{InvitationsClient, MembersClient},
+        teams::TeamsClient,
+        vaults::VaultsClient,
+    },
+};
 
 /// Client for organization-level control plane operations.
 ///
@@ -34,10 +38,7 @@ pub struct OrganizationControlClient {
 impl OrganizationControlClient {
     /// Creates a new organization control client.
     pub(crate) fn new(client: Client, organization_id: impl Into<String>) -> Self {
-        Self {
-            client,
-            organization_id: organization_id.into(),
-        }
+        Self { client, organization_id: organization_id.into() }
     }
 
     /// Returns the organization ID.
@@ -150,9 +151,7 @@ impl OrganizationControlClient {
     /// Gets the organization details.
     #[cfg(not(feature = "rest"))]
     pub async fn get(&self) -> Result<OrganizationInfo, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Updates the organization.
@@ -180,9 +179,7 @@ impl OrganizationControlClient {
         &self,
         _request: UpdateOrganizationRequest,
     ) -> Result<OrganizationInfo, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Deletes the organization.
@@ -197,10 +194,7 @@ impl OrganizationControlClient {
     /// org.delete().confirm("DELETE org_abc123").await?;
     /// ```
     pub fn delete(&self) -> DeleteOrganizationRequest {
-        DeleteOrganizationRequest {
-            client: self.clone(),
-            confirmation: None,
-        }
+        DeleteOrganizationRequest { client: self.clone(), confirmation: None }
     }
 }
 
@@ -260,10 +254,7 @@ impl OrganizationsClient {
         &self,
         request: CreateOrganizationRequest,
     ) -> Result<OrganizationInfo, Error> {
-        self.client
-            .inner()
-            .control_post("/control/v1/organizations", &request)
-            .await
+        self.client.inner().control_post("/control/v1/organizations", &request).await
     }
 
     /// Creates a new organization.
@@ -272,16 +263,13 @@ impl OrganizationsClient {
         &self,
         _request: CreateOrganizationRequest,
     ) -> Result<OrganizationInfo, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 }
 
 impl std::fmt::Debug for OrganizationsClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OrganizationsClient")
-            .finish_non_exhaustive()
+        f.debug_struct("OrganizationsClient").finish_non_exhaustive()
     }
 }
 
@@ -312,10 +300,7 @@ pub struct CreateOrganizationRequest {
 impl CreateOrganizationRequest {
     /// Creates a new request with the given name.
     pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            display_name: None,
-        }
+        Self { name: name.into(), display_name: None }
     }
 
     /// Sets the display name.
@@ -403,9 +388,7 @@ impl ListOrganizationsRequest {
 
     #[cfg(not(feature = "rest"))]
     async fn execute(self) -> Result<Page<OrganizationInfo>, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 }
 
@@ -441,7 +424,7 @@ impl DeleteOrganizationRequest {
             Some(c) if c == &expected => {
                 let path = format!("/control/v1/organizations/{}", self.client.organization_id);
                 self.client.client.inner().control_delete(&path).await
-            }
+            },
             Some(c) => Err(Error::invalid_argument(format!(
                 "Invalid confirmation. Expected '{}', got '{}'",
                 expected, c
@@ -455,9 +438,7 @@ impl DeleteOrganizationRequest {
     #[cfg(not(feature = "rest"))]
     async fn execute(self) -> Result<(), Error> {
         let _ = self.confirmation;
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 }
 
@@ -472,10 +453,10 @@ impl std::future::IntoFuture for DeleteOrganizationRequest {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::transport::mock::MockTransport;
     use std::sync::Arc;
+
+    use super::*;
+    use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
     async fn create_test_client() -> Client {
         let mock_transport = Arc::new(MockTransport::new());
@@ -555,11 +536,7 @@ mod tests {
         let orgs = OrganizationsClient::new(client);
 
         // Test all builder methods
-        let _request = orgs
-            .list()
-            .limit(50)
-            .cursor("cursor_xyz")
-            .sort(SortOrder::Descending);
+        let _request = orgs.list().limit(50).cursor("cursor_xyz").sort(SortOrder::Descending);
 
         // Just verify the builder compiles and returns a request
     }
@@ -576,11 +553,13 @@ mod tests {
 
 #[cfg(all(test, feature = "rest"))]
 mod wiremock_tests {
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+
     use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::Client;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use crate::{Client, auth::BearerCredentialsConfig};
 
     async fn create_mock_client(server: &MockServer) -> Client {
         Client::builder()
@@ -646,12 +625,7 @@ mod wiremock_tests {
 
         let client = create_mock_client(&server).await;
         let orgs = OrganizationsClient::new(client);
-        let result = orgs
-            .list()
-            .limit(10)
-            .cursor("cursor_abc")
-            .sort(SortOrder::Descending)
-            .await;
+        let result = orgs.list().limit(10).cursor("cursor_abc").sort(SortOrder::Descending).await;
 
         assert!(result.is_ok());
     }

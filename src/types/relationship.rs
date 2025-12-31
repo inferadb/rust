@@ -1,8 +1,6 @@
 //! Relationship type representing a tuple in the authorization graph.
 
-use std::borrow::Cow;
-use std::fmt;
-use std::str::FromStr;
+use std::{borrow::Cow, fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
@@ -110,11 +108,7 @@ impl<'a> Relationship<'a> {
         relation: impl Into<Cow<'a, str>>,
         subject: impl Into<Cow<'a, str>>,
     ) -> Self {
-        Self {
-            resource: resource.into(),
-            relation: relation.into(),
-            subject: subject.into(),
-        }
+        Self { resource: resource.into(), relation: relation.into(), subject: subject.into() }
     }
 
     /// Returns the resource (object) of the relationship.
@@ -299,26 +293,16 @@ impl FromStr for Relationship<'static> {
         })?;
 
         if resource.is_empty() {
-            return Err(Error::invalid_argument(
-                "relationship resource cannot be empty",
-            ));
+            return Err(Error::invalid_argument("relationship resource cannot be empty"));
         }
         if relation.is_empty() {
-            return Err(Error::invalid_argument(
-                "relationship relation cannot be empty",
-            ));
+            return Err(Error::invalid_argument("relationship relation cannot be empty"));
         }
         if subject.is_empty() {
-            return Err(Error::invalid_argument(
-                "relationship subject cannot be empty",
-            ));
+            return Err(Error::invalid_argument("relationship subject cannot be empty"));
         }
 
-        Ok(Relationship::new(
-            resource.to_owned(),
-            relation.to_owned(),
-            subject.to_owned(),
-        ))
+        Ok(Relationship::new(resource.to_owned(), relation.to_owned(), subject.to_owned()))
     }
 }
 

@@ -53,26 +53,18 @@ async fn main() -> Result<()> {
     // Policies can use context values for attribute-based decisions
     let allowed_with_context = vault
         .check("user:alice", "view", "document:confidential")
-        .with_context(
-            Context::new()
-                .with("ip_address", "10.0.0.50")
-                .with("mfa_verified", true),
-        )
+        .with_context(Context::new().with("ip_address", "10.0.0.50").with("mfa_verified", true))
         .await?;
 
     println!("user:alice can view document:confidential (with MFA): {allowed_with_context}");
 
     // The require() pattern - recommended for HTTP handlers
     // Converts denial (false) into Err(AccessDenied), integrates with ?
-    match vault
-        .check("user:alice", "delete", "document:readme")
-        .require()
-        .await
-    {
+    match vault.check("user:alice", "delete", "document:readme").require().await {
         Ok(()) => println!("user:alice can delete document:readme"),
         Err(AccessDenied { .. }) => {
             println!("user:alice cannot delete document:readme (access denied)")
-        }
+        },
     }
 
     println!("\nExample complete!");

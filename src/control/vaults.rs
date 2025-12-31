@@ -2,9 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::client::Client;
-use crate::control::{Page, SortOrder};
-use crate::Error;
+use crate::{
+    Error,
+    client::Client,
+    control::{Page, SortOrder},
+};
 
 /// Client for vault management operations.
 ///
@@ -36,10 +38,7 @@ pub struct VaultsClient {
 impl VaultsClient {
     /// Creates a new vaults client.
     pub(crate) fn new(client: Client, organization_id: impl Into<String>) -> Self {
-        Self {
-            client,
-            organization_id: organization_id.into(),
-        }
+        Self { client, organization_id: organization_id.into() }
     }
 
     /// Returns the organization ID.
@@ -88,9 +87,7 @@ impl VaultsClient {
     /// Creates a new vault.
     #[cfg(not(feature = "rest"))]
     pub async fn create(&self, _request: CreateVaultRequest) -> Result<VaultInfo, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Gets a vault by ID.
@@ -113,9 +110,7 @@ impl VaultsClient {
     /// Gets a vault by ID.
     #[cfg(not(feature = "rest"))]
     pub async fn get(&self, _vault_id: impl Into<String>) -> Result<VaultInfo, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Updates a vault.
@@ -149,9 +144,7 @@ impl VaultsClient {
         _vault_id: impl Into<String>,
         _request: UpdateVaultRequest,
     ) -> Result<VaultInfo, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Deletes a vault.
@@ -256,11 +249,7 @@ pub struct CreateVaultRequest {
 impl CreateVaultRequest {
     /// Creates a new request with the given name.
     pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            display_name: None,
-            description: None,
-        }
+        Self { name: name.into(), display_name: None, description: None }
     }
 
     /// Sets the display name.
@@ -375,9 +364,7 @@ impl ListVaultsRequest {
 
     #[cfg(not(feature = "rest"))]
     async fn execute(self) -> Result<Page<VaultInfo>, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 }
 
@@ -418,7 +405,7 @@ impl DeleteVaultRequest {
                     self.organization_id, self.vault_id
                 );
                 self.client.inner().control_delete(&path).await
-            }
+            },
             Some(c) => Err(Error::invalid_argument(format!(
                 "Invalid confirmation. Expected '{}', got '{}'",
                 expected, c
@@ -432,9 +419,7 @@ impl DeleteVaultRequest {
     #[cfg(not(feature = "rest"))]
     async fn execute(self) -> Result<(), Error> {
         let _ = self.confirmation;
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 }
 
@@ -449,10 +434,10 @@ impl std::future::IntoFuture for DeleteVaultRequest {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::transport::mock::MockTransport;
     use std::sync::Arc;
+
+    use super::*;
+    use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
     async fn create_test_client() -> Client {
         let mock_transport = Arc::new(MockTransport::new());
@@ -559,11 +544,13 @@ mod tests {
 
 #[cfg(all(test, feature = "rest"))]
 mod wiremock_tests {
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+
     use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::Client;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use crate::{Client, auth::BearerCredentialsConfig};
 
     async fn create_mock_client(server: &MockServer) -> Client {
         Client::builder()

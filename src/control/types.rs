@@ -35,10 +35,7 @@ impl<T> Page<T> {
 
 impl<T> Default for Page<T> {
     fn default() -> Self {
-        Self {
-            items: Vec::new(),
-            page_info: PageInfo::default(),
-        }
+        Self { items: Vec::new(), page_info: PageInfo::default() }
     }
 }
 

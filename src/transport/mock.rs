@@ -3,8 +3,10 @@
 //! This module provides a mock transport that operates entirely in-memory,
 //! allowing tests to run without network dependencies.
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 use parking_lot::RwLock;
 
@@ -13,8 +15,10 @@ use super::traits::{
     ListSubjectsResponse, SimulateRequest, SimulateResponse, Transport, TransportClient,
     TransportStats, WriteRequest, WriteResponse,
 };
-use crate::types::{ConsistencyToken, Decision, Relationship};
-use crate::Error;
+use crate::{
+    Error,
+    types::{ConsistencyToken, Decision, Relationship},
+};
 
 /// Mock transport for testing.
 ///
@@ -134,9 +138,7 @@ impl TransportClient for MockTransport {
 
         self.relationships.write().push(request.relationship);
 
-        Ok(WriteResponse {
-            consistency_token: ConsistencyToken::new("mock_token"),
-        })
+        Ok(WriteResponse { consistency_token: ConsistencyToken::new("mock_token") })
     }
 
     async fn write_batch(&self, requests: Vec<WriteRequest>) -> Result<WriteResponse, Error> {
@@ -148,9 +150,7 @@ impl TransportClient for MockTransport {
             relationships.push(request.relationship);
         }
 
-        Ok(WriteResponse {
-            consistency_token: ConsistencyToken::new("mock_token"),
-        })
+        Ok(WriteResponse { consistency_token: ConsistencyToken::new("mock_token") })
     }
 
     async fn delete(&self, relationship: Relationship<'static>) -> Result<(), Error> {
@@ -191,10 +191,7 @@ impl TransportClient for MockTransport {
             .cloned()
             .collect();
 
-        Ok(ListRelationshipsResponse {
-            relationships: filtered,
-            next_cursor: None,
-        })
+        Ok(ListRelationshipsResponse { relationships: filtered, next_cursor: None })
     }
 
     async fn list_resources(
@@ -221,10 +218,7 @@ impl TransportClient for MockTransport {
             .map(|rel| rel.resource().to_string())
             .collect();
 
-        Ok(ListResourcesResponse {
-            resources,
-            next_cursor: None,
-        })
+        Ok(ListResourcesResponse { resources, next_cursor: None })
     }
 
     async fn list_subjects(
@@ -250,10 +244,7 @@ impl TransportClient for MockTransport {
             .map(|rel| rel.subject().to_string())
             .collect();
 
-        Ok(ListSubjectsResponse {
-            subjects,
-            next_cursor: None,
-        })
+        Ok(ListSubjectsResponse { subjects, next_cursor: None })
     }
 
     fn transport_type(&self) -> Transport {
@@ -284,12 +275,7 @@ impl TransportClient for MockTransport {
         let current_relationships = self.relationships.read();
         let mut simulated_relationships: Vec<_> = current_relationships
             .iter()
-            .filter(|rel| {
-                !request
-                    .removals
-                    .iter()
-                    .any(|r| r.to_string() == rel.to_string())
-            })
+            .filter(|rel| !request.removals.iter().any(|r| r.to_string() == rel.to_string()))
             .cloned()
             .collect();
         simulated_relationships.extend(request.additions.clone());
@@ -301,10 +287,7 @@ impl TransportClient for MockTransport {
                 && rel.subject() == request.subject
         });
 
-        Ok(SimulateResponse {
-            allowed,
-            decision: Decision::new(allowed),
-        })
+        Ok(SimulateResponse { allowed, decision: Decision::new(allowed) })
     }
 }
 
@@ -377,10 +360,8 @@ mod tests {
             .await
             .unwrap();
 
-        let list = transport
-            .list_relationships(Some("doc:1"), None, None, None, None)
-            .await
-            .unwrap();
+        let list =
+            transport.list_relationships(Some("doc:1"), None, None, None, None).await.unwrap();
         assert!(list.relationships.is_empty());
     }
 
@@ -391,16 +372,12 @@ mod tests {
         transport.add_relationship(Relationship::new("doc:1", "editor", "user:bob").into_owned());
         transport.add_relationship(Relationship::new("doc:2", "viewer", "user:alice").into_owned());
 
-        let list = transport
-            .list_relationships(Some("doc:1"), None, None, None, None)
-            .await
-            .unwrap();
+        let list =
+            transport.list_relationships(Some("doc:1"), None, None, None, None).await.unwrap();
         assert_eq!(list.relationships.len(), 2);
 
-        let list = transport
-            .list_relationships(None, Some("viewer"), None, None, None)
-            .await
-            .unwrap();
+        let list =
+            transport.list_relationships(None, Some("viewer"), None, None, None).await.unwrap();
         assert_eq!(list.relationships.len(), 2);
     }
 
@@ -531,10 +508,8 @@ mod tests {
         transport
             .add_relationship(Relationship::new("folder:1", "viewer", "user:alice").into_owned());
 
-        let result = transport
-            .list_resources("user:alice", "viewer", None, None, None)
-            .await
-            .unwrap();
+        let result =
+            transport.list_resources("user:alice", "viewer", None, None, None).await.unwrap();
 
         assert_eq!(result.resources.len(), 3);
         assert!(result.resources.contains(&"doc:1".to_string()));
@@ -568,10 +543,7 @@ mod tests {
         transport
             .add_relationship(Relationship::new("doc:1", "viewer", "group:admins").into_owned());
 
-        let result = transport
-            .list_subjects("viewer", "doc:1", None, None, None)
-            .await
-            .unwrap();
+        let result = transport.list_subjects("viewer", "doc:1", None, None, None).await.unwrap();
 
         assert_eq!(result.subjects.len(), 3);
         assert!(result.subjects.contains(&"user:alice".to_string()));
@@ -587,10 +559,8 @@ mod tests {
         transport
             .add_relationship(Relationship::new("doc:1", "viewer", "group:admins").into_owned());
 
-        let result = transport
-            .list_subjects("viewer", "doc:1", Some("user"), None, None)
-            .await
-            .unwrap();
+        let result =
+            transport.list_subjects("viewer", "doc:1", Some("user"), None, None).await.unwrap();
 
         assert_eq!(result.subjects.len(), 2);
         assert!(result.subjects.contains(&"user:alice".to_string()));
@@ -605,10 +575,7 @@ mod tests {
 
         transport.clear_relationships();
 
-        let list = transport
-            .list_relationships(None, None, None, None, None)
-            .await
-            .unwrap();
+        let list = transport.list_relationships(None, None, None, None, None).await.unwrap();
         assert!(list.relationships.is_empty());
     }
 
@@ -621,10 +588,8 @@ mod tests {
             );
         }
 
-        let result = transport
-            .list_resources("user:alice", "viewer", None, Some(5), None)
-            .await
-            .unwrap();
+        let result =
+            transport.list_resources("user:alice", "viewer", None, Some(5), None).await.unwrap();
 
         assert_eq!(result.resources.len(), 5);
     }
@@ -638,10 +603,7 @@ mod tests {
             );
         }
 
-        let result = transport
-            .list_subjects("viewer", "doc:1", None, Some(5), None)
-            .await
-            .unwrap();
+        let result = transport.list_subjects("viewer", "doc:1", None, Some(5), None).await.unwrap();
 
         assert_eq!(result.subjects.len(), 5);
     }

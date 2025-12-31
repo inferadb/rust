@@ -214,10 +214,7 @@ impl Default for FailurePredicate {
 impl FailurePredicate {
     /// Creates a predicate that only counts specific error kinds as failures.
     pub fn only(kinds: impl IntoIterator<Item = ErrorKind>) -> Self {
-        Self {
-            include: kinds.into_iter().collect(),
-            exclude: vec![],
-        }
+        Self { include: kinds.into_iter().collect(), exclude: vec![] }
     }
 
     /// Adds an error kind to exclude from failure count.
@@ -366,20 +363,13 @@ pub enum CircuitEvent {
 impl std::fmt::Display for CircuitEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CircuitEvent::Opened {
-                failure_count,
-                last_error,
-            } => {
-                write!(
-                    f,
-                    "circuit opened after {} failures: {}",
-                    failure_count, last_error
-                )
-            }
+            CircuitEvent::Opened { failure_count, last_error } => {
+                write!(f, "circuit opened after {} failures: {}", failure_count, last_error)
+            },
             CircuitEvent::HalfOpened => write!(f, "circuit half-opened (testing recovery)"),
             CircuitEvent::Closed { success_count } => {
                 write!(f, "circuit closed after {} successes", success_count)
-            }
+            },
         }
     }
 }
@@ -478,10 +468,8 @@ mod tests {
 
     #[test]
     fn test_circuit_event_display() {
-        let event = CircuitEvent::Opened {
-            failure_count: 5,
-            last_error: "connection refused".to_string(),
-        };
+        let event =
+            CircuitEvent::Opened { failure_count: 5, last_error: "connection refused".to_string() };
         let display = event.to_string();
         assert!(display.contains("5 failures"));
         assert!(display.contains("connection refused"));
@@ -539,10 +527,7 @@ mod tests {
 
     #[test]
     fn test_circuit_event_clone() {
-        let event = CircuitEvent::Opened {
-            failure_count: 5,
-            last_error: "error".to_string(),
-        };
+        let event = CircuitEvent::Opened { failure_count: 5, last_error: "error".to_string() };
         let cloned = event.clone();
         match cloned {
             CircuitEvent::Opened { failure_count, .. } => assert_eq!(failure_count, 5),

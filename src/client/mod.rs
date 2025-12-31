@@ -31,20 +31,22 @@ mod builder;
 mod health;
 mod inner;
 
+use std::sync::Arc;
+#[cfg(not(feature = "rest"))]
+use std::time::Duration;
+
 pub use builder::ClientBuilder;
 pub use health::{
     ComponentHealth, HealthResponse, HealthStatus, ReadinessCriteria, ShutdownGuard, ShutdownHandle,
 };
 
-use std::sync::Arc;
-#[cfg(not(feature = "rest"))]
-use std::time::Duration;
-
-use crate::control::{
-    AccountClient, ApiClientsClient, AuditLogsClient, InvitationsClient, JwksClient, MembersClient,
-    OrganizationControlClient, OrganizationsClient, TeamsClient, VaultsClient,
+use crate::{
+    control::{
+        AccountClient, ApiClientsClient, AuditLogsClient, InvitationsClient, JwksClient,
+        MembersClient, OrganizationControlClient, OrganizationsClient, TeamsClient, VaultsClient,
+    },
+    vault::VaultClient,
 };
-use crate::vault::VaultClient;
 
 /// The InferaDB SDK client.
 ///
@@ -116,10 +118,7 @@ impl Client {
     /// let vault = org.vault("vlt_xyz789");
     /// ```
     pub fn organization(&self, organization_id: impl Into<String>) -> OrganizationClient {
-        OrganizationClient {
-            client: self.clone(),
-            organization_id: organization_id.into(),
-        }
+        OrganizationClient { client: self.clone(), organization_id: organization_id.into() }
     }
 
     /// Returns the base URL of the client.
@@ -129,9 +128,7 @@ impl Client {
 
     /// Creates a client from the inner implementation.
     pub(crate) fn from_inner(inner: inner::ClientInner) -> Self {
-        Self {
-            inner: Arc::new(inner),
-        }
+        Self { inner: Arc::new(inner) }
     }
 
     /// Returns a reference to the inner client.
@@ -276,14 +273,12 @@ impl Client {
 
                     Ok(HealthResponse {
                         status,
-                        version: server_health
-                            .version
-                            .unwrap_or_else(|| "unknown".to_string()),
+                        version: server_health.version.unwrap_or_else(|| "unknown".to_string()),
                         latency,
                         components,
                         timestamp: chrono::Utc::now(),
                     })
-                }
+                },
                 Err(_) => {
                     // Fall back to simple health check
                     Ok(HealthResponse {
@@ -293,7 +288,7 @@ impl Client {
                         components: HashMap::new(),
                         timestamp: chrono::Utc::now(),
                     })
-                }
+                },
             }
         }
 
@@ -332,9 +327,7 @@ impl Client {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
 
-        Err(crate::Error::timeout(
-            "Timed out waiting for service readiness",
-        ))
+        Err(crate::Error::timeout("Timed out waiting for service readiness"))
     }
 
     /// Waits for the service to become ready with custom criteria.
@@ -375,9 +368,7 @@ impl Client {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
 
-        Err(crate::Error::timeout(
-            "Timed out waiting for service readiness",
-        ))
+        Err(crate::Error::timeout("Timed out waiting for service readiness"))
     }
 
     /// Returns `true` if the client is in shutdown mode.
@@ -392,18 +383,13 @@ impl Client {
     /// }
     /// ```
     pub fn is_shutting_down(&self) -> bool {
-        self.inner
-            .shutdown_guard
-            .as_ref()
-            .is_some_and(|guard| guard.is_shutting_down())
+        self.inner.shutdown_guard.as_ref().is_some_and(|guard| guard.is_shutting_down())
     }
 }
 
 impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client")
-            .field("url", &self.inner.url)
-            .finish_non_exhaustive()
+        f.debug_struct("Client").field("url", &self.inner.url).finish_non_exhaustive()
     }
 }
 
@@ -430,11 +416,7 @@ impl OrganizationClient {
     /// let allowed = vault.check("user:alice", "view", "doc:1").await?;
     /// ```
     pub fn vault(&self, vault_id: impl Into<String>) -> VaultClient {
-        VaultClient::new(
-            self.client.clone(),
-            self.organization_id.clone(),
-            vault_id.into(),
-        )
+        VaultClient::new(self.client.clone(), self.organization_id.clone(), vault_id.into())
     }
 
     /// Returns the organization ID.
@@ -547,10 +529,10 @@ impl std::fmt::Debug for OrganizationClient {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::transport::mock::MockTransport;
     use std::sync::Arc;
+
+    use super::*;
+    use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
     async fn create_test_client() -> Client {
         let mock_transport = Arc::new(MockTransport::new());
@@ -678,10 +660,13 @@ mod tests {
 
 #[cfg(all(test, feature = "rest"))]
 mod wiremock_tests {
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+
     use super::*;
     use crate::auth::BearerCredentialsConfig;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     async fn create_mock_client(server: &MockServer) -> Client {
         Client::builder()

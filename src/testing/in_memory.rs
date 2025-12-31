@@ -1,13 +1,17 @@
 //! InMemoryClient for testing with real graph semantics.
 
-use std::collections::HashSet;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::{Arc, RwLock};
+use std::{
+    collections::HashSet,
+    future::Future,
+    pin::Pin,
+    sync::{Arc, RwLock},
+};
 
-use crate::testing::AuthorizationClient;
-use crate::types::{Context, Relationship};
-use crate::Error;
+use crate::{
+    Error,
+    testing::AuthorizationClient,
+    types::{Context, Relationship},
+};
 
 /// An in-memory authorization client with real graph semantics.
 ///
@@ -63,9 +67,7 @@ impl From<&Relationship<'_>> for StoredRelationship {
 impl InMemoryClient {
     /// Creates a new in-memory client.
     pub fn new() -> Self {
-        Self {
-            relationships: Arc::new(RwLock::new(HashSet::new())),
-        }
+        Self { relationships: Arc::new(RwLock::new(HashSet::new())) }
     }
 
     /// Writes a relationship to the in-memory store.
@@ -238,17 +240,13 @@ mod tests {
         let context = Context::new().with("env", "test");
 
         // Match: context is ignored for now
-        let result = client
-            .check_with_context("user:alice", "viewer", "doc:1", &context)
-            .await
-            .unwrap();
+        let result =
+            client.check_with_context("user:alice", "viewer", "doc:1", &context).await.unwrap();
         assert!(result);
 
         // No match
-        let result = client
-            .check_with_context("user:bob", "viewer", "doc:1", &context)
-            .await
-            .unwrap();
+        let result =
+            client.check_with_context("user:bob", "viewer", "doc:1", &context).await.unwrap();
         assert!(!result);
     }
 

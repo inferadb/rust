@@ -1,12 +1,12 @@
 //! MockClient for testing with expectations.
 
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::{Arc, Mutex},
+};
 
-use crate::testing::AuthorizationClient;
-use crate::types::Context;
-use crate::Error;
+use crate::{Error, testing::AuthorizationClient, types::Context};
 
 /// A mock authorization client for testing.
 ///
@@ -61,18 +61,12 @@ impl MockClient {
 
     /// Creates a mock client that allows all by default.
     pub fn allow_all() -> Self {
-        Self {
-            default_allow: true,
-            ..Self::new()
-        }
+        Self { default_allow: true, ..Self::new() }
     }
 
     /// Creates a mock client that denies all by default.
     pub fn deny_all() -> Self {
-        Self {
-            default_allow: false,
-            ..Self::new()
-        }
+        Self { default_allow: false, ..Self::new() }
     }
 
     /// Adds an expectation for a check call.
@@ -260,10 +254,8 @@ mod tests {
         let mock = MockClient::allow_all();
         let context = Context::new().with("env", "test");
 
-        let result = mock
-            .check_with_context("user:alice", "view", "doc:1", &context)
-            .await
-            .unwrap();
+        let result =
+            mock.check_with_context("user:alice", "view", "doc:1", &context).await.unwrap();
         assert!(result);
     }
 }

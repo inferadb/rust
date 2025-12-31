@@ -8,27 +8,31 @@
 //! The gRPC transport is the preferred transport for production use due to
 //! its performance benefits and native support for bidirectional streaming.
 
-use std::sync::Arc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use futures::StreamExt;
 use parking_lot::RwLock;
-use tonic::transport::{Channel, Endpoint};
+use tonic::{
+    service::interceptor::InterceptedService,
+    transport::{Channel, Endpoint},
+};
 use url::Url;
 
-use tonic::service::interceptor::InterceptedService;
-
-use super::proto::authorization_service_client::AuthorizationServiceClient;
-use super::proto::{self as pb};
-use crate::config::{RetryConfig, TlsConfig};
-use crate::transport::traits::{
-    CheckRequest, CheckResponse, GrpcStats, ListRelationshipsResponse, ListResourcesResponse,
-    ListSubjectsResponse, PoolConfig, SimulateRequest, SimulateResponse, Transport,
-    TransportClient, TransportStats, WriteRequest, WriteResponse,
+use super::proto::{
+    authorization_service_client::AuthorizationServiceClient,
+    {self as pb},
 };
-use crate::types::{ConsistencyToken, Decision, Relationship};
-use crate::user_agent;
-use crate::Error;
+use crate::{
+    Error,
+    config::{RetryConfig, TlsConfig},
+    transport::traits::{
+        CheckRequest, CheckResponse, GrpcStats, ListRelationshipsResponse, ListResourcesResponse,
+        ListSubjectsResponse, PoolConfig, SimulateRequest, SimulateResponse, Transport,
+        TransportClient, TransportStats, WriteRequest, WriteResponse,
+    },
+    types::{ConsistencyToken, Decision, Relationship},
+    user_agent,
+};
 
 /// Interceptor that adds user-agent metadata to all gRPC requests.
 #[allow(clippy::result_large_err)] // tonic::Status is the required error type for interceptors
@@ -128,10 +132,7 @@ impl GrpcTransport {
             user_agent_interceptor;
         let client = AuthorizationServiceClient::with_interceptor(channel, interceptor);
 
-        Ok(Self {
-            client,
-            stats: Arc::new(RwLock::new(GrpcStats::default())),
-        })
+        Ok(Self { client, stats: Arc::new(RwLock::new(GrpcStats::default())) })
     }
 
     /// Returns a builder for configuring the gRPC transport.
@@ -197,39 +198,31 @@ impl GrpcTransport {
                         relation: dc.relation,
                         subject: dc.subject,
                     }
-                }
+                },
                 pb::node_type::Type::ComputedUserset(cu) => {
-                    super::traits::EvaluationNodeType::ComputedUserset {
-                        relation: cu.relation,
-                    }
-                }
+                    super::traits::EvaluationNodeType::ComputedUserset { relation: cu.relation }
+                },
                 pb::node_type::Type::RelatedObjectUserset(rou) => {
                     super::traits::EvaluationNodeType::RelatedObjectUserset {
                         relationship: rou.relationship,
                         computed: rou.computed,
                     }
-                }
+                },
                 pb::node_type::Type::Union(_) => super::traits::EvaluationNodeType::Union,
                 pb::node_type::Type::Intersection(_) => {
                     super::traits::EvaluationNodeType::Intersection
-                }
+                },
                 pb::node_type::Type::Exclusion(_) => super::traits::EvaluationNodeType::Exclusion,
                 pb::node_type::Type::WasmModule(wm) => {
-                    super::traits::EvaluationNodeType::WasmModule {
-                        module_name: wm.module_name,
-                    }
-                }
+                    super::traits::EvaluationNodeType::WasmModule { module_name: wm.module_name }
+                },
             })
             .unwrap_or(super::traits::EvaluationNodeType::Union);
 
         super::traits::EvaluationNode {
             node_type,
             result: node.result,
-            children: node
-                .children
-                .into_iter()
-                .map(Self::convert_evaluation_node)
-                .collect(),
+            children: node.children.into_iter().map(Self::convert_evaluation_node).collect(),
         }
     }
 
@@ -299,9 +292,7 @@ impl TransportClient for GrpcTransport {
             subject: request.subject,
             permission: request.permission,
             resource: request.resource,
-            context: request
-                .context
-                .map(|c| serde_json::to_string(&c).unwrap_or_default()),
+            context: request.context.map(|c| serde_json::to_string(&c).unwrap_or_default()),
             trace: Some(request.trace),
         };
 
@@ -343,9 +334,7 @@ impl TransportClient for GrpcTransport {
                 subject: r.subject,
                 permission: r.permission,
                 resource: r.resource,
-                context: r
-                    .context
-                    .map(|c| serde_json::to_string(&c).unwrap_or_default()),
+                context: r.context.map(|c| serde_json::to_string(&c).unwrap_or_default()),
                 trace: Some(r.trace),
             })
             .collect();
@@ -391,16 +380,11 @@ impl TransportClient for GrpcTransport {
         let stream = futures::stream::once(async { pb_request });
         let mut client = self.client.clone();
 
-        let response = client
-            .write_relationships(stream)
-            .await
-            .map_err(Self::convert_error)?;
+        let response = client.write_relationships(stream).await.map_err(Self::convert_error)?;
 
         let write_response = response.into_inner();
 
-        Ok(WriteResponse {
-            consistency_token: ConsistencyToken::new(&write_response.revision),
-        })
+        Ok(WriteResponse { consistency_token: ConsistencyToken::new(&write_response.revision) })
     }
 
     async fn write_batch(&self, requests: Vec<WriteRequest>) -> Result<WriteResponse, Error> {
@@ -420,16 +404,11 @@ impl TransportClient for GrpcTransport {
         let stream = futures::stream::once(async { pb_request });
         let mut client = self.client.clone();
 
-        let response = client
-            .write_relationships(stream)
-            .await
-            .map_err(Self::convert_error)?;
+        let response = client.write_relationships(stream).await.map_err(Self::convert_error)?;
 
         let write_response = response.into_inner();
 
-        Ok(WriteResponse {
-            consistency_token: ConsistencyToken::new(&write_response.revision),
-        })
+        Ok(WriteResponse { consistency_token: ConsistencyToken::new(&write_response.revision) })
     }
 
     async fn delete(&self, relationship: Relationship<'static>) -> Result<(), Error> {
@@ -448,10 +427,7 @@ impl TransportClient for GrpcTransport {
         let stream = futures::stream::once(async { pb_request });
         let mut client = self.client.clone();
 
-        client
-            .delete_relationships(stream)
-            .await
-            .map_err(Self::convert_error)?;
+        client.delete_relationships(stream).await.map_err(Self::convert_error)?;
 
         Ok(())
     }
@@ -475,10 +451,7 @@ impl TransportClient for GrpcTransport {
         };
 
         let mut client = self.client.clone();
-        let response = client
-            .list_relationships(pb_request)
-            .await
-            .map_err(Self::convert_error)?;
+        let response = client.list_relationships(pb_request).await.map_err(Self::convert_error)?;
 
         let mut stream = response.into_inner();
         let mut relationships = Vec::new();
@@ -495,10 +468,7 @@ impl TransportClient for GrpcTransport {
             }
         }
 
-        Ok(ListRelationshipsResponse {
-            relationships,
-            next_cursor,
-        })
+        Ok(ListRelationshipsResponse { relationships, next_cursor })
     }
 
     async fn list_resources(
@@ -521,10 +491,7 @@ impl TransportClient for GrpcTransport {
         };
 
         let mut client = self.client.clone();
-        let response = client
-            .list_resources(pb_request)
-            .await
-            .map_err(Self::convert_error)?;
+        let response = client.list_resources(pb_request).await.map_err(Self::convert_error)?;
 
         let mut stream = response.into_inner();
         let mut resources = Vec::new();
@@ -541,10 +508,7 @@ impl TransportClient for GrpcTransport {
             }
         }
 
-        Ok(ListResourcesResponse {
-            resources,
-            next_cursor,
-        })
+        Ok(ListResourcesResponse { resources, next_cursor })
     }
 
     async fn list_subjects(
@@ -566,10 +530,7 @@ impl TransportClient for GrpcTransport {
         };
 
         let mut client = self.client.clone();
-        let response = client
-            .list_subjects(pb_request)
-            .await
-            .map_err(Self::convert_error)?;
+        let response = client.list_subjects(pb_request).await.map_err(Self::convert_error)?;
 
         let mut stream = response.into_inner();
         let mut subjects = Vec::new();
@@ -586,10 +547,7 @@ impl TransportClient for GrpcTransport {
             }
         }
 
-        Ok(ListSubjectsResponse {
-            subjects,
-            next_cursor,
-        })
+        Ok(ListSubjectsResponse { subjects, next_cursor })
     }
 
     fn transport_type(&self) -> Transport {
@@ -611,10 +569,7 @@ impl TransportClient for GrpcTransport {
     async fn health_check(&self) -> Result<(), Error> {
         let mut client = self.client.clone();
 
-        client
-            .health(pb::HealthRequest {})
-            .await
-            .map_err(Self::convert_error)?;
+        client.health(pb::HealthRequest {}).await.map_err(Self::convert_error)?;
 
         Ok(())
     }
@@ -638,33 +593,24 @@ impl TransportClient for GrpcTransport {
                 subject: request.subject,
                 resource: request.resource,
                 permission: request.permission,
-                context: request
-                    .context
-                    .map(|c| serde_json::to_string(&c).unwrap_or_default()),
+                context: request.context.map(|c| serde_json::to_string(&c).unwrap_or_default()),
             }),
         };
 
         let mut client = self.client.clone();
-        let response = client
-            .simulate(pb_request)
-            .await
-            .map_err(Self::convert_error)?;
+        let response = client.simulate(pb_request).await.map_err(Self::convert_error)?;
 
         let sim_response = response.into_inner();
         let allowed = Self::convert_decision(sim_response.decision);
 
-        Ok(SimulateResponse {
-            allowed,
-            decision: Decision::new(allowed),
-        })
+        Ok(SimulateResponse { allowed, decision: Decision::new(allowed) })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::TlsConfig;
-    use crate::transport::traits::PoolConfig;
+    use crate::{config::TlsConfig, transport::traits::PoolConfig};
 
     #[test]
     fn test_grpc_transport_builder() {
@@ -705,9 +651,7 @@ mod tests {
     fn test_convert_decision() {
         assert!(GrpcTransport::convert_decision(pb::Decision::Allow as i32));
         assert!(!GrpcTransport::convert_decision(pb::Decision::Deny as i32));
-        assert!(!GrpcTransport::convert_decision(
-            pb::Decision::Unspecified as i32
-        ));
+        assert!(!GrpcTransport::convert_decision(pb::Decision::Unspecified as i32));
         // Test unknown decision values
         assert!(!GrpcTransport::convert_decision(999));
         assert!(!GrpcTransport::convert_decision(-1));
@@ -828,11 +772,7 @@ mod tests {
             duration_micros: 200,
             relationships_read: 10,
             relations_evaluated: 8,
-            root: Some(pb::EvaluationNode {
-                node_type: None,
-                result: true,
-                children: vec![],
-            }),
+            root: Some(pb::EvaluationNode { node_type: None, result: true, children: vec![] }),
         };
 
         let converted = GrpcTransport::convert_trace(trace);
@@ -866,7 +806,7 @@ mod tests {
                 assert_eq!(resource, "doc:1");
                 assert_eq!(relation, "owner");
                 assert_eq!(subject, "user:bob");
-            }
+            },
             _ => panic!("Expected DirectCheck"),
         }
     }
@@ -889,7 +829,7 @@ mod tests {
         match converted.node_type {
             super::super::traits::EvaluationNodeType::ComputedUserset { relation } => {
                 assert_eq!(relation, "editor");
-            }
+            },
             _ => panic!("Expected ComputedUserset"),
         }
     }
@@ -898,12 +838,10 @@ mod tests {
     fn test_convert_evaluation_node_related_object_userset() {
         let node = pb::EvaluationNode {
             node_type: Some(pb::NodeType {
-                r#type: Some(pb::node_type::Type::RelatedObjectUserset(
-                    pb::RelatedObjectUserset {
-                        relationship: "parent".to_string(),
-                        computed: "owner".to_string(),
-                    },
-                )),
+                r#type: Some(pb::node_type::Type::RelatedObjectUserset(pb::RelatedObjectUserset {
+                    relationship: "parent".to_string(),
+                    computed: "owner".to_string(),
+                })),
             }),
             result: true,
             children: vec![],
@@ -917,7 +855,7 @@ mod tests {
             } => {
                 assert_eq!(relationship, "parent");
                 assert_eq!(computed, "owner");
-            }
+            },
             _ => panic!("Expected RelatedObjectUserset"),
         }
     }
@@ -933,10 +871,7 @@ mod tests {
         };
 
         let converted = GrpcTransport::convert_evaluation_node(node);
-        assert!(matches!(
-            converted.node_type,
-            super::super::traits::EvaluationNodeType::Union
-        ));
+        assert!(matches!(converted.node_type, super::super::traits::EvaluationNodeType::Union));
     }
 
     #[test]
@@ -967,10 +902,7 @@ mod tests {
         };
 
         let converted = GrpcTransport::convert_evaluation_node(node);
-        assert!(matches!(
-            converted.node_type,
-            super::super::traits::EvaluationNodeType::Exclusion
-        ));
+        assert!(matches!(converted.node_type, super::super::traits::EvaluationNodeType::Exclusion));
     }
 
     #[test]
@@ -989,7 +921,7 @@ mod tests {
         match converted.node_type {
             super::super::traits::EvaluationNodeType::WasmModule { module_name } => {
                 assert_eq!(module_name, "my_module");
-            }
+            },
             _ => panic!("Expected WasmModule"),
         }
     }
@@ -1028,18 +960,11 @@ mod tests {
 
     #[test]
     fn test_convert_evaluation_node_no_type() {
-        let node = pb::EvaluationNode {
-            node_type: None,
-            result: true,
-            children: vec![],
-        };
+        let node = pb::EvaluationNode { node_type: None, result: true, children: vec![] };
 
         let converted = GrpcTransport::convert_evaluation_node(node);
         // Should default to Union
-        assert!(matches!(
-            converted.node_type,
-            super::super::traits::EvaluationNodeType::Union
-        ));
+        assert!(matches!(converted.node_type, super::super::traits::EvaluationNodeType::Union));
     }
 
     #[test]
@@ -1052,10 +977,7 @@ mod tests {
 
         let converted = GrpcTransport::convert_evaluation_node(node);
         // Should default to Union
-        assert!(matches!(
-            converted.node_type,
-            super::super::traits::EvaluationNodeType::Union
-        ));
+        assert!(matches!(converted.node_type, super::super::traits::EvaluationNodeType::Union));
     }
 
     #[test]

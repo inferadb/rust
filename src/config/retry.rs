@@ -71,10 +71,7 @@ impl RetryConfig {
 
     /// Creates a configuration that disables retries.
     pub fn disabled() -> Self {
-        Self {
-            max_retries: 0,
-            ..Default::default()
-        }
+        Self { max_retries: 0, ..Default::default() }
     }
 
     /// Sets the maximum number of retry attempts.

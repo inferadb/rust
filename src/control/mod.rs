@@ -86,46 +86,37 @@ pub use account::{
     Account, AccountClient, AccountStatus, ChangePasswordRequest, Email, EmailsClient, Session,
     SessionsClient, UpdateAccountRequest,
 };
-
+// Re-export audit types
+pub use audit::{
+    ActorInfo, ActorType, AuditAction, AuditEvent, AuditLogsClient, AuditOutcome, ExportFormat,
+};
 // Re-export API client types
 pub use clients::{
     AddCertificateRequest, ApiClient, ApiClientsClient, CertificatesClient, ClientCertificate,
     ClientStatus, CreateApiClientRequest, RotateCertificateRequest, UpdateApiClientRequest,
 };
-
 // Re-export JWKS types
 pub use jwks::{Jwk, Jwks, JwksClient};
-
-// Re-export organization types
-pub use organizations::{
-    CreateOrganizationRequest, OrganizationControlClient, OrganizationInfo, OrganizationsClient,
-    UpdateOrganizationRequest,
-};
-
-// Re-export vault types
-pub use vaults::{CreateVaultRequest, UpdateVaultRequest, VaultInfo, VaultStatus, VaultsClient};
-
-// Re-export team types
-pub use teams::{
-    CreateTeamRequest, TeamInfo, TeamMemberInfo, TeamRole, TeamsClient, UpdateTeamRequest,
-};
-
 // Re-export member types
 pub use members::{
     InvitationInfo, InvitationStatus, InvitationsClient, InviteMemberRequest, MemberInfo,
     MemberStatus, MembersClient, OrgRole, UpdateMemberRequest,
 };
-
-// Re-export audit types
-pub use audit::{
-    ActorInfo, ActorType, AuditAction, AuditEvent, AuditLogsClient, AuditOutcome, ExportFormat,
+// Re-export organization types
+pub use organizations::{
+    CreateOrganizationRequest, OrganizationControlClient, OrganizationInfo, OrganizationsClient,
+    UpdateOrganizationRequest,
 };
-
 // Re-export schema types
 pub use schemas::{
     PushSchemaResult, SchemaChange, SchemaChangeType, SchemaDiff, SchemaInfo, SchemaStatus,
     SchemasClient, ValidationIssue, ValidationResult,
 };
-
+// Re-export team types
+pub use teams::{
+    CreateTeamRequest, TeamInfo, TeamMemberInfo, TeamRole, TeamsClient, UpdateTeamRequest,
+};
 // Re-export common types
 pub use types::{Page, PageInfo, SortOrder};
+// Re-export vault types
+pub use vaults::{CreateVaultRequest, UpdateVaultRequest, VaultInfo, VaultStatus, VaultsClient};

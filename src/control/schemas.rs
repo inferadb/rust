@@ -2,9 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::client::Client;
-use crate::control::{Page, SortOrder};
-use crate::Error;
+use crate::{
+    Error,
+    client::Client,
+    control::{Page, SortOrder},
+};
 
 /// Client for vault schema management operations.
 ///
@@ -44,11 +46,7 @@ impl SchemasClient {
         organization_id: impl Into<String>,
         vault_id: impl Into<String>,
     ) -> Self {
-        Self {
-            client,
-            organization_id: organization_id.into(),
-            vault_id: vault_id.into(),
-        }
+        Self { client, organization_id: organization_id.into(), vault_id: vault_id.into() }
     }
 
     /// Returns the organization ID.
@@ -82,9 +80,7 @@ impl SchemasClient {
     /// Gets the currently active schema.
     #[cfg(not(feature = "rest"))]
     pub async fn get_active(&self) -> Result<SchemaInfo, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Lists all schema versions.
@@ -130,9 +126,7 @@ impl SchemasClient {
     #[cfg(not(feature = "rest"))]
     pub async fn get(&self, version: impl Into<String>) -> Result<SchemaInfo, Error> {
         let _ = version.into();
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Pushes a new schema version.
@@ -159,9 +153,7 @@ impl SchemasClient {
             "/control/v1/organizations/{}/vaults/{}/schemas",
             self.organization_id, self.vault_id
         );
-        let body = PushSchemaRequest {
-            content: content.into(),
-        };
+        let body = PushSchemaRequest { content: content.into() };
         self.client.inner().control_post(&path, &body).await
     }
 
@@ -169,9 +161,7 @@ impl SchemasClient {
     #[cfg(not(feature = "rest"))]
     pub async fn push(&self, content: impl Into<String>) -> Result<PushSchemaResult, Error> {
         let _ = content.into();
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Validates a schema without pushing it.
@@ -192,9 +182,7 @@ impl SchemasClient {
             "/control/v1/organizations/{}/vaults/{}/schemas/validate",
             self.organization_id, self.vault_id
         );
-        let body = ValidateSchemaRequest {
-            content: content.into(),
-        };
+        let body = ValidateSchemaRequest { content: content.into() };
         self.client.inner().control_post(&path, &body).await
     }
 
@@ -202,9 +190,7 @@ impl SchemasClient {
     #[cfg(not(feature = "rest"))]
     pub async fn validate(&self, content: impl Into<String>) -> Result<ValidationResult, Error> {
         let _ = content.into();
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Activates a specific schema version.
@@ -230,9 +216,7 @@ impl SchemasClient {
     #[cfg(not(feature = "rest"))]
     pub async fn activate(&self, version: impl Into<String>) -> Result<SchemaInfo, Error> {
         let _ = version.into();
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Deletes a schema version.
@@ -258,9 +242,7 @@ impl SchemasClient {
     #[cfg(not(feature = "rest"))]
     pub async fn delete(&self, version: impl Into<String>) -> Result<(), Error> {
         let _ = version.into();
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Compares two schema versions.
@@ -296,9 +278,7 @@ impl SchemasClient {
         to_version: impl Into<String>,
     ) -> Result<SchemaDiff, Error> {
         let _ = (from_version.into(), to_version.into());
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 }
 
@@ -560,9 +540,7 @@ impl ListSchemasRequest {
 
     #[cfg(not(feature = "rest"))]
     async fn execute(self) -> Result<Page<SchemaInfo>, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 }
 
@@ -577,10 +555,10 @@ impl std::future::IntoFuture for ListSchemasRequest {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::transport::mock::MockTransport;
     use std::sync::Arc;
+
+    use super::*;
+    use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
     async fn create_test_client() -> Client {
         let mock_transport = Arc::new(MockTransport::new());
@@ -605,11 +583,7 @@ mod tests {
 
     #[test]
     fn test_validation_result() {
-        let valid = ValidationResult {
-            is_valid: true,
-            errors: vec![],
-            warnings: vec![],
-        };
+        let valid = ValidationResult { is_valid: true, errors: vec![], warnings: vec![] };
         assert!(valid.is_valid());
         assert!(!valid.has_warnings());
 
@@ -642,34 +616,13 @@ mod tests {
     #[test]
     fn test_schema_change_type() {
         assert_eq!(SchemaChangeType::EntityAdded.to_string(), "entity_added");
-        assert_eq!(
-            SchemaChangeType::EntityRemoved.to_string(),
-            "entity_removed"
-        );
-        assert_eq!(
-            SchemaChangeType::RelationAdded.to_string(),
-            "relation_added"
-        );
-        assert_eq!(
-            SchemaChangeType::RelationRemoved.to_string(),
-            "relation_removed"
-        );
-        assert_eq!(
-            SchemaChangeType::RelationModified.to_string(),
-            "relation_modified"
-        );
-        assert_eq!(
-            SchemaChangeType::PermissionAdded.to_string(),
-            "permission_added"
-        );
-        assert_eq!(
-            SchemaChangeType::PermissionRemoved.to_string(),
-            "permission_removed"
-        );
-        assert_eq!(
-            SchemaChangeType::PermissionModified.to_string(),
-            "permission_modified"
-        );
+        assert_eq!(SchemaChangeType::EntityRemoved.to_string(), "entity_removed");
+        assert_eq!(SchemaChangeType::RelationAdded.to_string(), "relation_added");
+        assert_eq!(SchemaChangeType::RelationRemoved.to_string(), "relation_removed");
+        assert_eq!(SchemaChangeType::RelationModified.to_string(), "relation_modified");
+        assert_eq!(SchemaChangeType::PermissionAdded.to_string(), "permission_added");
+        assert_eq!(SchemaChangeType::PermissionRemoved.to_string(), "permission_removed");
+        assert_eq!(SchemaChangeType::PermissionModified.to_string(), "permission_modified");
     }
 
     #[tokio::test]
@@ -749,11 +702,7 @@ mod tests {
                 created_at: chrono::Utc::now(),
                 activated_at: None,
             },
-            validation: ValidationResult {
-                is_valid: true,
-                errors: vec![],
-                warnings: vec![],
-            },
+            validation: ValidationResult { is_valid: true, errors: vec![], warnings: vec![] },
         };
         let cloned = result.clone();
         assert_eq!(cloned.schema.id, "sch_123");
@@ -812,11 +761,13 @@ mod tests {
 
 #[cfg(all(test, feature = "rest"))]
 mod wiremock_tests {
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+
     use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::Client;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use crate::{Client, auth::BearerCredentialsConfig};
 
     async fn create_mock_client(server: &MockServer) -> Client {
         Client::builder()
@@ -833,9 +784,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(path(
-                "/control/v1/organizations/org_123/vaults/vlt_456/schemas/active",
-            ))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/active"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": "sch_abc",
                 "vault_id": "vlt_456",
@@ -863,9 +812,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(path(
-                "/control/v1/organizations/org_123/vaults/vlt_456/schemas",
-            ))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [
                     {
@@ -909,9 +856,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(path(
-                "/control/v1/organizations/org_123/vaults/vlt_456/schemas",
-            ))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [],
                 "page_info": {
@@ -941,9 +886,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(path(
-                "/control/v1/organizations/org_123/vaults/vlt_456/schemas/1",
-            ))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/1"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": "sch_1",
                 "vault_id": "vlt_456",
@@ -969,9 +912,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
-            .and(path(
-                "/control/v1/organizations/org_123/vaults/vlt_456/schemas",
-            ))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "schema": {
                     "id": "sch_new",
@@ -1005,9 +946,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
-            .and(path(
-                "/control/v1/organizations/org_123/vaults/vlt_456/schemas/validate",
-            ))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/validate"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "is_valid": true,
                 "errors": [],
@@ -1038,9 +977,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
-            .and(path(
-                "/control/v1/organizations/org_123/vaults/vlt_456/schemas/2/activate",
-            ))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/2/activate"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": "sch_2",
                 "vault_id": "vlt_456",
@@ -1067,9 +1004,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("DELETE"))
-            .and(path(
-                "/control/v1/organizations/org_123/vaults/vlt_456/schemas/1",
-            ))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/1"))
             .respond_with(ResponseTemplate::new(204))
             .mount(&server)
             .await;
@@ -1086,9 +1021,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(path(
-                "/control/v1/organizations/org_123/vaults/vlt_456/schemas/diff",
-            ))
+            .and(path("/control/v1/organizations/org_123/vaults/vlt_456/schemas/diff"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "from_version": "1",
                 "to_version": "2",

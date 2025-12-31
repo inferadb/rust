@@ -37,10 +37,14 @@
 //! }
 //! ```
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -161,12 +165,7 @@ pub struct ComponentHealth {
 impl ComponentHealth {
     /// Creates a new healthy component status.
     pub fn healthy() -> Self {
-        Self {
-            status: HealthStatus::Healthy,
-            message: None,
-            latency: None,
-            last_check: Utc::now(),
-        }
+        Self { status: HealthStatus::Healthy, message: None, latency: None, last_check: Utc::now() }
     }
 
     /// Creates a new unhealthy component status with a message.
@@ -269,15 +268,9 @@ impl ShutdownHandle {
         let shutdown_flag = Arc::new(AtomicBool::new(false));
         let (tx, rx) = tokio::sync::oneshot::channel();
 
-        let handle = Self {
-            shutdown_flag: Arc::clone(&shutdown_flag),
-            shutdown_complete: tx,
-        };
+        let handle = Self { shutdown_flag: Arc::clone(&shutdown_flag), shutdown_complete: tx };
 
-        let guard = ShutdownGuard {
-            shutdown_flag,
-            _shutdown_signal: rx,
-        };
+        let guard = ShutdownGuard { shutdown_flag, _shutdown_signal: rx };
 
         (handle, guard)
     }
@@ -339,16 +332,15 @@ impl ShutdownGuard {
 
 impl std::fmt::Debug for ShutdownGuard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ShutdownGuard")
-            .field("is_shutting_down", &self.is_shutting_down())
-            .finish()
+        f.debug_struct("ShutdownGuard").field("is_shutting_down", &self.is_shutting_down()).finish()
     }
 }
 
 /// Serde helper for Duration as milliseconds.
 mod duration_millis {
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::time::Duration;
+
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     pub fn serialize<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -368,8 +360,9 @@ mod duration_millis {
 
 /// Serde helper for `Option<Duration>` as milliseconds.
 mod duration_millis_opt {
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::time::Duration;
+
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     pub fn serialize<S>(duration: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -423,17 +416,11 @@ mod tests {
         assert!(!healthy.is_degraded());
         assert!(!healthy.is_unhealthy());
 
-        let degraded = HealthResponse {
-            status: HealthStatus::Degraded,
-            ..healthy.clone()
-        };
+        let degraded = HealthResponse { status: HealthStatus::Degraded, ..healthy.clone() };
         assert!(!degraded.is_healthy());
         assert!(degraded.is_degraded());
 
-        let unhealthy = HealthResponse {
-            status: HealthStatus::Unhealthy,
-            ..healthy.clone()
-        };
+        let unhealthy = HealthResponse { status: HealthStatus::Unhealthy, ..healthy.clone() };
         assert!(unhealthy.is_unhealthy());
     }
 

@@ -5,18 +5,19 @@ use std::sync::Arc;
 use std::time::Duration;
 
 #[cfg(feature = "rest")]
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 #[cfg(feature = "rest")]
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
-use crate::auth::Credentials;
-use crate::config::{CacheConfig, DegradationConfig, RetryConfig, TlsConfig};
+use super::health::ShutdownGuard;
 #[cfg(feature = "rest")]
 use crate::error::{Error, ErrorKind};
 #[cfg(any(feature = "grpc", feature = "rest"))]
 use crate::transport::TransportClient;
-
-use super::health::ShutdownGuard;
+use crate::{
+    auth::Credentials,
+    config::{CacheConfig, DegradationConfig, RetryConfig, TlsConfig},
+};
 
 pub(crate) struct ClientInner {
     /// The InferaDB API URL.
@@ -208,10 +209,7 @@ impl ClientInner {
         let status = response.status();
         if status.is_success() {
             response.json().await.map_err(|e| {
-                Error::new(
-                    ErrorKind::InvalidResponse,
-                    format!("Failed to parse response: {}", e),
-                )
+                Error::new(ErrorKind::InvalidResponse, format!("Failed to parse response: {}", e))
             })
         } else {
             let body = response.text().await.unwrap_or_default();
@@ -236,9 +234,10 @@ impl ClientInner {
 
 #[cfg(all(test, feature = "rest"))]
 mod tests {
+    use reqwest::StatusCode;
+
     use super::*;
     use crate::auth::BearerCredentialsConfig;
-    use reqwest::StatusCode;
 
     fn create_test_inner() -> ClientInner {
         let token = "test_token";
@@ -324,10 +323,7 @@ mod tests {
         let inner = create_test_inner_no_http_client();
         let result = inner.http_client();
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err().kind(),
-            ErrorKind::Configuration
-        ));
+        assert!(matches!(result.unwrap_err().kind(), ErrorKind::Configuration));
     }
 
     #[test]

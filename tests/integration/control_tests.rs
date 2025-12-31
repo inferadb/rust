@@ -8,13 +8,8 @@ use crate::common::TestFixture;
 /// Test getting organization info via SDK
 #[tokio::test]
 async fn test_get_organization() {
-    let fixture = TestFixture::create()
-        .await
-        .expect("Failed to create test fixture");
-    let client = fixture
-        .create_sdk_client()
-        .await
-        .expect("Failed to create SDK client");
+    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
+    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
 
     let org = client.organization(fixture.org_id_str());
 
@@ -24,11 +19,11 @@ async fn test_get_organization() {
     match result {
         Ok(org_info) => {
             println!("Got organization: {:?}", org_info);
-        }
+        },
         Err(e) => {
             // May fail if control API is not fully wired yet
             println!("Get organization error: {:?}", e);
-        }
+        },
     }
 
     fixture.cleanup().await.expect("Cleanup should succeed");
@@ -37,13 +32,8 @@ async fn test_get_organization() {
 /// Test listing vaults in an organization
 #[tokio::test]
 async fn test_list_vaults() {
-    let fixture = TestFixture::create()
-        .await
-        .expect("Failed to create test fixture");
-    let client = fixture
-        .create_sdk_client()
-        .await
-        .expect("Failed to create SDK client");
+    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
+    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
 
     let org = client.organization(fixture.org_id_str());
 
@@ -55,11 +45,11 @@ async fn test_list_vaults() {
             println!("Found {} vaults", page.items.len());
             // Should have at least the test vault we created
             assert!(!page.items.is_empty(), "Should have at least one vault");
-        }
+        },
         Err(e) => {
             // May fail if control API is not fully wired yet
             println!("List vaults error: {:?}", e);
-        }
+        },
     }
 
     fixture.cleanup().await.expect("Cleanup should succeed");
@@ -68,13 +58,8 @@ async fn test_list_vaults() {
 /// Test getting vault info
 #[tokio::test]
 async fn test_get_vault() {
-    let fixture = TestFixture::create()
-        .await
-        .expect("Failed to create test fixture");
-    let client = fixture
-        .create_sdk_client()
-        .await
-        .expect("Failed to create SDK client");
+    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
+    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
 
     let org = client.organization(fixture.org_id_str());
 
@@ -84,11 +69,11 @@ async fn test_get_vault() {
     match result {
         Ok(vault_info) => {
             println!("Got vault: {:?}", vault_info);
-        }
+        },
         Err(e) => {
             // May fail if control API is not fully wired yet
             println!("Get vault error: {:?}", e);
-        }
+        },
     }
 
     fixture.cleanup().await.expect("Cleanup should succeed");
@@ -97,13 +82,8 @@ async fn test_get_vault() {
 /// Test listing API clients in an organization
 #[tokio::test]
 async fn test_list_clients() {
-    let fixture = TestFixture::create()
-        .await
-        .expect("Failed to create test fixture");
-    let client = fixture
-        .create_sdk_client()
-        .await
-        .expect("Failed to create SDK client");
+    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
+    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
 
     let org = client.organization(fixture.org_id_str());
 
@@ -115,11 +95,11 @@ async fn test_list_clients() {
             println!("Found {} API clients", page.items.len());
             // Should have at least the test client we created
             assert!(!page.items.is_empty(), "Should have at least one client");
-        }
+        },
         Err(e) => {
             // May fail if control API is not fully wired yet
             println!("List clients error: {:?}", e);
-        }
+        },
     }
 
     fixture.cleanup().await.expect("Cleanup should succeed");
@@ -128,13 +108,8 @@ async fn test_list_clients() {
 /// Test getting JWKS
 #[tokio::test]
 async fn test_get_jwks() {
-    let fixture = TestFixture::create()
-        .await
-        .expect("Failed to create test fixture");
-    let client = fixture
-        .create_sdk_client()
-        .await
-        .expect("Failed to create SDK client");
+    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
+    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
 
     // Try to get JWKS (this is on the main client, not organization)
     let result = client.jwks().get().await;
@@ -147,15 +122,12 @@ async fn test_get_jwks() {
 
             // Check if our certificate kid is in the JWKS
             let has_our_key = jwks.find_key(&fixture.cert_kid).is_some();
-            println!(
-                "Our certificate kid {} in JWKS: {}",
-                fixture.cert_kid, has_our_key
-            );
-        }
+            println!("Our certificate kid {} in JWKS: {}", fixture.cert_kid, has_our_key);
+        },
         Err(e) => {
             // May fail if control API is not fully wired yet
             println!("Get JWKS error: {:?}", e);
-        }
+        },
     }
 
     fixture.cleanup().await.expect("Cleanup should succeed");
@@ -164,13 +136,8 @@ async fn test_get_jwks() {
 /// Test listing organization members
 #[tokio::test]
 async fn test_list_members() {
-    let fixture = TestFixture::create()
-        .await
-        .expect("Failed to create test fixture");
-    let client = fixture
-        .create_sdk_client()
-        .await
-        .expect("Failed to create SDK client");
+    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
+    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
 
     let org = client.organization(fixture.org_id_str());
 
@@ -181,15 +148,12 @@ async fn test_list_members() {
         Ok(page) => {
             println!("Found {} members", page.items.len());
             // Should have at least the owner (our test user)
-            assert!(
-                !page.items.is_empty(),
-                "Should have at least one member (owner)"
-            );
-        }
+            assert!(!page.items.is_empty(), "Should have at least one member (owner)");
+        },
         Err(e) => {
             // May fail if control API is not fully wired yet
             println!("List members error: {:?}", e);
-        }
+        },
     }
 
     fixture.cleanup().await.expect("Cleanup should succeed");
@@ -198,13 +162,8 @@ async fn test_list_members() {
 /// Test listing teams
 #[tokio::test]
 async fn test_list_teams() {
-    let fixture = TestFixture::create()
-        .await
-        .expect("Failed to create test fixture");
-    let client = fixture
-        .create_sdk_client()
-        .await
-        .expect("Failed to create SDK client");
+    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
+    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
 
     let org = client.organization(fixture.org_id_str());
 
@@ -215,11 +174,11 @@ async fn test_list_teams() {
         Ok(page) => {
             println!("Found {} teams", page.items.len());
             // May be empty if no teams have been created
-        }
+        },
         Err(e) => {
             // May fail if control API is not fully wired yet
             println!("List teams error: {:?}", e);
-        }
+        },
     }
 
     fixture.cleanup().await.expect("Cleanup should succeed");
@@ -228,13 +187,8 @@ async fn test_list_teams() {
 /// Test audit log query
 #[tokio::test]
 async fn test_audit_log() {
-    let fixture = TestFixture::create()
-        .await
-        .expect("Failed to create test fixture");
-    let client = fixture
-        .create_sdk_client()
-        .await
-        .expect("Failed to create SDK client");
+    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
+    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
 
     let org = client.organization(fixture.org_id_str());
 
@@ -245,11 +199,11 @@ async fn test_audit_log() {
         Ok(page) => {
             println!("Found {} audit events", page.items.len());
             // Should have at least some events from our setup
-        }
+        },
         Err(e) => {
             // May fail if control API is not fully wired yet
             println!("Audit log query error: {:?}", e);
-        }
+        },
     }
 
     fixture.cleanup().await.expect("Cleanup should succeed");
@@ -258,13 +212,8 @@ async fn test_audit_log() {
 /// Test account info
 #[tokio::test]
 async fn test_account_info() {
-    let fixture = TestFixture::create()
-        .await
-        .expect("Failed to create test fixture");
-    let client = fixture
-        .create_sdk_client()
-        .await
-        .expect("Failed to create SDK client");
+    let fixture = TestFixture::create().await.expect("Failed to create test fixture");
+    let client = fixture.create_sdk_client().await.expect("Failed to create SDK client");
 
     // Try to get account info
     let result = client.account().get().await;
@@ -272,11 +221,11 @@ async fn test_account_info() {
     match result {
         Ok(account) => {
             println!("Got account info: {:?}", account);
-        }
+        },
         Err(e) => {
             // May fail if control API is not fully wired yet
             println!("Get account error: {:?}", e);
-        }
+        },
     }
 
     fixture.cleanup().await.expect("Cleanup should succeed");

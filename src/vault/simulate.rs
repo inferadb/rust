@@ -3,14 +3,12 @@
 //! This module provides types for testing hypothetical changes to the
 //! relationship graph without actually modifying the data.
 
-use std::future::Future;
-use std::pin::Pin;
+use std::{future::Future, pin::Pin};
 
 use serde::{Deserialize, Serialize};
 
 use super::explain::PermissionExplanation;
-use crate::types::Relationship;
-use crate::Error;
+use crate::{Error, types::Relationship};
 
 /// Builder for what-if/simulation queries.
 ///
@@ -43,11 +41,7 @@ pub struct SimulateBuilder {
 impl SimulateBuilder {
     /// Creates a new simulation builder.
     pub(crate) fn new(vault: super::VaultClient) -> Self {
-        Self {
-            vault,
-            additions: vec![],
-            removals: vec![],
-        }
+        Self { vault, additions: vec![], removals: vec![] }
     }
 
     /// Adds a hypothetical relationship.
@@ -76,8 +70,7 @@ impl SimulateBuilder {
         mut self,
         relationships: impl IntoIterator<Item = Relationship<'a>>,
     ) -> Self {
-        self.additions
-            .extend(relationships.into_iter().map(|r| r.into_owned()));
+        self.additions.extend(relationships.into_iter().map(|r| r.into_owned()));
         self
     }
 
@@ -108,8 +101,7 @@ impl SimulateBuilder {
         mut self,
         relationships: impl IntoIterator<Item = Relationship<'a>>,
     ) -> Self {
-        self.removals
-            .extend(relationships.into_iter().map(|r| r.into_owned()));
+        self.removals.extend(relationships.into_iter().map(|r| r.into_owned()));
         self
     }
 
@@ -350,16 +342,10 @@ impl SimulationResult {
             } else {
                 let mut parts = vec![];
                 if !self.hypothetical_additions.is_empty() {
-                    parts.push(format!(
-                        "+{} relationships",
-                        self.hypothetical_additions.len()
-                    ));
+                    parts.push(format!("+{} relationships", self.hypothetical_additions.len()));
                 }
                 if !self.hypothetical_removals.is_empty() {
-                    parts.push(format!(
-                        "-{} relationships",
-                        self.hypothetical_removals.len()
-                    ));
+                    parts.push(format!("-{} relationships", self.hypothetical_removals.len()));
                 }
                 format!("with {}", parts.join(", "))
             };
@@ -385,11 +371,7 @@ impl std::fmt::Display for SimulationResult {
         writeln!(f, "Subject:    {}", self.subject)?;
         writeln!(f, "Permission: {}", self.permission)?;
         writeln!(f, "Resource:   {}", self.resource)?;
-        writeln!(
-            f,
-            "Result:     {}",
-            if self.allowed { "ALLOWED" } else { "DENIED" }
-        )?;
+        writeln!(f, "Result:     {}", if self.allowed { "ALLOWED" } else { "DENIED" })?;
 
         if !self.hypothetical_additions.is_empty() {
             writeln!(f, "\nHypothetical Additions:")?;
@@ -442,11 +424,7 @@ impl SimulationDiff {
             SimulationChange::NoChange => format!(
                 "No change: {} {} {} on {}",
                 self.subject,
-                if self.current_allowed {
-                    "can"
-                } else {
-                    "cannot"
-                },
+                if self.current_allowed { "can" } else { "cannot" },
                 self.permission,
                 self.resource
             ),
@@ -469,24 +447,8 @@ impl std::fmt::Display for SimulationDiff {
         writeln!(f, "Subject:    {}", self.subject)?;
         writeln!(f, "Permission: {}", self.permission)?;
         writeln!(f, "Resource:   {}", self.resource)?;
-        writeln!(
-            f,
-            "Current:    {}",
-            if self.current_allowed {
-                "ALLOWED"
-            } else {
-                "DENIED"
-            }
-        )?;
-        writeln!(
-            f,
-            "Simulated:  {}",
-            if self.simulated_allowed {
-                "ALLOWED"
-            } else {
-                "DENIED"
-            }
-        )?;
+        writeln!(f, "Current:    {}", if self.current_allowed { "ALLOWED" } else { "DENIED" })?;
+        writeln!(f, "Simulated:  {}", if self.simulated_allowed { "ALLOWED" } else { "DENIED" })?;
         writeln!(f, "Change:     {}", self.change)?;
 
         if !self.hypothetical_additions.is_empty() {
@@ -815,11 +777,8 @@ mod tests {
     #[test]
     fn test_simulation_change_all_variants() {
         // Test all three variants
-        let changes = [
-            SimulationChange::NoChange,
-            SimulationChange::NowAllowed,
-            SimulationChange::NowDenied,
-        ];
+        let changes =
+            [SimulationChange::NoChange, SimulationChange::NowAllowed, SimulationChange::NowDenied];
 
         for change in changes {
             let json = serde_json::to_string(&change).unwrap();
@@ -829,10 +788,9 @@ mod tests {
     }
 
     // Tests for SimulateBuilder
-    use crate::auth::BearerCredentialsConfig;
-    use crate::client::Client;
-    use crate::transport::mock::MockTransport;
     use std::sync::Arc;
+
+    use crate::{auth::BearerCredentialsConfig, client::Client, transport::mock::MockTransport};
 
     #[cfg(feature = "rest")]
     #[tokio::test]

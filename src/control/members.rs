@@ -2,9 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::client::Client;
-use crate::control::{Page, SortOrder};
-use crate::Error;
+use crate::{
+    Error,
+    client::Client,
+    control::{Page, SortOrder},
+};
 
 /// Client for organization member management operations.
 ///
@@ -35,10 +37,7 @@ pub struct MembersClient {
 impl MembersClient {
     /// Creates a new members client.
     pub(crate) fn new(client: Client, organization_id: impl Into<String>) -> Self {
-        Self {
-            client,
-            organization_id: organization_id.into(),
-        }
+        Self { client, organization_id: organization_id.into() }
     }
 
     /// Returns the organization ID.
@@ -87,9 +86,7 @@ impl MembersClient {
     /// Gets a specific member by user ID.
     #[cfg(not(feature = "rest"))]
     pub async fn get(&self, _user_id: impl Into<String>) -> Result<MemberInfo, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Invites a new member to the organization.
@@ -103,19 +100,14 @@ impl MembersClient {
     /// ```
     #[cfg(feature = "rest")]
     pub async fn invite(&self, request: InviteMemberRequest) -> Result<InvitationInfo, Error> {
-        let path = format!(
-            "/control/v1/organizations/{}/invitations",
-            self.organization_id
-        );
+        let path = format!("/control/v1/organizations/{}/invitations", self.organization_id);
         self.client.inner().control_post(&path, &request).await
     }
 
     /// Invites a new member to the organization.
     #[cfg(not(feature = "rest"))]
     pub async fn invite(&self, _request: InviteMemberRequest) -> Result<InvitationInfo, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Updates a member's role or status.
@@ -148,9 +140,7 @@ impl MembersClient {
         _user_id: impl Into<String>,
         _request: UpdateMemberRequest,
     ) -> Result<MemberInfo, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Removes a member from the organization.
@@ -173,9 +163,7 @@ impl MembersClient {
     /// Removes a member from the organization.
     #[cfg(not(feature = "rest"))]
     pub async fn remove(&self, _user_id: impl Into<String>) -> Result<(), Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 }
 
@@ -214,10 +202,7 @@ pub struct InvitationsClient {
 impl InvitationsClient {
     /// Creates a new invitations client.
     pub(crate) fn new(client: Client, organization_id: impl Into<String>) -> Self {
-        Self {
-            client,
-            organization_id: organization_id.into(),
-        }
+        Self { client, organization_id: organization_id.into() }
     }
 
     /// Returns the organization ID.
@@ -256,9 +241,7 @@ impl InvitationsClient {
     /// Gets a specific invitation by ID.
     #[cfg(not(feature = "rest"))]
     pub async fn get(&self, _invitation_id: impl Into<String>) -> Result<InvitationInfo, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Resends an invitation email.
@@ -281,9 +264,7 @@ impl InvitationsClient {
     /// Resends an invitation email.
     #[cfg(not(feature = "rest"))]
     pub async fn resend(&self, _invitation_id: impl Into<String>) -> Result<(), Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Revokes a pending invitation.
@@ -306,9 +287,7 @@ impl InvitationsClient {
     /// Revokes a pending invitation.
     #[cfg(not(feature = "rest"))]
     pub async fn revoke(&self, _invitation_id: impl Into<String>) -> Result<(), Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 }
 
@@ -462,11 +441,7 @@ pub struct InviteMemberRequest {
 impl InviteMemberRequest {
     /// Creates a new invite request.
     pub fn new(email: impl Into<String>, role: OrgRole) -> Self {
-        Self {
-            email: email.into(),
-            role,
-            message: None,
-        }
+        Self { email: email.into(), role, message: None }
     }
 
     /// Sets a custom message for the invitation email.
@@ -574,9 +549,7 @@ impl ListMembersRequest {
 
     #[cfg(not(feature = "rest"))]
     async fn execute(self) -> Result<Page<MemberInfo>, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 }
 
@@ -622,10 +595,7 @@ impl ListInvitationsRequest {
 
     #[cfg(feature = "rest")]
     async fn execute(self) -> Result<Page<InvitationInfo>, Error> {
-        let mut path = format!(
-            "/control/v1/organizations/{}/invitations",
-            self.organization_id
-        );
+        let mut path = format!("/control/v1/organizations/{}/invitations", self.organization_id);
         let mut query_parts = Vec::new();
 
         if let Some(limit) = self.limit {
@@ -648,9 +618,7 @@ impl ListInvitationsRequest {
 
     #[cfg(not(feature = "rest"))]
     async fn execute(self) -> Result<Page<InvitationInfo>, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 }
 
@@ -665,10 +633,10 @@ impl std::future::IntoFuture for ListInvitationsRequest {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::transport::mock::MockTransport;
     use std::sync::Arc;
+
+    use super::*;
+    use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
     async fn create_test_client() -> Client {
         let mock_transport = Arc::new(MockTransport::new());
@@ -792,11 +760,8 @@ mod tests {
         let invitations = InvitationsClient::new(client, "org_test");
 
         // Test all builder methods
-        let _request = invitations
-            .list()
-            .limit(50)
-            .cursor("cursor_xyz")
-            .status(InvitationStatus::Pending);
+        let _request =
+            invitations.list().limit(50).cursor("cursor_xyz").status(InvitationStatus::Pending);
 
         // Just verify the builder compiles and returns a request
     }
@@ -953,11 +918,13 @@ mod tests {
 
 #[cfg(all(test, feature = "rest"))]
 mod wiremock_tests {
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+
     use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::Client;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use crate::{Client, auth::BearerCredentialsConfig};
 
     async fn create_mock_client(server: &MockServer) -> Client {
         Client::builder()
@@ -1178,9 +1145,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("DELETE"))
-            .and(path(
-                "/control/v1/organizations/org_123/invitations/inv_abc",
-            ))
+            .and(path("/control/v1/organizations/org_123/invitations/inv_abc"))
             .respond_with(ResponseTemplate::new(204))
             .mount(&server)
             .await;
@@ -1197,9 +1162,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
-            .and(path(
-                "/control/v1/organizations/org_123/invitations/inv_abc/resend",
-            ))
+            .and(path("/control/v1/organizations/org_123/invitations/inv_abc/resend"))
             .respond_with(ResponseTemplate::new(200).set_body_string("null"))
             .mount(&server)
             .await;

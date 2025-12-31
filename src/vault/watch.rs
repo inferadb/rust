@@ -34,19 +34,14 @@
 //!     .await?;
 //! ```
 
-use std::fmt;
-use std::pin::Pin;
-use std::time::Duration;
+use std::{fmt, pin::Pin, time::Duration};
 
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 
-use crate::client::Client;
-use crate::vault::VaultClient;
-use crate::Error;
 #[cfg(not(feature = "rest"))]
 use crate::ErrorKind;
-use crate::Relationship;
+use crate::{Error, Relationship, client::Client, vault::VaultClient};
 
 /// Type alias for the inner watch stream to reduce complexity.
 type InnerWatchStream = Pin<Box<dyn Stream<Item = Result<WatchEvent, Error>> + Send>>;
@@ -225,10 +220,10 @@ impl WatchFilter {
         match self {
             WatchFilter::ResourceType(t) => {
                 event.relationship.resource_type().is_some_and(|rt| rt == t)
-            }
+            },
             WatchFilter::SubjectType(t) => {
                 event.relationship.subject_type().is_some_and(|st| st == t)
-            }
+            },
             WatchFilter::Resource(r) => event.relationship.resource() == r,
             WatchFilter::Subject(s) => event.relationship.subject() == s,
             WatchFilter::Relation(r) => event.relationship.relation() == r,
@@ -249,7 +244,7 @@ impl fmt::Display for WatchFilter {
             WatchFilter::Operations(ops) => {
                 let op_strs: Vec<_> = ops.iter().map(|o| o.to_string()).collect();
                 write!(f, "operations=[{}]", op_strs.join(","))
-            }
+            },
             WatchFilter::Custom(expr) => write!(f, "custom={}", expr),
         }
     }
@@ -288,8 +283,9 @@ pub struct WatchEvent {
 
 /// Custom serde module for Relationship<'static>
 mod relationship_serde {
-    use super::*;
     use serde::{Deserializer, Serializer};
+
+    use super::*;
 
     #[derive(Deserialize)]
     struct RelationshipDto {
@@ -334,14 +330,7 @@ impl WatchEvent {
         revision: u64,
         timestamp: chrono::DateTime<chrono::Utc>,
     ) -> Self {
-        Self {
-            operation,
-            relationship,
-            revision,
-            timestamp,
-            actor: None,
-            request_id: None,
-        }
+        Self { operation, relationship, revision, timestamp, actor: None, request_id: None }
     }
 
     /// Set the actor for this event.
@@ -685,7 +674,7 @@ impl WatchBuilder {
                     for op in ops {
                         query_params.push(format!("operation={}", op));
                     }
-                }
+                },
                 WatchFilter::Custom(expr) => query_params.push(format!("filter={}", expr)),
             }
         }
@@ -717,10 +706,7 @@ impl WatchBuilder {
     /// Start the watch stream.
     #[cfg(not(feature = "rest"))]
     pub async fn run(self) -> Result<WatchStream, Error> {
-        Err(Error::new(
-            ErrorKind::Configuration,
-            "REST feature is required for watch streams",
-        ))
+        Err(Error::new(ErrorKind::Configuration, "REST feature is required for watch streams"))
     }
 }
 
@@ -864,7 +850,7 @@ impl Stream for WatchStream {
                         cx.waker().wake_by_ref();
                         std::task::Poll::Pending
                     }
-                }
+                },
                 other => other,
             }
         } else {
@@ -909,10 +895,7 @@ mod tests {
             WatchFilter::resource_type("document"),
             WatchFilter::ResourceType("document".to_string())
         );
-        assert_eq!(
-            WatchFilter::subject_type("user"),
-            WatchFilter::SubjectType("user".to_string())
-        );
+        assert_eq!(WatchFilter::subject_type("user"), WatchFilter::SubjectType("user".to_string()));
         assert_eq!(
             WatchFilter::resource("document:readme"),
             WatchFilter::Resource("document:readme".to_string())
@@ -921,10 +904,7 @@ mod tests {
             WatchFilter::subject("user:alice"),
             WatchFilter::Subject("user:alice".to_string())
         );
-        assert_eq!(
-            WatchFilter::relation("viewer"),
-            WatchFilter::Relation("viewer".to_string())
-        );
+        assert_eq!(WatchFilter::relation("viewer"), WatchFilter::Relation("viewer".to_string()));
         assert_eq!(
             WatchFilter::operations([Operation::Create]),
             WatchFilter::Operations(vec![Operation::Create])
@@ -937,26 +917,14 @@ mod tests {
 
     #[test]
     fn test_watch_filter_display() {
-        assert_eq!(
-            WatchFilter::resource_type("document").to_string(),
-            "resource_type=document"
-        );
-        assert_eq!(
-            WatchFilter::subject_type("user").to_string(),
-            "subject_type=user"
-        );
+        assert_eq!(WatchFilter::resource_type("document").to_string(), "resource_type=document");
+        assert_eq!(WatchFilter::subject_type("user").to_string(), "subject_type=user");
         assert_eq!(
             WatchFilter::resource("document:readme").to_string(),
             "resource=document:readme"
         );
-        assert_eq!(
-            WatchFilter::subject("user:alice").to_string(),
-            "subject=user:alice"
-        );
-        assert_eq!(
-            WatchFilter::relation("viewer").to_string(),
-            "relation=viewer"
-        );
+        assert_eq!(WatchFilter::subject("user:alice").to_string(), "subject=user:alice");
+        assert_eq!(WatchFilter::relation("viewer").to_string(), "relation=viewer");
         assert_eq!(
             WatchFilter::operations([Operation::Create, Operation::Delete]).to_string(),
             "operations=[create,delete]"
@@ -1153,23 +1121,11 @@ mod tests {
 
     #[test]
     fn test_operation_serialization() {
-        assert_eq!(
-            serde_json::to_string(&Operation::Create).unwrap(),
-            "\"create\""
-        );
-        assert_eq!(
-            serde_json::to_string(&Operation::Delete).unwrap(),
-            "\"delete\""
-        );
+        assert_eq!(serde_json::to_string(&Operation::Create).unwrap(), "\"create\"");
+        assert_eq!(serde_json::to_string(&Operation::Delete).unwrap(), "\"delete\"");
 
-        assert_eq!(
-            serde_json::from_str::<Operation>("\"create\"").unwrap(),
-            Operation::Create
-        );
-        assert_eq!(
-            serde_json::from_str::<Operation>("\"delete\"").unwrap(),
-            Operation::Delete
-        );
+        assert_eq!(serde_json::from_str::<Operation>("\"create\"").unwrap(), Operation::Create);
+        assert_eq!(serde_json::from_str::<Operation>("\"delete\"").unwrap(), Operation::Delete);
     }
 
     #[test]
@@ -1230,9 +1186,8 @@ mod tests {
 
     #[test]
     fn test_reconnect_config_clone() {
-        let config = ReconnectConfig::new()
-            .max_retries(5)
-            .initial_backoff(Duration::from_millis(200));
+        let config =
+            ReconnectConfig::new().max_retries(5).initial_backoff(Duration::from_millis(200));
 
         let cloned = config.clone();
         assert_eq!(cloned.max_retries, Some(5));
@@ -1317,9 +1272,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_watch_stream_basic() {
-        use crate::auth::BearerCredentialsConfig;
-        use crate::transport::mock::MockTransport;
         use std::sync::Arc;
+
+        use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
         let mock_transport = Arc::new(MockTransport::new());
         let client = crate::Client::builder()
@@ -1353,10 +1308,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_watch_stream_shutdown() {
-        use crate::auth::BearerCredentialsConfig;
-        use crate::transport::mock::MockTransport;
-        use futures::StreamExt;
         use std::sync::Arc;
+
+        use futures::StreamExt;
+
+        use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
         let mock_transport = Arc::new(MockTransport::new());
         let client = crate::Client::builder()
@@ -1388,10 +1344,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_watch_stream_with_filters() {
-        use crate::auth::BearerCredentialsConfig;
-        use crate::transport::mock::MockTransport;
-        use futures::StreamExt;
         use std::sync::Arc;
+
+        use futures::StreamExt;
+
+        use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
         let mock_transport = Arc::new(MockTransport::new());
         let client = crate::Client::builder()
@@ -1425,9 +1382,9 @@ mod tests {
     #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_watch_builder_run() {
-        use crate::auth::BearerCredentialsConfig;
-        use crate::transport::mock::MockTransport;
         use std::sync::Arc;
+
+        use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
         let mock_transport = Arc::new(MockTransport::new());
         let client = crate::Client::builder()
@@ -1456,9 +1413,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_watch_builder_no_reconnect() {
-        use crate::auth::BearerCredentialsConfig;
-        use crate::transport::mock::MockTransport;
         use std::sync::Arc;
+
+        use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
         let mock_transport = Arc::new(MockTransport::new());
         let client = crate::Client::builder()
@@ -1498,9 +1455,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_watch_builder_full_options() {
-        use crate::auth::BearerCredentialsConfig;
-        use crate::transport::mock::MockTransport;
         use std::sync::Arc;
+
+        use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
         let mock_transport = Arc::new(MockTransport::new());
         let client = crate::Client::builder()

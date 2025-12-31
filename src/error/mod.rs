@@ -21,8 +21,9 @@ mod access_denied;
 mod core;
 mod kind;
 
-pub use access_denied::AccessDenied;
 pub use core::Error;
+
+pub use access_denied::AccessDenied;
 pub use kind::ErrorKind;
 
 /// A specialized `Result` type for InferaDB operations.

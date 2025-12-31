@@ -73,10 +73,7 @@ impl CacheConfig {
 
     /// Creates a configuration with caching enabled.
     pub fn enabled() -> Self {
-        Self {
-            enabled: true,
-            ..Default::default()
-        }
+        Self { enabled: true, ..Default::default() }
     }
 
     /// Enables or disables caching.

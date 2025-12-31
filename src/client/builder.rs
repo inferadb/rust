@@ -1,19 +1,18 @@
 //! Client builder with typestate pattern.
 
-use std::marker::PhantomData;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 
-use crate::auth::Credentials;
-use crate::config::{CacheConfig, DegradationConfig, RetryConfig, TlsConfig};
+use super::inner::ClientInner;
 #[cfg(feature = "grpc")]
 use crate::transport::GrpcTransport;
 #[cfg(feature = "rest")]
 use crate::transport::RestTransport;
-use crate::transport::{PoolConfig, TransportStrategy};
-use crate::{Client, Error};
-
-use super::inner::ClientInner;
+use crate::{
+    Client, Error,
+    auth::Credentials,
+    config::{CacheConfig, DegradationConfig, RetryConfig, TlsConfig},
+    transport::{PoolConfig, TransportStrategy},
+};
 
 /// Marker type: URL not yet provided.
 pub struct NoUrl;
@@ -346,7 +345,7 @@ impl<U, C> ClientBuilder<U, C> {
                 )
                 .await?;
                 Ok(Some(Arc::new(grpc)))
-            }
+            },
             #[cfg(not(feature = "grpc"))]
             TransportStrategy::GrpcOnly => Err(Error::configuration(
                 "gRPC transport requested but 'grpc' feature is not enabled",
@@ -364,7 +363,7 @@ impl<U, C> ClientBuilder<U, C> {
                     rest.set_auth_token(token.clone());
                 }
                 Ok(Some(Arc::new(rest)))
-            }
+            },
             #[cfg(not(feature = "rest"))]
             TransportStrategy::RestOnly => Err(Error::configuration(
                 "REST transport requested but 'rest' feature is not enabled",
@@ -395,9 +394,9 @@ impl<U, C> ClientBuilder<U, C> {
                             rest.set_auth_token(token.clone());
                         }
                         Ok(Some(Arc::new(rest)))
-                    }
+                    },
                 }
-            }
+            },
             #[cfg(all(feature = "grpc", not(feature = "rest")))]
             TransportStrategy::PreferGrpc { .. } => {
                 let grpc = GrpcTransport::new(
@@ -409,7 +408,7 @@ impl<U, C> ClientBuilder<U, C> {
                 )
                 .await?;
                 Ok(Some(Arc::new(grpc)))
-            }
+            },
             #[cfg(all(not(feature = "grpc"), feature = "rest"))]
             TransportStrategy::PreferGrpc { .. } => {
                 // gRPC not available, use REST
@@ -424,7 +423,7 @@ impl<U, C> ClientBuilder<U, C> {
                     rest.set_auth_token(token.clone());
                 }
                 Ok(Some(Arc::new(rest)))
-            }
+            },
             #[cfg(all(feature = "grpc", feature = "rest"))]
             TransportStrategy::PreferRest { .. } => {
                 // Try REST first, fall back to gRPC on connection error
@@ -440,7 +439,7 @@ impl<U, C> ClientBuilder<U, C> {
                             rest.set_auth_token(token.clone());
                         }
                         Ok(Some(Arc::new(rest)))
-                    }
+                    },
                     Err(_) => {
                         // Fall back to gRPC
                         let grpc = GrpcTransport::new(
@@ -452,9 +451,9 @@ impl<U, C> ClientBuilder<U, C> {
                         )
                         .await?;
                         Ok(Some(Arc::new(grpc)))
-                    }
+                    },
                 }
-            }
+            },
             #[cfg(all(feature = "rest", not(feature = "grpc")))]
             TransportStrategy::PreferRest { .. } => {
                 let rest = RestTransport::new(
@@ -468,7 +467,7 @@ impl<U, C> ClientBuilder<U, C> {
                     rest.set_auth_token(token.clone());
                 }
                 Ok(Some(Arc::new(rest)))
-            }
+            },
             #[cfg(all(not(feature = "rest"), feature = "grpc"))]
             TransportStrategy::PreferRest { .. } => {
                 // REST not available, use gRPC
@@ -481,7 +480,7 @@ impl<U, C> ClientBuilder<U, C> {
                 )
                 .await?;
                 Ok(Some(Arc::new(grpc)))
-            }
+            },
             #[cfg(not(any(feature = "grpc", feature = "rest")))]
             _ => Ok(None),
         }
@@ -497,13 +496,10 @@ impl ClientBuilder<HasUrl, HasCredentials> {
         self,
         transport: Arc<dyn crate::transport::TransportClient + Send + Sync>,
     ) -> Result<Client, Error> {
-        let url = self
-            .url
-            .ok_or_else(|| Error::configuration("URL is required"))?;
+        let url = self.url.ok_or_else(|| Error::configuration("URL is required"))?;
 
-        let credentials = self
-            .credentials
-            .ok_or_else(|| Error::configuration("credentials are required"))?;
+        let credentials =
+            self.credentials.ok_or_else(|| Error::configuration("credentials are required"))?;
 
         let timeout = self.timeout.unwrap_or(Duration::from_secs(30));
 
@@ -549,10 +545,7 @@ impl ClientBuilder<HasUrl, HasCredentials> {
     ///     .await?;
     /// ```
     pub async fn build(self) -> Result<Client, Error> {
-        let url = self
-            .url
-            .clone()
-            .ok_or_else(|| Error::configuration("URL is required"))?;
+        let url = self.url.clone().ok_or_else(|| Error::configuration("URL is required"))?;
 
         // Validate URL first
         let parsed_url = url::Url::parse(&url)
@@ -569,30 +562,22 @@ impl ClientBuilder<HasUrl, HasCredentials> {
 
         // Extract bearer token if using Bearer credentials (before consuming credentials)
         #[cfg(feature = "rest")]
-        let initial_token = self
-            .credentials
-            .as_ref()
-            .and_then(|c| c.as_bearer())
-            .map(|b| b.token().to_string());
+        let initial_token =
+            self.credentials.as_ref().and_then(|c| c.as_bearer()).map(|b| b.token().to_string());
         #[cfg(not(feature = "rest"))]
         let initial_token: Option<String> = None;
 
         // Create transport based on strategy (before consuming self)
-        let transport = self
-            .create_transport(&parsed_url, timeout, initial_token.as_ref())
-            .await?;
+        let transport = self.create_transport(&parsed_url, timeout, initial_token.as_ref()).await?;
 
         // Now extract credentials (consuming self)
-        let credentials = self
-            .credentials
-            .ok_or_else(|| Error::configuration("credentials are required"))?;
+        let credentials =
+            self.credentials.ok_or_else(|| Error::configuration("credentials are required"))?;
 
         // Create HTTP client for Control API
         #[cfg(feature = "rest")]
         let http_client = {
-            let mut builder = reqwest::Client::builder()
-                .timeout(timeout)
-                .connect_timeout(timeout);
+            let mut builder = reqwest::Client::builder().timeout(timeout).connect_timeout(timeout);
 
             // Configure TLS if needed
             #[cfg(feature = "rustls")]
@@ -657,10 +642,7 @@ impl ClientBuilder<HasUrl, HasCredentials> {
     pub async fn build_with_shutdown(
         self,
     ) -> Result<(Client, super::health::ShutdownHandle), Error> {
-        let url = self
-            .url
-            .clone()
-            .ok_or_else(|| Error::configuration("URL is required"))?;
+        let url = self.url.clone().ok_or_else(|| Error::configuration("URL is required"))?;
 
         // Validate URL first
         let parsed_url = url::Url::parse(&url)
@@ -677,30 +659,22 @@ impl ClientBuilder<HasUrl, HasCredentials> {
 
         // Extract bearer token if using Bearer credentials (before consuming credentials)
         #[cfg(feature = "rest")]
-        let initial_token = self
-            .credentials
-            .as_ref()
-            .and_then(|c| c.as_bearer())
-            .map(|b| b.token().to_string());
+        let initial_token =
+            self.credentials.as_ref().and_then(|c| c.as_bearer()).map(|b| b.token().to_string());
         #[cfg(not(feature = "rest"))]
         let initial_token: Option<String> = None;
 
         // Create transport based on strategy (before consuming self)
-        let transport = self
-            .create_transport(&parsed_url, timeout, initial_token.as_ref())
-            .await?;
+        let transport = self.create_transport(&parsed_url, timeout, initial_token.as_ref()).await?;
 
         // Now extract credentials (consuming self)
-        let credentials = self
-            .credentials
-            .ok_or_else(|| Error::configuration("credentials are required"))?;
+        let credentials =
+            self.credentials.ok_or_else(|| Error::configuration("credentials are required"))?;
 
         // Create HTTP client for Control API
         #[cfg(feature = "rest")]
         let http_client = {
-            let mut builder = reqwest::Client::builder()
-                .timeout(timeout)
-                .connect_timeout(timeout);
+            let mut builder = reqwest::Client::builder().timeout(timeout).connect_timeout(timeout);
 
             // Configure TLS if needed
             #[cfg(feature = "rustls")]
@@ -745,8 +719,10 @@ impl ClientBuilder<HasUrl, HasCredentials> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::{BearerCredentialsConfig, ClientCredentialsConfig, Ed25519PrivateKey};
-    use crate::transport::mock::MockTransport;
+    use crate::{
+        auth::{BearerCredentialsConfig, ClientCredentialsConfig, Ed25519PrivateKey},
+        transport::mock::MockTransport,
+    };
 
     #[test]
     fn test_builder_typestate() {
@@ -870,10 +846,7 @@ mod tests {
             .credentials(BearerCredentialsConfig::new("token"))
             .degradation_config(DegradationConfig::fail_open());
 
-        assert_eq!(
-            builder.degradation_config.failure_mode,
-            crate::config::FailureMode::FailOpen
-        );
+        assert_eq!(builder.degradation_config.failure_mode, crate::config::FailureMode::FailOpen);
     }
 
     #[test]

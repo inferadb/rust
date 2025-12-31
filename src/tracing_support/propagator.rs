@@ -31,7 +31,7 @@ impl HeaderInjector for std::collections::HashMap<String, String> {
 pub trait Propagator {
     /// Extracts a trace context from headers.
     fn extract<E: HeaderExtractor>(&self, extractor: &E)
-        -> Result<TraceContext, TraceContextError>;
+    -> Result<TraceContext, TraceContextError>;
 
     /// Injects a trace context into headers.
     fn inject<I: HeaderInjector>(&self, context: &TraceContext, injector: &mut I);
@@ -71,9 +71,8 @@ impl Propagator for W3CTraceContext {
         &self,
         extractor: &E,
     ) -> Result<TraceContext, TraceContextError> {
-        let traceparent = extractor
-            .get(Self::TRACEPARENT)
-            .ok_or(TraceContextError::InvalidFormat)?;
+        let traceparent =
+            extractor.get(Self::TRACEPARENT).ok_or(TraceContextError::InvalidFormat)?;
 
         let mut ctx = TraceContext::from_traceparent(traceparent)?;
 
@@ -133,16 +132,12 @@ impl B3Propagator {
 
     /// Creates a new B3 propagator using the single header format.
     pub fn single() -> Self {
-        Self {
-            single_header: true,
-        }
+        Self { single_header: true }
     }
 
     /// Creates a new B3 propagator using multiple headers.
     pub fn multi() -> Self {
-        Self {
-            single_header: false,
-        }
+        Self { single_header: false }
     }
 }
 
@@ -163,12 +158,9 @@ impl Propagator for B3Propagator {
         }
 
         // Try multi-header format
-        let trace_id = extractor
-            .get(Self::X_B3_TRACE_ID)
-            .ok_or(TraceContextError::InvalidFormat)?;
-        let span_id = extractor
-            .get(Self::X_B3_SPAN_ID)
-            .ok_or(TraceContextError::InvalidFormat)?;
+        let trace_id =
+            extractor.get(Self::X_B3_TRACE_ID).ok_or(TraceContextError::InvalidFormat)?;
+        let span_id = extractor.get(Self::X_B3_SPAN_ID).ok_or(TraceContextError::InvalidFormat)?;
 
         let sampled = extractor
             .get(Self::X_B3_SAMPLED)
@@ -184,17 +176,13 @@ impl Propagator for B3Propagator {
     fn inject<I: HeaderInjector>(&self, context: &TraceContext, injector: &mut I) {
         if self.single_header {
             let sampled = if context.is_sampled() { "1" } else { "0" };
-            injector.set(
-                Self::B3,
-                format!("{}-{}-{}", context.trace_id(), context.span_id(), sampled),
-            );
+            injector
+                .set(Self::B3, format!("{}-{}-{}", context.trace_id(), context.span_id(), sampled));
         } else {
             injector.set(Self::X_B3_TRACE_ID, context.trace_id().to_string());
             injector.set(Self::X_B3_SPAN_ID, context.span_id().to_string());
-            injector.set(
-                Self::X_B3_SAMPLED,
-                if context.is_sampled() { "1" } else { "0" }.to_string(),
-            );
+            injector
+                .set(Self::X_B3_SAMPLED, if context.is_sampled() { "1" } else { "0" }.to_string());
             if let Some(parent) = context.parent_span_id() {
                 injector.set(Self::X_B3_PARENT_SPAN_ID, parent.to_string());
             }
@@ -232,8 +220,9 @@ fn parse_b3_single(b3: &str) -> Result<TraceContext, TraceContextError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::collections::HashMap;
+
+    use super::*;
 
     #[test]
     fn test_w3c_inject_extract() {
@@ -355,10 +344,7 @@ mod tests {
     fn test_b3_multi_extract_with_sampled_true() {
         let propagator = B3Propagator::multi();
         let mut headers = HashMap::new();
-        headers.insert(
-            "x-b3-traceid".to_string(),
-            "4bf92f3577b34da6a3ce929d0e0e4736".to_string(),
-        );
+        headers.insert("x-b3-traceid".to_string(), "4bf92f3577b34da6a3ce929d0e0e4736".to_string());
         headers.insert("x-b3-spanid".to_string(), "00f067aa0ba902b7".to_string());
         headers.insert("x-b3-sampled".to_string(), "true".to_string());
 
@@ -370,10 +356,7 @@ mod tests {
     fn test_b3_multi_extract_without_sampled() {
         let propagator = B3Propagator::multi();
         let mut headers = HashMap::new();
-        headers.insert(
-            "x-b3-traceid".to_string(),
-            "4bf92f3577b34da6a3ce929d0e0e4736".to_string(),
-        );
+        headers.insert("x-b3-traceid".to_string(), "4bf92f3577b34da6a3ce929d0e0e4736".to_string());
         headers.insert("x-b3-spanid".to_string(), "00f067aa0ba902b7".to_string());
 
         let ctx = propagator.extract(&headers).unwrap();
@@ -485,10 +468,7 @@ mod tests {
     fn test_b3_multi_missing_span_id() {
         let propagator = B3Propagator::multi();
         let mut headers = HashMap::new();
-        headers.insert(
-            "x-b3-traceid".to_string(),
-            "4bf92f3577b34da6a3ce929d0e0e4736".to_string(),
-        );
+        headers.insert("x-b3-traceid".to_string(), "4bf92f3577b34da6a3ce929d0e0e4736".to_string());
 
         let result = propagator.extract(&headers);
         assert!(result.is_err());

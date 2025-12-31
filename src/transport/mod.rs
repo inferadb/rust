@@ -42,11 +42,12 @@ pub(crate) mod rest;
 pub(crate) mod mock;
 
 // Re-export public types
-pub use traits::{
-    FallbackReason, FallbackTrigger, GrpcStats, PoolConfig, RestStats, Transport, TransportEvent,
-    TransportStats, TransportStrategy,
-};
-
+// Re-export gRPC transport
+#[cfg(feature = "grpc")]
+pub use grpc::{GrpcTransport, GrpcTransportBuilder};
+// Re-export REST transport
+#[cfg(feature = "rest")]
+pub use rest::{RestTransport, RestTransportBuilder};
 // Internal re-exports (used when transport is integrated with client)
 pub(crate) use traits::TransportClient;
 #[cfg(feature = "rest")]
@@ -54,11 +55,7 @@ pub(crate) use traits::{
     CheckRequest as TransportCheckRequest, SimulateRequest as TransportSimulateRequest,
     WriteRequest as TransportWriteRequest,
 };
-
-// Re-export REST transport
-#[cfg(feature = "rest")]
-pub use rest::{RestTransport, RestTransportBuilder};
-
-// Re-export gRPC transport
-#[cfg(feature = "grpc")]
-pub use grpc::{GrpcTransport, GrpcTransportBuilder};
+pub use traits::{
+    FallbackReason, FallbackTrigger, GrpcStats, PoolConfig, RestStats, Transport, TransportEvent,
+    TransportStats, TransportStrategy,
+};

@@ -5,9 +5,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::client::Client;
-use crate::control::{Page, SortOrder};
-use crate::Error;
+use crate::{
+    Error,
+    client::Client,
+    control::{Page, SortOrder},
+};
 
 /// Client for managing API clients within an organization.
 ///
@@ -33,10 +35,7 @@ pub struct ApiClientsClient {
 impl ApiClientsClient {
     /// Creates a new API clients client.
     pub(crate) fn new(client: Client, organization_id: impl Into<String>) -> Self {
-        Self {
-            client,
-            organization_id: organization_id.into(),
-        }
+        Self { client, organization_id: organization_id.into() }
     }
 
     /// Lists all API clients in the organization.
@@ -72,10 +71,8 @@ impl ApiClientsClient {
         let client_id = client_id.into();
         #[cfg(feature = "rest")]
         {
-            let path = format!(
-                "/control/v1/organizations/{}/clients/{}",
-                self.organization_id, client_id
-            );
+            let path =
+                format!("/control/v1/organizations/{}/clients/{}", self.organization_id, client_id);
             return self.client.inner().control_get(&path).await;
         }
         #[cfg(not(feature = "rest"))]
@@ -127,10 +124,8 @@ impl ApiClientsClient {
         let client_id = client_id.into();
         #[cfg(feature = "rest")]
         {
-            let path = format!(
-                "/control/v1/organizations/{}/clients/{}",
-                self.organization_id, client_id
-            );
+            let path =
+                format!("/control/v1/organizations/{}/clients/{}", self.organization_id, client_id);
             return self.client.inner().control_patch(&path, &request).await;
         }
         #[cfg(not(feature = "rest"))]
@@ -153,10 +148,8 @@ impl ApiClientsClient {
         let client_id = client_id.into();
         #[cfg(feature = "rest")]
         {
-            let path = format!(
-                "/control/v1/organizations/{}/clients/{}",
-                self.organization_id, client_id
-            );
+            let path =
+                format!("/control/v1/organizations/{}/clients/{}", self.organization_id, client_id);
             return self.client.inner().control_delete(&path).await;
         }
         #[cfg(not(feature = "rest"))]
@@ -193,11 +186,8 @@ impl ApiClientsClient {
     /// ```
     pub async fn suspend(&self, client_id: impl Into<String>) -> Result<ApiClient, Error> {
         let client_id = client_id.into();
-        self.update(
-            &client_id,
-            UpdateApiClientRequest::new().with_status(ClientStatus::Suspended),
-        )
-        .await
+        self.update(&client_id, UpdateApiClientRequest::new().with_status(ClientStatus::Suspended))
+            .await
     }
 
     /// Reactivates a suspended API client.
@@ -209,11 +199,8 @@ impl ApiClientsClient {
     /// ```
     pub async fn reactivate(&self, client_id: impl Into<String>) -> Result<ApiClient, Error> {
         let client_id = client_id.into();
-        self.update(
-            &client_id,
-            UpdateApiClientRequest::new().with_status(ClientStatus::Active),
-        )
-        .await
+        self.update(&client_id, UpdateApiClientRequest::new().with_status(ClientStatus::Active))
+            .await
     }
 }
 
@@ -303,10 +290,7 @@ pub struct CreateApiClientRequest {
 impl CreateApiClientRequest {
     /// Creates a new request with the given name.
     pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            ..Default::default()
-        }
+        Self { name: name.into(), ..Default::default() }
     }
 
     /// Sets the description.
@@ -471,9 +455,7 @@ impl ListApiClientsRequest {
 
     #[cfg(not(feature = "rest"))]
     async fn execute(self) -> Result<Page<ApiClient>, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 }
 
@@ -649,11 +631,7 @@ pub struct AddCertificateRequest {
 impl AddCertificateRequest {
     /// Creates a new request with the given public key.
     pub fn new(public_key: impl Into<String>) -> Self {
-        Self {
-            public_key: public_key.into(),
-            algorithm: None,
-            expires_at: None,
-        }
+        Self { public_key: public_key.into(), algorithm: None, expires_at: None }
     }
 
     /// Sets the algorithm.
@@ -685,11 +663,7 @@ pub struct RotateCertificateRequest {
 impl RotateCertificateRequest {
     /// Creates a new request with the given public key.
     pub fn new(public_key: impl Into<String>) -> Self {
-        Self {
-            public_key: public_key.into(),
-            algorithm: None,
-            grace_period_secs: None,
-        }
+        Self { public_key: public_key.into(), algorithm: None, grace_period_secs: None }
     }
 
     /// Sets the algorithm.
@@ -709,10 +683,10 @@ impl RotateCertificateRequest {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::transport::mock::MockTransport;
     use std::sync::Arc;
+
+    use super::*;
+    use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
     async fn create_test_client() -> Client {
         let mock_transport = Arc::new(MockTransport::new());
@@ -956,11 +930,13 @@ mod tests {
 
 #[cfg(all(test, feature = "rest"))]
 mod wiremock_tests {
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+
     use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::Client;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use crate::{Client, auth::BearerCredentialsConfig};
 
     async fn create_mock_client(server: &MockServer) -> Client {
         Client::builder()
@@ -1149,9 +1125,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("GET"))
-            .and(path(
-                "/control/v1/organizations/org_123/clients/cli_abc/certificates",
-            ))
+            .and(path("/control/v1/organizations/org_123/clients/cli_abc/certificates"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "items": [
                     {
@@ -1188,9 +1162,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
-            .and(path(
-                "/control/v1/organizations/org_123/clients/cli_abc/certificates",
-            ))
+            .and(path("/control/v1/organizations/org_123/clients/cli_abc/certificates"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": "cert_new",
                 "fingerprint": "sha256:newkey",
@@ -1218,9 +1190,7 @@ mod wiremock_tests {
         let server = MockServer::start().await;
 
         Mock::given(method("DELETE"))
-            .and(path(
-                "/control/v1/organizations/org_123/clients/cli_abc/certificates/cert_123",
-            ))
+            .and(path("/control/v1/organizations/org_123/clients/cli_abc/certificates/cert_123"))
             .respond_with(ResponseTemplate::new(204))
             .mount(&server)
             .await;
@@ -1239,9 +1209,7 @@ mod wiremock_tests {
 
         // rotate() posts to /certificates (adds new cert, server handles grace period)
         Mock::given(method("POST"))
-            .and(path(
-                "/control/v1/organizations/org_123/clients/cli_abc/certificates",
-            ))
+            .and(path("/control/v1/organizations/org_123/clients/cli_abc/certificates"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": "cert_rotated",
                 "fingerprint": "sha256:rotated",

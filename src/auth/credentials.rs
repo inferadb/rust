@@ -1,7 +1,6 @@
 //! Credentials types for InferaDB authentication.
 
-use std::fmt;
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use super::Ed25519PrivateKey;
 
@@ -71,11 +70,7 @@ impl ClientCredentialsConfig {
     /// );
     /// ```
     pub fn new(client_id: impl Into<String>, private_key: Ed25519PrivateKey) -> Self {
-        Self {
-            client_id: client_id.into(),
-            private_key,
-            certificate_id: None,
-        }
+        Self { client_id: client_id.into(), private_key, certificate_id: None }
     }
 
     /// Sets the certificate ID for certificate binding.
@@ -141,9 +136,7 @@ impl BearerCredentialsConfig {
     /// let config = BearerCredentialsConfig::new("eyJhbGciOiJFZERTQSI...");
     /// ```
     pub fn new(token: impl Into<String>) -> Self {
-        Self {
-            token: Arc::from(token.into()),
-        }
+        Self { token: Arc::from(token.into()) }
     }
 
     /// Returns the bearer token.
@@ -154,9 +147,7 @@ impl BearerCredentialsConfig {
 
 impl fmt::Debug for BearerCredentialsConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("BearerCredentialsConfig")
-            .field("token", &"[REDACTED]")
-            .finish()
+        f.debug_struct("BearerCredentialsConfig").field("token", &"[REDACTED]").finish()
     }
 }
 
@@ -228,7 +219,7 @@ impl fmt::Debug for Credentials {
         match self {
             Credentials::ClientCredentials(config) => {
                 f.debug_tuple("ClientCredentials").field(config).finish()
-            }
+            },
             Credentials::Bearer(config) => f.debug_tuple("Bearer").field(config).finish(),
         }
     }

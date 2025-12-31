@@ -90,19 +90,13 @@ async fn main() -> Result<()> {
     // Write returns a consistency token for read-after-write consistency
     let token = vault
         .relationships()
-        .write(Relationship::new(
-            "document:new-doc",
-            "viewer",
-            "user:charlie",
-        ))
+        .write(Relationship::new("document:new-doc", "viewer", "user:charlie"))
         .await?;
 
     println!("  Write returned consistency token: {}", token.value());
 
     // After writing, the authorization check will reflect the new relationship
-    let allowed = vault
-        .check("user:charlie", "view", "document:new-doc")
-        .await?;
+    let allowed = vault.check("user:charlie", "view", "document:new-doc").await?;
 
     println!("  user:charlie can view document:new-doc: {allowed}");
 
@@ -115,11 +109,7 @@ async fn main() -> Result<()> {
     // Delete the test relationships
     vault
         .relationships()
-        .delete(Relationship::new(
-            "document:new-doc",
-            "viewer",
-            "user:charlie",
-        ))
+        .delete(Relationship::new("document:new-doc", "viewer", "user:charlie"))
         .await?;
 
     println!("  Deleted test relationship");

@@ -45,7 +45,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Error, Fields, Ident, LitStr, Result};
+use syn::{Data, DeriveInput, Error, Fields, Ident, LitStr, Result, parse_macro_input};
 
 /// Derive macro for implementing the `Resource` trait.
 ///
@@ -183,27 +183,21 @@ fn find_id_field(data: &Data, attr_name: &str) -> Result<Ident> {
                 return Err(Error::new(
                     proc_macro2::Span::call_site(),
                     "tuple structs are not supported",
-                ))
-            }
+                ));
+            },
             Fields::Unit => {
                 return Err(Error::new(
                     proc_macro2::Span::call_site(),
                     "unit structs are not supported",
-                ))
-            }
+                ));
+            },
         },
         Data::Enum(_) => {
-            return Err(Error::new(
-                proc_macro2::Span::call_site(),
-                "enums are not supported",
-            ))
-        }
+            return Err(Error::new(proc_macro2::Span::call_site(), "enums are not supported"));
+        },
         Data::Union(_) => {
-            return Err(Error::new(
-                proc_macro2::Span::call_site(),
-                "unions are not supported",
-            ))
-        }
+            return Err(Error::new(proc_macro2::Span::call_site(), "unions are not supported"));
+        },
     };
 
     for field in fields {

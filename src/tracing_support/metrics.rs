@@ -1,9 +1,13 @@
 //! Metrics collection for observability.
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
 
 use parking_lot::RwLock;
 
@@ -165,44 +169,30 @@ impl Metrics {
     /// Records check latency.
     pub fn record_check_latency(&self, duration: Duration, _allowed: bool) {
         let nanos = duration.as_nanos() as u64;
-        self.inner
-            .check_latency_sum_ns
-            .fetch_add(nanos, Ordering::Relaxed);
-        self.inner
-            .check_latency_count
-            .fetch_add(1, Ordering::Relaxed);
+        self.inner.check_latency_sum_ns.fetch_add(nanos, Ordering::Relaxed);
+        self.inner.check_latency_count.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Increments the relationship write counter.
     pub fn increment_relationship_writes(&self, count: u64) {
-        self.inner
-            .relationship_writes
-            .fetch_add(count, Ordering::Relaxed);
+        self.inner.relationship_writes.fetch_add(count, Ordering::Relaxed);
     }
 
     /// Increments the relationship delete counter.
     pub fn increment_relationship_deletes(&self, count: u64) {
-        self.inner
-            .relationship_deletes
-            .fetch_add(count, Ordering::Relaxed);
+        self.inner.relationship_deletes.fetch_add(count, Ordering::Relaxed);
     }
 
     /// Records write latency.
     pub fn record_write_latency(&self, duration: Duration) {
         let nanos = duration.as_nanos() as u64;
-        self.inner
-            .write_latency_sum_ns
-            .fetch_add(nanos, Ordering::Relaxed);
-        self.inner
-            .write_latency_count
-            .fetch_add(1, Ordering::Relaxed);
+        self.inner.write_latency_sum_ns.fetch_add(nanos, Ordering::Relaxed);
+        self.inner.write_latency_count.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Sets the connection pool size gauge.
     pub fn set_connection_pool_size(&self, size: u64) {
-        self.inner
-            .connection_pool_size
-            .store(size, Ordering::Relaxed);
+        self.inner.connection_pool_size.store(size, Ordering::Relaxed);
     }
 
     /// Increments the connection error counter.
@@ -215,22 +205,14 @@ impl Metrics {
         let counters = self.inner.custom_counters.read();
         if counters.contains_key(name) {
             drop(counters);
-            return Counter {
-                name: name.to_string(),
-                metrics: self.clone(),
-            };
+            return Counter { name: name.to_string(), metrics: self.clone() };
         }
         drop(counters);
 
         let mut counters = self.inner.custom_counters.write();
-        counters
-            .entry(name.to_string())
-            .or_insert_with(|| AtomicU64::new(0));
+        counters.entry(name.to_string()).or_insert_with(|| AtomicU64::new(0));
 
-        Counter {
-            name: name.to_string(),
-            metrics: self.clone(),
-        }
+        Counter { name: name.to_string(), metrics: self.clone() }
     }
 
     /// Returns a custom gauge, creating it if it doesn't exist.
@@ -238,30 +220,19 @@ impl Metrics {
         let gauges = self.inner.custom_gauges.read();
         if gauges.contains_key(name) {
             drop(gauges);
-            return Gauge {
-                name: name.to_string(),
-                metrics: self.clone(),
-            };
+            return Gauge { name: name.to_string(), metrics: self.clone() };
         }
         drop(gauges);
 
         let mut gauges = self.inner.custom_gauges.write();
-        gauges
-            .entry(name.to_string())
-            .or_insert_with(|| AtomicU64::new(0));
+        gauges.entry(name.to_string()).or_insert_with(|| AtomicU64::new(0));
 
-        Gauge {
-            name: name.to_string(),
-            metrics: self.clone(),
-        }
+        Gauge { name: name.to_string(), metrics: self.clone() }
     }
 
     /// Returns a histogram (simplified implementation).
     pub fn histogram(&self, name: &str) -> Histogram {
-        Histogram {
-            name: name.to_string(),
-            metrics: self.clone(),
-        }
+        Histogram { name: name.to_string(), metrics: self.clone() }
     }
 
     /// Returns a snapshot of current metrics.
@@ -278,16 +249,8 @@ impl Metrics {
             check_errors: self.inner.check_errors.load(Ordering::Relaxed),
             relationship_writes: self.inner.relationship_writes.load(Ordering::Relaxed),
             relationship_deletes: self.inner.relationship_deletes.load(Ordering::Relaxed),
-            check_latency_avg_ns: if check_count > 0 {
-                check_sum_ns / check_count
-            } else {
-                0
-            },
-            write_latency_avg_ns: if write_count > 0 {
-                write_sum_ns / write_count
-            } else {
-                0
-            },
+            check_latency_avg_ns: if check_count > 0 { check_sum_ns / check_count } else { 0 },
+            write_latency_avg_ns: if write_count > 0 { write_sum_ns / write_count } else { 0 },
             connection_pool_size: self.inner.connection_pool_size.load(Ordering::Relaxed),
             connection_errors: self.inner.connection_errors.load(Ordering::Relaxed),
         }
@@ -398,10 +361,7 @@ impl Counter {
     /// Returns the current value.
     pub fn value(&self) -> u64 {
         let counters = self.metrics.inner.custom_counters.read();
-        counters
-            .get(&self.name)
-            .map(|c| c.load(Ordering::Relaxed))
-            .unwrap_or(0)
+        counters.get(&self.name).map(|c| c.load(Ordering::Relaxed)).unwrap_or(0)
     }
 }
 
@@ -455,10 +415,7 @@ impl Gauge {
     /// Returns the current value.
     pub fn value(&self) -> u64 {
         let gauges = self.metrics.inner.custom_gauges.read();
-        gauges
-            .get(&self.name)
-            .map(|g| g.load(Ordering::Relaxed))
-            .unwrap_or(0)
+        gauges.get(&self.name).map(|g| g.load(Ordering::Relaxed)).unwrap_or(0)
     }
 }
 

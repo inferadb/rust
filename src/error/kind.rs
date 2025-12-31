@@ -372,29 +372,17 @@ mod tests {
         assert_eq!(format!("{}", ErrorKind::Unauthorized), "unauthorized");
         assert_eq!(format!("{}", ErrorKind::Forbidden), "forbidden");
         assert_eq!(format!("{}", ErrorKind::NotFound), "not found");
-        assert_eq!(
-            format!("{}", ErrorKind::InvalidArgument),
-            "invalid argument"
-        );
-        assert_eq!(
-            format!("{}", ErrorKind::SchemaViolation),
-            "schema violation"
-        );
+        assert_eq!(format!("{}", ErrorKind::InvalidArgument), "invalid argument");
+        assert_eq!(format!("{}", ErrorKind::SchemaViolation), "schema violation");
         assert_eq!(format!("{}", ErrorKind::RateLimited), "rate limited");
         assert_eq!(format!("{}", ErrorKind::Unavailable), "service unavailable");
         assert_eq!(format!("{}", ErrorKind::Timeout), "timeout");
         assert_eq!(format!("{}", ErrorKind::Internal), "internal error");
         assert_eq!(format!("{}", ErrorKind::Cancelled), "cancelled");
-        assert_eq!(
-            format!("{}", ErrorKind::CircuitOpen),
-            "circuit breaker open"
-        );
+        assert_eq!(format!("{}", ErrorKind::CircuitOpen), "circuit breaker open");
         assert_eq!(format!("{}", ErrorKind::Connection), "connection error");
         assert_eq!(format!("{}", ErrorKind::Protocol), "protocol error");
-        assert_eq!(
-            format!("{}", ErrorKind::Configuration),
-            "configuration error"
-        );
+        assert_eq!(format!("{}", ErrorKind::Configuration), "configuration error");
         assert_eq!(format!("{}", ErrorKind::Unknown), "unknown error");
     }
 
@@ -436,10 +424,7 @@ mod tests {
         // Test remaining variants have display strings
         assert_eq!(format!("{}", ErrorKind::Conflict), "conflict");
         assert_eq!(format!("{}", ErrorKind::Transport), "transport error");
-        assert_eq!(
-            format!("{}", ErrorKind::InvalidResponse),
-            "invalid response"
-        );
+        assert_eq!(format!("{}", ErrorKind::InvalidResponse), "invalid response");
     }
 
     #[test]
@@ -462,66 +447,21 @@ mod tests {
 
         // Test all gRPC code mappings
         assert_eq!(ErrorKind::from_grpc_code(Code::Ok), ErrorKind::Unknown);
-        assert_eq!(
-            ErrorKind::from_grpc_code(Code::Cancelled),
-            ErrorKind::Cancelled
-        );
+        assert_eq!(ErrorKind::from_grpc_code(Code::Cancelled), ErrorKind::Cancelled);
         assert_eq!(ErrorKind::from_grpc_code(Code::Unknown), ErrorKind::Unknown);
-        assert_eq!(
-            ErrorKind::from_grpc_code(Code::InvalidArgument),
-            ErrorKind::InvalidArgument
-        );
-        assert_eq!(
-            ErrorKind::from_grpc_code(Code::DeadlineExceeded),
-            ErrorKind::Timeout
-        );
-        assert_eq!(
-            ErrorKind::from_grpc_code(Code::NotFound),
-            ErrorKind::NotFound
-        );
-        assert_eq!(
-            ErrorKind::from_grpc_code(Code::AlreadyExists),
-            ErrorKind::Conflict
-        );
-        assert_eq!(
-            ErrorKind::from_grpc_code(Code::PermissionDenied),
-            ErrorKind::Forbidden
-        );
-        assert_eq!(
-            ErrorKind::from_grpc_code(Code::ResourceExhausted),
-            ErrorKind::RateLimited
-        );
-        assert_eq!(
-            ErrorKind::from_grpc_code(Code::FailedPrecondition),
-            ErrorKind::SchemaViolation
-        );
-        assert_eq!(
-            ErrorKind::from_grpc_code(Code::Aborted),
-            ErrorKind::Conflict
-        );
-        assert_eq!(
-            ErrorKind::from_grpc_code(Code::OutOfRange),
-            ErrorKind::InvalidArgument
-        );
-        assert_eq!(
-            ErrorKind::from_grpc_code(Code::Unimplemented),
-            ErrorKind::Protocol
-        );
-        assert_eq!(
-            ErrorKind::from_grpc_code(Code::Internal),
-            ErrorKind::Internal
-        );
-        assert_eq!(
-            ErrorKind::from_grpc_code(Code::Unavailable),
-            ErrorKind::Unavailable
-        );
-        assert_eq!(
-            ErrorKind::from_grpc_code(Code::DataLoss),
-            ErrorKind::Internal
-        );
-        assert_eq!(
-            ErrorKind::from_grpc_code(Code::Unauthenticated),
-            ErrorKind::Unauthorized
-        );
+        assert_eq!(ErrorKind::from_grpc_code(Code::InvalidArgument), ErrorKind::InvalidArgument);
+        assert_eq!(ErrorKind::from_grpc_code(Code::DeadlineExceeded), ErrorKind::Timeout);
+        assert_eq!(ErrorKind::from_grpc_code(Code::NotFound), ErrorKind::NotFound);
+        assert_eq!(ErrorKind::from_grpc_code(Code::AlreadyExists), ErrorKind::Conflict);
+        assert_eq!(ErrorKind::from_grpc_code(Code::PermissionDenied), ErrorKind::Forbidden);
+        assert_eq!(ErrorKind::from_grpc_code(Code::ResourceExhausted), ErrorKind::RateLimited);
+        assert_eq!(ErrorKind::from_grpc_code(Code::FailedPrecondition), ErrorKind::SchemaViolation);
+        assert_eq!(ErrorKind::from_grpc_code(Code::Aborted), ErrorKind::Conflict);
+        assert_eq!(ErrorKind::from_grpc_code(Code::OutOfRange), ErrorKind::InvalidArgument);
+        assert_eq!(ErrorKind::from_grpc_code(Code::Unimplemented), ErrorKind::Protocol);
+        assert_eq!(ErrorKind::from_grpc_code(Code::Internal), ErrorKind::Internal);
+        assert_eq!(ErrorKind::from_grpc_code(Code::Unavailable), ErrorKind::Unavailable);
+        assert_eq!(ErrorKind::from_grpc_code(Code::DataLoss), ErrorKind::Internal);
+        assert_eq!(ErrorKind::from_grpc_code(Code::Unauthenticated), ErrorKind::Unauthorized);
     }
 }

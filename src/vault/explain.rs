@@ -152,15 +152,13 @@ impl PermissionExplanation {
             return String::new();
         }
 
-        path.iter()
-            .enumerate()
-            .fold(String::new(), |mut acc, (i, node)| {
-                if i > 0 {
-                    acc.push_str(" -> ");
-                }
-                acc.push_str(&node.to_string());
-                acc
-            })
+        path.iter().enumerate().fold(String::new(), |mut acc, (i, node)| {
+            if i > 0 {
+                acc.push_str(" -> ");
+            }
+            acc.push_str(&node.to_string());
+            acc
+        })
     }
 
     /// Returns a human-readable summary of the explanation.
@@ -181,21 +179,14 @@ impl PermissionExplanation {
                 )
             }
         } else if self.denial_reasons.is_empty() {
-            format!(
-                "{} does not have {} on {}",
-                self.subject, self.permission, self.resource
-            )
+            format!("{} does not have {} on {}", self.subject, self.permission, self.resource)
         } else {
             format!(
                 "{} does not have {} on {}: {}",
                 self.subject,
                 self.permission,
                 self.resource,
-                self.denial_reasons
-                    .iter()
-                    .map(|r| r.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                self.denial_reasons.iter().map(|r| r.to_string()).collect::<Vec<_>>().join(", ")
             )
         }
     }
@@ -208,11 +199,7 @@ impl std::fmt::Display for PermissionExplanation {
         writeln!(f, "Subject:    {}", self.subject)?;
         writeln!(f, "Permission: {}", self.permission)?;
         writeln!(f, "Resource:   {}", self.resource)?;
-        writeln!(
-            f,
-            "Result:     {}",
-            if self.allowed { "ALLOWED" } else { "DENIED" }
-        )?;
+        writeln!(f, "Result:     {}", if self.allowed { "ALLOWED" } else { "DENIED" })?;
         writeln!(f, "Cached:     {}", self.cached)?;
         writeln!(f, "Time:       {:?}", self.evaluation_time)?;
 
@@ -258,11 +245,7 @@ pub struct PathNode {
 impl PathNode {
     /// Creates a new path node.
     pub fn new(entity: impl Into<String>) -> Self {
-        Self {
-            entity: entity.into(),
-            relation: None,
-            derived_from: None,
-        }
+        Self { entity: entity.into(), relation: None, derived_from: None }
     }
 
     /// Sets the relation.
@@ -331,17 +314,12 @@ impl DenialReason {
 
     /// Creates a "no path" denial reason with details.
     pub fn no_path_with_details(details: impl Into<String>) -> Self {
-        DenialReason::NoPath {
-            details: Some(details.into()),
-        }
+        DenialReason::NoPath { details: Some(details.into()) }
     }
 
     /// Creates a "condition failed" denial reason.
     pub fn condition_failed(condition: impl Into<String>) -> Self {
-        DenialReason::ConditionFailed {
-            condition: condition.into(),
-            reason: None,
-        }
+        DenialReason::ConditionFailed { condition: condition.into(), reason: None }
     }
 
     /// Creates a "condition failed" denial reason with a reason.
@@ -349,10 +327,7 @@ impl DenialReason {
         condition: impl Into<String>,
         reason: impl Into<String>,
     ) -> Self {
-        DenialReason::ConditionFailed {
-            condition: condition.into(),
-            reason: Some(reason.into()),
-        }
+        DenialReason::ConditionFailed { condition: condition.into(), reason: Some(reason.into()) }
     }
 
     /// Creates an "explicit deny" denial reason.
@@ -380,31 +355,31 @@ impl std::fmt::Display for DenialReason {
                 } else {
                     write!(f, "no path from subject to resource")
                 }
-            }
+            },
             DenialReason::ConditionFailed { condition, reason } => {
                 if let Some(reason) = reason {
                     write!(f, "condition '{}' failed: {}", condition, reason)
                 } else {
                     write!(f, "condition '{}' failed", condition)
                 }
-            }
+            },
             DenialReason::ExplicitDeny { relationship } => {
                 if let Some(rel) = relationship {
                     write!(f, "explicitly denied by {}", rel)
                 } else {
                     write!(f, "explicitly denied")
                 }
-            }
+            },
             DenialReason::Expired { expired_at } => {
                 if let Some(at) = expired_at {
                     write!(f, "expired at {}", at)
                 } else {
                     write!(f, "access has expired")
                 }
-            }
+            },
             DenialReason::NotFound { what } => {
                 write!(f, "{} not found", what)
-            }
+            },
         }
     }
 }
@@ -423,11 +398,7 @@ pub struct AccessSuggestion {
 impl AccessSuggestion {
     /// Creates a new access suggestion.
     pub fn new(relationship: impl Into<String>, description: impl Into<String>) -> Self {
-        Self {
-            relationship: relationship.into(),
-            description: description.into(),
-            impact: None,
-        }
+        Self { relationship: relationship.into(), description: description.into(), impact: None }
     }
 
     /// Sets the impact level.
@@ -441,11 +412,7 @@ impl AccessSuggestion {
 impl std::fmt::Display for AccessSuggestion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(ref impact) = self.impact {
-            write!(
-                f,
-                "{} (impact: {}): {}",
-                self.relationship, impact, self.description
-            )
+            write!(f, "{} (impact: {}): {}", self.relationship, impact, self.description)
         } else {
             write!(f, "{}: {}", self.relationship, self.description)
         }
@@ -474,12 +441,7 @@ pub struct ExplainBuilder {
 impl ExplainBuilder {
     /// Creates a new explain builder.
     pub fn new() -> Self {
-        Self {
-            subject: None,
-            permission: None,
-            resource: None,
-            context: None,
-        }
+        Self { subject: None, permission: None, resource: None, context: None }
     }
 
     /// Sets the subject to check.
@@ -704,10 +666,8 @@ mod tests {
 
     #[test]
     fn test_explain_builder() {
-        let builder = ExplainBuilder::new()
-            .subject("user:alice")
-            .permission("view")
-            .resource("doc:1");
+        let builder =
+            ExplainBuilder::new().subject("user:alice").permission("view").resource("doc:1");
 
         assert_eq!(builder.subject, Some("user:alice".to_string()));
         assert_eq!(builder.permission, Some("view".to_string()));
@@ -722,10 +682,8 @@ mod tests {
         let builder2 = ExplainBuilder::new().subject("user:alice");
         assert!(builder2.validate().is_err());
 
-        let builder3 = ExplainBuilder::new()
-            .subject("user:alice")
-            .permission("view")
-            .resource("doc:1");
+        let builder3 =
+            ExplainBuilder::new().subject("user:alice").permission("view").resource("doc:1");
         assert!(builder3.validate().is_ok());
     }
 
@@ -757,7 +715,7 @@ mod tests {
             DenialReason::ConditionFailed { condition, reason } => {
                 assert_eq!(condition, "time < 18:00");
                 assert_eq!(reason, Some("too late".to_string()));
-            }
+            },
             _ => panic!("Wrong variant"),
         }
     }
@@ -823,9 +781,7 @@ mod tests {
 
     #[test]
     fn test_denial_reason_expired_with_time() {
-        let reason = DenialReason::Expired {
-            expired_at: Some("2024-01-01T00:00:00Z".to_string()),
-        };
+        let reason = DenialReason::Expired { expired_at: Some("2024-01-01T00:00:00Z".to_string()) };
         let display = format!("{}", reason);
         assert!(display.contains("2024-01-01T00:00:00Z"));
     }
@@ -882,9 +838,8 @@ mod tests {
 
     #[test]
     fn test_path_node_clone() {
-        let node = PathNode::new("user:alice")
-            .with_relation("member")
-            .with_derived_from("via_team");
+        let node =
+            PathNode::new("user:alice").with_relation("member").with_derived_from("via_team");
         let cloned = node.clone();
         assert_eq!(node, cloned);
     }

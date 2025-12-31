@@ -485,10 +485,7 @@ mod tests {
         let finished = span.finish_error("something went wrong");
 
         assert!(finished.is_error());
-        assert_eq!(
-            finished.status().error_message(),
-            Some("something went wrong")
-        );
+        assert_eq!(finished.status().error_message(), Some("something went wrong"));
     }
 
     #[test]
@@ -557,10 +554,7 @@ mod tests {
     #[test]
     fn test_span_status_display() {
         assert_eq!(SpanStatus::Ok.to_string(), "ok");
-        assert_eq!(
-            SpanStatus::Error("test".to_string()).to_string(),
-            "error: test"
-        );
+        assert_eq!(SpanStatus::Error("test".to_string()).to_string(), "error: test");
         assert_eq!(SpanStatus::Unset.to_string(), "unset");
     }
 
@@ -583,9 +577,7 @@ mod tests {
         assert_eq!(SpanValue::Int(42).to_string(), "42");
         assert_eq!(SpanValue::Float(1.23).to_string(), "1.23");
         assert_eq!(SpanValue::Bool(true).to_string(), "true");
-        assert!(SpanValue::StringArray(vec!["a".to_string()])
-            .to_string()
-            .contains("a"));
+        assert!(SpanValue::StringArray(vec!["a".to_string()]).to_string().contains("a"));
         assert!(SpanValue::IntArray(vec![1, 2]).to_string().contains("1"));
     }
 
@@ -734,14 +726,8 @@ mod tests {
     fn test_span_names_constants() {
         assert_eq!(span_names::CHECK, "inferadb.check");
         assert_eq!(span_names::CHECK_BATCH, "inferadb.check_batch");
-        assert_eq!(
-            span_names::RELATIONSHIP_WRITE,
-            "inferadb.relationship.write"
-        );
-        assert_eq!(
-            span_names::RELATIONSHIP_DELETE,
-            "inferadb.relationship.delete"
-        );
+        assert_eq!(span_names::RELATIONSHIP_WRITE, "inferadb.relationship.write");
+        assert_eq!(span_names::RELATIONSHIP_DELETE, "inferadb.relationship.delete");
         assert_eq!(span_names::RELATIONSHIP_LIST, "inferadb.relationship.list");
         assert_eq!(span_names::SCHEMA_PUSH, "inferadb.schema.push");
         assert_eq!(span_names::SCHEMA_ACTIVATE, "inferadb.schema.activate");

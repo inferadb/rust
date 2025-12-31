@@ -2,9 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::client::Client;
-use crate::control::{Page, SortOrder};
-use crate::Error;
+use crate::{
+    Error,
+    client::Client,
+    control::{Page, SortOrder},
+};
 
 /// Client for querying audit logs.
 ///
@@ -38,10 +40,7 @@ pub struct AuditLogsClient {
 impl AuditLogsClient {
     /// Creates a new audit logs client.
     pub(crate) fn new(client: Client, organization_id: impl Into<String>) -> Self {
-        Self {
-            client,
-            organization_id: organization_id.into(),
-        }
+        Self { client, organization_id: organization_id.into() }
     }
 
     /// Returns the organization ID.
@@ -90,10 +89,8 @@ impl AuditLogsClient {
     #[cfg(feature = "rest")]
     pub async fn get(&self, event_id: impl Into<String>) -> Result<AuditEvent, Error> {
         let event_id = event_id.into();
-        let path = format!(
-            "/control/v1/organizations/{}/audit-logs/{}",
-            self.organization_id, event_id
-        );
+        let path =
+            format!("/control/v1/organizations/{}/audit-logs/{}", self.organization_id, event_id);
         self.client.inner().control_get(&path).await
     }
 
@@ -101,9 +98,7 @@ impl AuditLogsClient {
     #[cfg(not(feature = "rest"))]
     pub async fn get(&self, event_id: impl Into<String>) -> Result<AuditEvent, Error> {
         let _ = event_id.into();
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Exports audit logs to a file or stream.
@@ -446,10 +441,7 @@ impl ListAuditLogsRequest {
 
     #[cfg(feature = "rest")]
     async fn execute(self) -> Result<Page<AuditEvent>, Error> {
-        let mut path = format!(
-            "/control/v1/organizations/{}/audit-logs",
-            self.organization_id
-        );
+        let mut path = format!("/control/v1/organizations/{}/audit-logs", self.organization_id);
 
         let mut query_params = Vec::new();
         if let Some(ref vault_id) = self.vault_id {
@@ -490,9 +482,7 @@ impl ListAuditLogsRequest {
 
     #[cfg(not(feature = "rest"))]
     async fn execute(self) -> Result<Page<AuditEvent>, Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 }
 
@@ -547,13 +537,12 @@ impl ExportAuditLogsRequest {
     /// Writes the exported audit logs to a file.
     #[cfg(feature = "rest")]
     pub async fn write_to_file(self, file_path: impl AsRef<std::path::Path>) -> Result<(), Error> {
-        use crate::error::ErrorKind;
         use std::io::Write;
 
-        let mut api_path = format!(
-            "/control/v1/organizations/{}/audit-logs/export",
-            self.organization_id
-        );
+        use crate::error::ErrorKind;
+
+        let mut api_path =
+            format!("/control/v1/organizations/{}/audit-logs/export", self.organization_id);
 
         let mut query_params = Vec::new();
         if let Some(ref vault_id) = self.vault_id {
@@ -593,13 +582,10 @@ impl ExportAuditLogsRequest {
                         )
                     })?;
                     writeln!(file, "{}", line).map_err(|e| {
-                        Error::new(
-                            ErrorKind::Internal,
-                            format!("Failed to write to file: {}", e),
-                        )
+                        Error::new(ErrorKind::Internal, format!("Failed to write to file: {}", e))
                     })?;
                 }
-            }
+            },
             ExportFormat::Csv => {
                 // Write CSV header
                 writeln!(file, "id,organization_id,vault_id,timestamp,actor_id,actor_type,action,resource,outcome")
@@ -619,13 +605,10 @@ impl ExportAuditLogsRequest {
                         event.outcome
                     )
                     .map_err(|e| {
-                        Error::new(
-                            ErrorKind::Internal,
-                            format!("Failed to write to file: {}", e),
-                        )
+                        Error::new(ErrorKind::Internal, format!("Failed to write to file: {}", e))
                     })?;
                 }
-            }
+            },
         }
 
         Ok(())
@@ -634,9 +617,7 @@ impl ExportAuditLogsRequest {
     /// Writes the exported audit logs to a file.
     #[cfg(not(feature = "rest"))]
     pub async fn write_to_file(self, _path: impl AsRef<std::path::Path>) -> Result<(), Error> {
-        Err(Error::configuration(
-            "REST feature is required for control API",
-        ))
+        Err(Error::configuration("REST feature is required for control API"))
     }
 
     /// Returns a stream of events.
@@ -651,15 +632,7 @@ impl ExportAuditLogsRequest {
         let before = self.before;
 
         futures::stream::unfold(
-            (
-                client,
-                organization_id,
-                vault_id,
-                after,
-                before,
-                None::<String>,
-                false,
-            ),
+            (client, organization_id, vault_id, after, before, None::<String>, false),
             |(client, org_id, vault_id, after, before, cursor, done)| async move {
                 if done {
                     return None;
@@ -697,17 +670,9 @@ impl ExportAuditLogsRequest {
                             page.items.into_iter().map(Ok).collect();
                         Some((
                             futures::stream::iter(events),
-                            (
-                                client,
-                                org_id,
-                                vault_id,
-                                after,
-                                before,
-                                next_cursor,
-                                is_done,
-                            ),
+                            (client, org_id, vault_id, after, before, next_cursor, is_done),
                         ))
-                    }
+                    },
                     Err(e) => Some((
                         futures::stream::iter(vec![Err(e)]),
                         (client, org_id, vault_id, after, before, None, true),
@@ -722,19 +687,17 @@ impl ExportAuditLogsRequest {
     #[cfg(not(feature = "rest"))]
     pub fn stream(self) -> impl futures::Stream<Item = Result<AuditEvent, Error>> + Send + 'static {
         futures::stream::once(async {
-            Err(Error::configuration(
-                "REST feature is required for control API",
-            ))
+            Err(Error::configuration("REST feature is required for control API"))
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::transport::mock::MockTransport;
     use std::sync::Arc;
+
+    use super::*;
+    use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
     async fn create_test_client() -> Client {
         let mock_transport = Arc::new(MockTransport::new());
@@ -758,15 +721,9 @@ mod tests {
     fn test_audit_action() {
         assert_eq!(AuditAction::default(), AuditAction::Check);
         assert_eq!(AuditAction::Check.to_string(), "check");
-        assert_eq!(
-            AuditAction::RelationshipWrite.to_string(),
-            "relationship.write"
-        );
+        assert_eq!(AuditAction::RelationshipWrite.to_string(), "relationship.write");
         assert_eq!(AuditAction::SchemaPush.to_string(), "schema.push");
-        assert_eq!(
-            AuditAction::RelationshipDelete.to_string(),
-            "relationship.delete"
-        );
+        assert_eq!(AuditAction::RelationshipDelete.to_string(), "relationship.delete");
         assert_eq!(AuditAction::SchemaActivate.to_string(), "schema.activate");
         assert_eq!(AuditAction::VaultCreate.to_string(), "vault.create");
         assert_eq!(AuditAction::VaultUpdate.to_string(), "vault.update");
@@ -783,50 +740,23 @@ mod tests {
     fn test_audit_action_all_variants() {
         // Cover all remaining Display implementations
         assert_eq!(AuditAction::CheckBatch.to_string(), "check_batch");
-        assert_eq!(
-            AuditAction::RelationshipWriteBatch.to_string(),
-            "relationship.write_batch"
-        );
-        assert_eq!(
-            AuditAction::RelationshipDeleteBatch.to_string(),
-            "relationship.delete_batch"
-        );
-        assert_eq!(
-            AuditAction::OrganizationCreate.to_string(),
-            "organization.create"
-        );
-        assert_eq!(
-            AuditAction::OrganizationUpdate.to_string(),
-            "organization.update"
-        );
-        assert_eq!(
-            AuditAction::OrganizationDelete.to_string(),
-            "organization.delete"
-        );
+        assert_eq!(AuditAction::RelationshipWriteBatch.to_string(), "relationship.write_batch");
+        assert_eq!(AuditAction::RelationshipDeleteBatch.to_string(), "relationship.delete_batch");
+        assert_eq!(AuditAction::OrganizationCreate.to_string(), "organization.create");
+        assert_eq!(AuditAction::OrganizationUpdate.to_string(), "organization.update");
+        assert_eq!(AuditAction::OrganizationDelete.to_string(), "organization.delete");
         assert_eq!(AuditAction::MemberAdd.to_string(), "member.add");
         assert_eq!(AuditAction::TeamMemberAdd.to_string(), "team.member_add");
-        assert_eq!(
-            AuditAction::TeamMemberRemove.to_string(),
-            "team.member_remove"
-        );
+        assert_eq!(AuditAction::TeamMemberRemove.to_string(), "team.member_remove");
         assert_eq!(AuditAction::TokenCreate.to_string(), "token.create");
         assert_eq!(AuditAction::TokenRevoke.to_string(), "token.revoke");
         assert_eq!(AuditAction::TokenRotate.to_string(), "token.rotate");
         assert_eq!(AuditAction::Login.to_string(), "login");
         assert_eq!(AuditAction::Logout.to_string(), "logout");
         assert_eq!(AuditAction::LoginFailed.to_string(), "login_failed");
-        assert_eq!(
-            AuditAction::ApiClientCreate.to_string(),
-            "api_client.create"
-        );
-        assert_eq!(
-            AuditAction::ApiClientUpdate.to_string(),
-            "api_client.update"
-        );
-        assert_eq!(
-            AuditAction::ApiClientDelete.to_string(),
-            "api_client.delete"
-        );
+        assert_eq!(AuditAction::ApiClientCreate.to_string(), "api_client.create");
+        assert_eq!(AuditAction::ApiClientUpdate.to_string(), "api_client.update");
+        assert_eq!(AuditAction::ApiClientDelete.to_string(), "api_client.delete");
     }
 
     #[test]
@@ -1052,11 +982,13 @@ mod tests {
 
 #[cfg(all(test, feature = "rest"))]
 mod wiremock_tests {
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+
     use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::Client;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use crate::{Client, auth::BearerCredentialsConfig};
 
     async fn create_mock_client(server: &MockServer) -> Client {
         Client::builder()
@@ -1222,11 +1154,7 @@ mod wiremock_tests {
         let audit = AuditLogsClient::new(client, "org_123");
 
         let temp_file = std::env::temp_dir().join("test_audit_export.json");
-        let result = audit
-            .export()
-            .format(ExportFormat::Json)
-            .write_to_file(&temp_file)
-            .await;
+        let result = audit.export().format(ExportFormat::Json).write_to_file(&temp_file).await;
 
         assert!(result.is_ok());
         // Clean up
@@ -1259,11 +1187,7 @@ mod wiremock_tests {
         let audit = AuditLogsClient::new(client, "org_123");
 
         let temp_file = std::env::temp_dir().join("test_audit_export.csv");
-        let result = audit
-            .export()
-            .format(ExportFormat::Csv)
-            .write_to_file(&temp_file)
-            .await;
+        let result = audit.export().format(ExportFormat::Csv).write_to_file(&temp_file).await;
 
         assert!(result.is_ok());
         // Clean up

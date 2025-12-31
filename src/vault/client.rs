@@ -3,19 +3,20 @@
 // Allow dead code for request types that aren't fully integrated yet
 #![allow(dead_code)]
 
-use std::borrow::Cow;
-use std::future::Future;
-use std::pin::Pin;
 #[cfg(feature = "rest")]
 use std::sync::Arc;
+use std::{borrow::Cow, future::Future, pin::Pin};
 
-use crate::client::Client;
-use crate::control::SchemasClient;
+use futures::Stream;
+
 #[cfg(feature = "rest")]
 use crate::transport::{TransportCheckRequest, TransportClient, TransportWriteRequest};
-use crate::types::{ConsistencyToken, Context, Decision, Relationship};
-use crate::{AccessDenied, Error};
-use futures::Stream;
+use crate::{
+    AccessDenied, Error,
+    client::Client,
+    control::SchemasClient,
+    types::{ConsistencyToken, Context, Decision, Relationship},
+};
 
 /// A vault-scoped client for authorization operations.
 ///
@@ -47,11 +48,7 @@ pub struct VaultClient {
 impl VaultClient {
     /// Creates a new VaultClient.
     pub(crate) fn new(client: Client, organization_id: String, vault_id: String) -> Self {
-        Self {
-            client,
-            organization_id,
-            vault_id,
-        }
+        Self { client, organization_id, vault_id }
     }
 
     /// Returns the organization ID.
@@ -177,12 +174,7 @@ impl VaultClient {
             })
             .collect();
 
-        BatchCheckRequest {
-            vault: self.clone(),
-            items,
-            context: None,
-            consistency: None,
-        }
+        BatchCheckRequest { vault: self.clone(), items, context: None, consistency: None }
     }
 
     /// Returns a client for managing relationships in this vault.
@@ -392,11 +384,7 @@ impl VaultClient {
     /// let schema = vault.schemas().get_active().await?;
     /// ```
     pub fn schemas(&self) -> SchemasClient {
-        SchemasClient::new(
-            self.client.clone(),
-            self.organization_id.clone(),
-            self.vault_id.clone(),
-        )
+        SchemasClient::new(self.client.clone(), self.organization_id.clone(), self.vault_id.clone())
     }
 }
 
@@ -644,11 +632,7 @@ impl<'a> BatchCheckItem<'a> {
         permission: impl Into<Cow<'a, str>>,
         resource: impl Into<Cow<'a, str>>,
     ) -> Self {
-        Self {
-            subject: subject.into(),
-            permission: permission.into(),
-            resource: resource.into(),
-        }
+        Self { subject: subject.into(), permission: permission.into(), resource: resource.into() }
     }
 
     /// Returns the subject.
@@ -828,10 +812,7 @@ impl RelationshipsClient {
     ///     .await?;
     /// ```
     pub fn write<'a>(&self, relationship: Relationship<'a>) -> WriteRelationshipRequest<'a> {
-        WriteRelationshipRequest {
-            client: self.clone(),
-            relationship,
-        }
+        WriteRelationshipRequest { client: self.clone(), relationship }
     }
 
     /// Writes multiple relationships in a single batch.
@@ -875,10 +856,7 @@ impl RelationshipsClient {
     ///     .await?;
     /// ```
     pub fn delete<'a>(&self, relationship: Relationship<'a>) -> DeleteRelationshipRequest<'a> {
-        DeleteRelationshipRequest {
-            client: self.clone(),
-            relationship,
-        }
+        DeleteRelationshipRequest { client: self.clone(), relationship }
     }
 
     /// Lists relationships in the vault with optional filters.
@@ -934,12 +912,7 @@ impl RelationshipsClient {
     ///     .await?;
     /// ```
     pub fn delete_where(&self) -> DeleteWhereBuilder {
-        DeleteWhereBuilder {
-            client: self.clone(),
-            resource: None,
-            relation: None,
-            subject: None,
-        }
+        DeleteWhereBuilder { client: self.clone(), resource: None, relation: None, subject: None }
     }
 }
 
@@ -972,10 +945,7 @@ impl<'a> WriteRelationshipRequest<'a> {
         }
 
         // Fallback for when no transport is available (e.g., testing)
-        Ok(ConsistencyToken::new(format!(
-            "token_{}",
-            uuid::Uuid::new_v4()
-        )))
+        Ok(ConsistencyToken::new(format!("token_{}", uuid::Uuid::new_v4())))
     }
 }
 
@@ -1024,10 +994,7 @@ impl<'a> WriteBatchRequest<'a> {
         }
 
         // Fallback for when no transport is available (e.g., testing)
-        Ok(ConsistencyToken::new(format!(
-            "token_{}",
-            uuid::Uuid::new_v4()
-        )))
+        Ok(ConsistencyToken::new(format!("token_{}", uuid::Uuid::new_v4())))
     }
 }
 
@@ -1163,9 +1130,7 @@ impl DeleteWhereBuilder {
                     deleted += 1;
                 }
 
-                return Ok(DeleteWhereResult {
-                    deleted_count: deleted,
-                });
+                return Ok(DeleteWhereResult { deleted_count: deleted });
             }
         }
 
@@ -1271,17 +1236,8 @@ impl ListRelationshipsRequest {
         }
 
         // Fallback for when no transport is available (e.g., testing)
-        let _ = (
-            self.resource,
-            self.relation,
-            self.subject,
-            self.limit,
-            self.cursor,
-        );
-        Ok(ListRelationshipsResponse {
-            relationships: vec![],
-            next_cursor: None,
-        })
+        let _ = (self.resource, self.relation, self.subject, self.limit, self.cursor);
+        Ok(ListRelationshipsResponse { relationships: vec![], next_cursor: None })
     }
 }
 
@@ -1370,10 +1326,7 @@ impl<'a> ResourcesClient<'a> {
     ///     .await?;
     /// ```
     pub fn accessible_by(self, subject: impl Into<Cow<'a, str>>) -> ResourcesQueryBuilder<'a> {
-        ResourcesQueryBuilder {
-            vault: self.vault,
-            subject: subject.into(),
-        }
+        ResourcesQueryBuilder { vault: self.vault, subject: subject.into() }
     }
 }
 
@@ -1503,10 +1456,7 @@ impl<'a> ResourcesListBuilder<'a> {
     /// ```
     #[must_use]
     pub fn take(self, n: usize) -> ResourcesListTake<'a> {
-        ResourcesListTake {
-            inner: self,
-            limit: n,
-        }
+        ResourcesListTake { inner: self, limit: n }
     }
 
     /// Collect all results into a Vec.
@@ -1598,10 +1548,7 @@ impl<'a> ResourcesListBuilder<'a> {
 
         // Fallback for when no transport is available (e.g., testing)
         let _ = (self.consistency, self.page_size, cursor);
-        Ok(ResourcesPage {
-            resources: Vec::new(),
-            next_cursor: None,
-        })
+        Ok(ResourcesPage { resources: Vec::new(), next_cursor: None })
     }
 }
 
@@ -1759,14 +1706,14 @@ impl<'a> Stream for ResourceStream<'a> {
                             this.done = true;
                             return std::task::Poll::Ready(None);
                         }
-                    }
+                    },
                     std::task::Poll::Ready(Err(e)) => {
                         this.done = true;
                         return std::task::Poll::Ready(Some(Err(e)));
-                    }
+                    },
                     std::task::Poll::Pending => {
                         return std::task::Poll::Pending;
-                    }
+                    },
                 }
             }
         }
@@ -1822,10 +1769,7 @@ impl<'a> SubjectsClient<'a> {
     ///     .await?;
     /// ```
     pub fn with_permission(self, permission: impl Into<Cow<'a, str>>) -> SubjectsQueryBuilder<'a> {
-        SubjectsQueryBuilder {
-            vault: self.vault,
-            permission: permission.into(),
-        }
+        SubjectsQueryBuilder { vault: self.vault, permission: permission.into() }
     }
 }
 
@@ -1955,10 +1899,7 @@ impl<'a> SubjectsListBuilder<'a> {
     /// ```
     #[must_use]
     pub fn take(self, n: usize) -> SubjectsListTake<'a> {
-        SubjectsListTake {
-            inner: self,
-            limit: n,
-        }
+        SubjectsListTake { inner: self, limit: n }
     }
 
     /// Collect all results into a Vec.
@@ -2050,10 +1991,7 @@ impl<'a> SubjectsListBuilder<'a> {
 
         // Fallback for when no transport is available (e.g., testing)
         let _ = (self.consistency, self.page_size, cursor);
-        Ok(SubjectsPage {
-            subjects: Vec::new(),
-            next_cursor: None,
-        })
+        Ok(SubjectsPage { subjects: Vec::new(), next_cursor: None })
     }
 }
 
@@ -2211,14 +2149,14 @@ impl<'a> Stream for SubjectStream<'a> {
                             this.done = true;
                             return std::task::Poll::Ready(None);
                         }
-                    }
+                    },
                     std::task::Poll::Ready(Err(e)) => {
                         this.done = true;
                         return std::task::Poll::Ready(Some(Err(e)));
-                    }
+                    },
                     std::task::Poll::Pending => {
                         return std::task::Poll::Pending;
-                    }
+                    },
                 }
             }
         }
@@ -2249,13 +2187,7 @@ pub struct ExplainPermissionRequest {
 
 impl ExplainPermissionRequest {
     fn new(vault: VaultClient) -> Self {
-        Self {
-            vault,
-            subject: None,
-            permission: None,
-            resource: None,
-            context: None,
-        }
+        Self { vault, subject: None, permission: None, resource: None, context: None }
     }
 
     /// Sets the subject to check.
@@ -2287,15 +2219,11 @@ impl ExplainPermissionRequest {
     }
 
     async fn execute(self) -> Result<PermissionExplanation, Error> {
-        let subject = self
-            .subject
-            .ok_or_else(|| Error::invalid_argument("subject is required"))?;
-        let permission = self
-            .permission
-            .ok_or_else(|| Error::invalid_argument("permission is required"))?;
-        let resource = self
-            .resource
-            .ok_or_else(|| Error::invalid_argument("resource is required"))?;
+        let subject = self.subject.ok_or_else(|| Error::invalid_argument("subject is required"))?;
+        let permission =
+            self.permission.ok_or_else(|| Error::invalid_argument("permission is required"))?;
+        let resource =
+            self.resource.ok_or_else(|| Error::invalid_argument("resource is required"))?;
 
         #[cfg(feature = "rest")]
         if let Some(transport) = self.vault.transport() {
@@ -2341,10 +2269,8 @@ impl ExplainPermissionRequest {
         }
 
         // Fallback for when transport is not available
-        Ok(
-            PermissionExplanation::denied(&subject, &permission, &resource)
-                .with_denial_reason(DenialReason::no_path()),
-        )
+        Ok(PermissionExplanation::denied(&subject, &permission, &resource)
+            .with_denial_reason(DenialReason::no_path()))
     }
 
     /// Extracts paths from the evaluation tree.
@@ -2353,25 +2279,20 @@ impl ExplainPermissionRequest {
         subject: &str,
         resource: &str,
     ) -> Vec<Vec<crate::vault::explain::PathNode>> {
-        use crate::transport::traits::EvaluationNodeType;
-        use crate::vault::explain::PathNode;
+        use crate::{transport::traits::EvaluationNodeType, vault::explain::PathNode};
 
         let mut paths = Vec::new();
 
         // Only extract paths from nodes that resulted in true (allowed)
         if node.result {
             match &node.node_type {
-                EvaluationNodeType::DirectCheck {
-                    resource: res,
-                    relation,
-                    subject: subj,
-                } => {
+                EvaluationNodeType::DirectCheck { resource: res, relation, subject: subj } => {
                     // Direct check found - create a path
                     paths.push(vec![
                         PathNode::new(subj).with_relation(relation.clone()),
                         PathNode::new(res),
                     ]);
-                }
+                },
                 EvaluationNodeType::ComputedUserset { relation } => {
                     // Computed userset - check children for more details
                     for child in &node.children {
@@ -2384,11 +2305,8 @@ impl ExplainPermissionRequest {
                             paths.push(path);
                         }
                     }
-                }
-                EvaluationNodeType::RelatedObjectUserset {
-                    relationship,
-                    computed,
-                } => {
+                },
+                EvaluationNodeType::RelatedObjectUserset { relationship, computed } => {
                     // Tupleset rewrite - check children
                     for child in &node.children {
                         let child_paths = Self::extract_paths_from_tree(child, subject, resource);
@@ -2399,7 +2317,7 @@ impl ExplainPermissionRequest {
                             paths.push(path);
                         }
                     }
-                }
+                },
                 EvaluationNodeType::Union
                 | EvaluationNodeType::Intersection
                 | EvaluationNodeType::Exclusion => {
@@ -2407,14 +2325,14 @@ impl ExplainPermissionRequest {
                     for child in &node.children {
                         paths.extend(Self::extract_paths_from_tree(child, subject, resource));
                     }
-                }
+                },
                 EvaluationNodeType::WasmModule { module_name } => {
                     // WASM module - create a simple path indicating WASM was used
                     paths.push(vec![
                         PathNode::new(subject).with_derived_from(format!("wasm:{}", module_name)),
                         PathNode::new(resource),
                     ]);
-                }
+                },
             }
         }
 
@@ -2440,10 +2358,10 @@ impl std::future::IntoFuture for ExplainPermissionRequest {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::auth::BearerCredentialsConfig;
-    use crate::transport::mock::MockTransport;
     use std::sync::Arc;
+
+    use super::*;
+    use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
     async fn create_test_vault() -> VaultClient {
         let mock_transport = Arc::new(MockTransport::new());
@@ -2494,10 +2412,7 @@ mod tests {
     async fn test_check_with_consistency() {
         let vault = create_test_vault().await;
         let token = ConsistencyToken::new("test_token");
-        let result = vault
-            .check("user:alice", "view", "doc:1")
-            .at_least_as_fresh(token)
-            .await;
+        let result = vault.check("user:alice", "view", "doc:1").at_least_as_fresh(token).await;
         assert!(result.is_ok());
     }
 
@@ -2526,11 +2441,8 @@ mod tests {
         // require() returns Ok only if access is granted
         let vault = create_test_vault_with_relationships().await;
         let token = ConsistencyToken::new("test_token");
-        let result = vault
-            .check("user:alice", "view", "doc:1")
-            .require()
-            .at_least_as_fresh(token)
-            .await;
+        let result =
+            vault.check("user:alice", "view", "doc:1").require().at_least_as_fresh(token).await;
         assert!(result.is_ok());
     }
 
@@ -2538,11 +2450,7 @@ mod tests {
     async fn test_detailed() {
         // detailed() with is_allowed() requires a relationship
         let vault = create_test_vault_with_relationships().await;
-        let decision = vault
-            .check("user:alice", "view", "doc:1")
-            .detailed()
-            .await
-            .unwrap();
+        let decision = vault.check("user:alice", "view", "doc:1").detailed().await.unwrap();
         assert!(decision.is_allowed());
     }
 
@@ -2583,10 +2491,7 @@ mod tests {
     #[tokio::test]
     async fn test_check_batch_basic() {
         let vault = create_test_vault().await;
-        let checks = vec![
-            ("user:alice", "view", "doc:1"),
-            ("user:bob", "edit", "doc:2"),
-        ];
+        let checks = vec![("user:alice", "view", "doc:1"), ("user:bob", "edit", "doc:2")];
         let results = vault.check_batch(checks).await.unwrap();
         assert_eq!(results.len(), 2);
     }
@@ -2608,11 +2513,7 @@ mod tests {
         let vault = create_test_vault().await;
         let token = ConsistencyToken::new("test_token");
         let checks = vec![("user:alice", "view", "doc:1")];
-        let results = vault
-            .check_batch(checks)
-            .at_least_as_fresh(token)
-            .await
-            .unwrap();
+        let results = vault.check_batch(checks).at_least_as_fresh(token).await.unwrap();
         assert_eq!(results.len(), 1);
     }
 
@@ -2674,11 +2575,7 @@ mod tests {
 
     #[test]
     fn test_batch_check_result_empty() {
-        let result = BatchCheckResult {
-            results: vec![],
-            decisions: None,
-            consistency_token: None,
-        };
+        let result = BatchCheckResult { results: vec![], decisions: None, consistency_token: None };
         assert!(result.is_empty());
         assert!(result.all_allowed()); // vacuously true
         assert!(!result.any_allowed());
@@ -2718,9 +2615,7 @@ mod tests {
     #[tokio::test]
     async fn test_relationships_write_batch_empty() {
         let vault = create_test_vault().await;
-        let batch = vault
-            .relationships()
-            .write_batch(Vec::<Relationship>::new());
+        let batch = vault.relationships().write_batch(Vec::<Relationship>::new());
         assert!(batch.is_empty());
     }
 
@@ -2772,10 +2667,7 @@ mod tests {
 
     #[test]
     fn test_list_relationships_response_no_more() {
-        let response = ListRelationshipsResponse {
-            relationships: vec![],
-            next_cursor: None,
-        };
+        let response = ListRelationshipsResponse { relationships: vec![], next_cursor: None };
         assert!(!response.has_more());
     }
 
@@ -2881,10 +2773,7 @@ mod tests {
 
     #[test]
     fn test_resources_page_no_more() {
-        let page = ResourcesPage {
-            resources: vec![],
-            next_cursor: None,
-        };
+        let page = ResourcesPage { resources: vec![], next_cursor: None };
         assert!(!page.has_more());
     }
 
@@ -2892,13 +2781,8 @@ mod tests {
     #[tokio::test]
     async fn test_subjects_with_permission() {
         let vault = create_test_vault().await;
-        let subjects = vault
-            .subjects()
-            .with_permission("edit")
-            .on_resource("doc:1")
-            .collect()
-            .await
-            .unwrap();
+        let subjects =
+            vault.subjects().with_permission("edit").on_resource("doc:1").collect().await.unwrap();
         assert!(subjects.is_empty());
     }
 
@@ -2990,10 +2874,7 @@ mod tests {
 
     #[test]
     fn test_subjects_page_no_more() {
-        let page = SubjectsPage {
-            subjects: vec![],
-            next_cursor: None,
-        };
+        let page = SubjectsPage { subjects: vec![], next_cursor: None };
         assert!(!page.has_more());
     }
 
@@ -3001,11 +2882,7 @@ mod tests {
     #[tokio::test]
     async fn test_explain_permission_missing_subject() {
         let vault = create_test_vault().await;
-        let result = vault
-            .explain_permission()
-            .permission("view")
-            .resource("doc:1")
-            .await;
+        let result = vault.explain_permission().permission("view").resource("doc:1").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("subject"));
     }
@@ -3013,11 +2890,7 @@ mod tests {
     #[tokio::test]
     async fn test_explain_permission_missing_permission() {
         let vault = create_test_vault().await;
-        let result = vault
-            .explain_permission()
-            .subject("user:alice")
-            .resource("doc:1")
-            .await;
+        let result = vault.explain_permission().subject("user:alice").resource("doc:1").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("permission"));
     }
@@ -3025,11 +2898,7 @@ mod tests {
     #[tokio::test]
     async fn test_explain_permission_missing_resource() {
         let vault = create_test_vault().await;
-        let result = vault
-            .explain_permission()
-            .subject("user:alice")
-            .permission("view")
-            .await;
+        let result = vault.explain_permission().subject("user:alice").permission("view").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("resource"));
     }
@@ -3082,21 +2951,13 @@ mod tests {
         let vault = create_test_vault().await;
         let result = vault.relationships().delete_where().await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("at least one filter"));
+        assert!(result.unwrap_err().to_string().contains("at least one filter"));
     }
 
     #[tokio::test]
     async fn test_delete_where_with_resource() {
         let vault = create_test_vault().await;
-        let result = vault
-            .relationships()
-            .delete_where()
-            .resource("doc:1")
-            .await
-            .unwrap();
+        let result = vault.relationships().delete_where().resource("doc:1").await.unwrap();
         assert_eq!(result.deleted_count(), 0);
         assert!(!result.any_deleted());
     }
@@ -3104,24 +2965,14 @@ mod tests {
     #[tokio::test]
     async fn test_delete_where_with_relation() {
         let vault = create_test_vault().await;
-        let result = vault
-            .relationships()
-            .delete_where()
-            .relation("viewer")
-            .await
-            .unwrap();
+        let result = vault.relationships().delete_where().relation("viewer").await.unwrap();
         assert_eq!(result.deleted_count, 0);
     }
 
     #[tokio::test]
     async fn test_delete_where_with_subject() {
         let vault = create_test_vault().await;
-        let result = vault
-            .relationships()
-            .delete_where()
-            .subject("user:alice")
-            .await
-            .unwrap();
+        let result = vault.relationships().delete_where().subject("user:alice").await.unwrap();
         assert!(!result.any_deleted());
     }
 
@@ -3220,10 +3071,7 @@ mod tests {
     async fn test_require_denied_returns_error() {
         // require() should return Err when access is denied
         let vault = create_test_vault().await;
-        let result = vault
-            .check("user:bob", "admin", "doc:secret")
-            .require()
-            .await;
+        let result = vault.check("user:bob", "admin", "doc:secret").require().await;
         assert!(result.is_err());
     }
 
@@ -3232,11 +3080,7 @@ mod tests {
     #[tokio::test]
     async fn test_detailed_check_denied() {
         let vault = create_test_vault().await;
-        let decision = vault
-            .check("user:bob", "admin", "doc:secret")
-            .detailed()
-            .await
-            .unwrap();
+        let decision = vault.check("user:bob", "admin", "doc:secret").detailed().await.unwrap();
         assert!(!decision.is_allowed());
     }
 
@@ -3295,13 +3139,8 @@ mod tests {
     #[tokio::test]
     async fn test_subjects_list_builder_collect() {
         let vault = create_test_vault().await;
-        let subjects = vault
-            .subjects()
-            .with_permission("view")
-            .on_resource("doc:1")
-            .collect()
-            .await
-            .unwrap();
+        let subjects =
+            vault.subjects().with_permission("view").on_resource("doc:1").collect().await.unwrap();
         assert!(subjects.is_empty());
     }
 
@@ -3393,11 +3232,7 @@ mod tests {
     #[tokio::test]
     async fn test_resources_list_builder_stream() {
         let vault = create_test_vault().await;
-        let stream = vault
-            .resources()
-            .accessible_by("user:alice")
-            .with_permission("view")
-            .stream();
+        let stream = vault.resources().accessible_by("user:alice").with_permission("view").stream();
 
         // Collect results from stream
         use futures::StreamExt;
@@ -3410,11 +3245,7 @@ mod tests {
     #[tokio::test]
     async fn test_subjects_list_builder_stream() {
         let vault = create_test_vault().await;
-        let stream = vault
-            .subjects()
-            .with_permission("view")
-            .on_resource("doc:1")
-            .stream();
+        let stream = vault.subjects().with_permission("view").on_resource("doc:1").stream();
 
         // Collect results from stream
         use futures::StreamExt;
@@ -3427,11 +3258,8 @@ mod tests {
     #[tokio::test]
     async fn test_resources_list_builder_try_next() {
         let vault = create_test_vault().await;
-        let mut stream = vault
-            .resources()
-            .accessible_by("user:alice")
-            .with_permission("view")
-            .stream();
+        let mut stream =
+            vault.resources().accessible_by("user:alice").with_permission("view").stream();
 
         // try_next on empty stream should return None
         let result = stream.try_next().await;
@@ -3443,11 +3271,7 @@ mod tests {
     #[tokio::test]
     async fn test_subjects_list_builder_try_next() {
         let vault = create_test_vault().await;
-        let mut stream = vault
-            .subjects()
-            .with_permission("view")
-            .on_resource("doc:1")
-            .stream();
+        let mut stream = vault.subjects().with_permission("view").on_resource("doc:1").stream();
 
         // try_next on empty stream should return None
         let result = stream.try_next().await;

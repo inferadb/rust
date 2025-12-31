@@ -315,8 +315,9 @@ pub struct ListResourcesRequest {
     /// Optional continuation token from previous request
     #[prost(string, optional, tag = "5")]
     pub cursor: ::core::option::Option<::prost::alloc::string::String>,
-    /// Optional resource ID pattern filter (supports wildcards: * matches any characters, ? matches single character)
-    /// Examples: "doc:readme\*", "user:alice\_?", "folder:\*/subfolder"
+    /// Optional resource ID pattern filter (supports wildcards: * matches any characters, ?
+    /// matches single character) Examples: "doc:readme\*", "user:alice\_?",
+    /// "folder:\*/subfolder"
     #[prost(string, optional, tag = "6")]
     pub resource_id_pattern: ::core::option::Option<::prost::alloc::string::String>,
 }
@@ -548,8 +549,7 @@ pub mod authorization_service_client {
         clippy::wildcard_imports,
         clippy::let_unit_value
     )]
-    use tonic::codegen::http::Uri;
-    use tonic::codegen::*;
+    use tonic::codegen::{http::Uri, *};
     /// The main Infera authorization service
     #[derive(Debug, Clone)]
     pub struct AuthorizationServiceClient<T> {
@@ -589,11 +589,11 @@ pub mod authorization_service_client {
             F: tonic::service::Interceptor,
             T::ResponseBody: Default,
             T: tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-                Response = http::Response<
-                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
+                    http::Request<tonic::body::Body>,
+                    Response = http::Response<
+                        <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
+                    >,
                 >,
-            >,
             <T as tonic::codegen::Service<http::Request<tonic::body::Body>>>::Error:
                 Into<StdError> + std::marker::Send + std::marker::Sync,
         {
@@ -814,10 +814,8 @@ pub mod authorization_service_client {
                 "/inferadb.authorization.v1.AuthorizationService/Watch",
             );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "inferadb.authorization.v1.AuthorizationService",
-                "Watch",
-            ));
+            req.extensions_mut()
+                .insert(GrpcMethod::new("inferadb.authorization.v1.AuthorizationService", "Watch"));
             self.inner.server_streaming(req, path, codec).await
         }
         /// Simulate authorization with ephemeral relationships (what-if testing)
