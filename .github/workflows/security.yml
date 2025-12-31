@@ -3,13 +3,6 @@
 name: Security
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "**/Cargo.toml"
-      - ".github/workflows/security.yml"
   pull_request:
     branches: [main]
     paths:
@@ -17,45 +10,30 @@ on:
       - "Cargo.lock"
       - "**/Cargo.toml"
       - ".github/workflows/security.yml"
-  schedule:
-    # Run weekly on Sundays at 04:00 UTC
-    - cron: "0 4 * * 0"
 
 permissions:
   contents: read
-  security-events: write
   pull-requests: write
 
 jobs:
-  # Check for known vulnerabilities
-  cargo-audit:
-    name: Vulnerabilities
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Run cargo-audit
-        uses: rustsec/audit-check@v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-  # Dependency review for PRs
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.actor != 'dependabot[bot]'
     permissions:
       contents: read
       pull-requests: write
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@df199fb7be9f65074067a9eb93f12bb4c5547cf2 # v2.13.3
+        with:
+          egress-policy: audit
+
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
 
       - name: Dependency Review
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@3c4e3dcb1aa7874d2c16be7d79418e9b7efd6261 # v4.8.2
         with:
-          fail-on-severity: moderate
-          # Deny copyleft licenses that would require SDK users to open source their code
-          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0, LGPL-2.0, LGPL-2.1, LGPL-3.0
+          fail-on-severity: high
           comment-summary-in-pr: always

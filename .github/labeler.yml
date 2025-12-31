@@ -1,18 +1,22 @@
+# Labeler configuration
+# See: https://github.com/actions/labeler
+# Labels must match those defined in .github/maintenance/labels.sh
+
 # Documentation
-"kind/documentation":
+area/docs:
   - changed-files:
       - any-glob-to-any-file:
           - "**/*.md"
           - "docs/**/*"
 
 # CI/CD
-"area/ci":
+area/ci:
   - changed-files:
       - any-glob-to-any-file:
           - ".github/**/*"
 
 # Configuration
-"area/config":
+area/config:
   - changed-files:
       - any-glob-to-any-file:
           - "**/*.toml"
@@ -21,14 +25,14 @@
           - "!.github/**/*"
 
 # Dependencies
-"area/deps":
+area/deps:
   - changed-files:
       - any-glob-to-any-file:
           - "**/Cargo.toml"
           - "**/Cargo.lock"
 
 # Testing
-"area/testing":
+area/testing:
   - changed-files:
       - any-glob-to-any-file:
           - "**/tests/**/*"
@@ -37,7 +41,7 @@
           - "src/testing/**/*"
 
 # Client
-"area/client":
+area/client:
   - changed-files:
       - any-glob-to-any-file:
           - "src/client/**/*"
@@ -45,7 +49,7 @@
           - "src/vault/**/*"
 
 # Protocol buffers and gRPC
-"area/proto":
+area/proto:
   - changed-files:
       - any-glob-to-any-file:
           - "src/transport/**/*"
@@ -53,14 +57,14 @@
           - "build.rs"
 
 # Authentication
-"area/auth":
+area/auth:
   - changed-files:
       - any-glob-to-any-file:
           - "src/auth/**/*"
           - "src/credentials/**/*"
 
 # API
-"area/api":
+area/api:
   - changed-files:
       - any-glob-to-any-file:
           - "src/api/**/*"
@@ -70,7 +74,7 @@
           - "src/control/**/*"
 
 # Data models and types
-"area/models":
+area/models:
   - changed-files:
       - any-glob-to-any-file:
           - "src/types/**/*"
@@ -78,13 +82,13 @@
           - "src/error/**/*"
 
 # Derive macros
-"area/derive":
+area/derive:
   - changed-files:
       - any-glob-to-any-file:
           - "inferadb-derive/**/*"
 
 # Examples
-"area/examples":
+area/examples:
   - changed-files:
       - any-glob-to-any-file:
           - "examples/**/*"

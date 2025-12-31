@@ -5,7 +5,22 @@ read_only: false
 languages:
   - rust
 
-initial_prompt: ""
+initial_prompt: |
+  InferaDB Rust SDK - Ergonomic, type-safe access to InferaDB's authorization and management APIs.
+
+  Features:
+  - Rust-Native & Async: Fully integrated with Tokio, Tracing
+  - Compile-Time Safety: Catch permission model mistakes in the build pipeline
+  - Standards-Based: Built on AuthZEN with automatic multi-tenant isolation
+
+  Key modules:
+  - src/client/ - Client implementation for Engine and Control APIs
+  - src/auth/ - Authentication (Ed25519 certificates, JWT)
+  - src/check/, src/relationships/, src/expand/ - Core API operations
+  - inferadb-derive/ - Derive macros for type-safe permissions
+
+  Published to crates.io as 'inferadb'.
+
 ignore_all_files_in_gitignore: true
 ignored_paths: []
 excluded_tools: []
