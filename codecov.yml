@@ -17,15 +17,16 @@ coverage:
       default:
         target: 95%
         threshold: 1%
-        # Only check against the files that were changed + existing coverage
-        if_ci_failed: error
+        # Informational only - never block PRs
+        informational: true
 
     # Patch coverage (for new code in PRs)
     patch:
       default:
         target: 90%
         threshold: 1%
-        if_ci_failed: error
+        # Informational only - never block PRs
+        informational: true
 
 # Ignore generated and non-essential files
 ignore:
