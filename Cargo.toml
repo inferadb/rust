@@ -39,7 +39,7 @@ prost-types = { version = "0.14", optional = true }
 tonic-prost = { version = "0.14", optional = true }
 
 # REST (optional)
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream"], optional = true }
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream"], optional = true }
 
 # Cryptography
 ed25519-dalek = { version = "2", features = ["pem", "rand_core", "zeroize"] }
@@ -51,7 +51,7 @@ chrono = { version = "0.4", default-features = false, features = ["std", "serde"
 # TLS
 rustls = { version = "0.23", default-features = false, features = ["std", "tls12"], optional = true }
 rustls-native-certs = { version = "0.8", optional = true }
-webpki-roots = { version = "0.26", optional = true }
+webpki-roots = { version = "1", optional = true }
 
 # Error handling
 thiserror = "2"
@@ -109,7 +109,7 @@ grpc = ["dep:tonic", "dep:prost", "dep:prost-types", "dep:tonic-prost", "dep:ton
 rest = ["dep:reqwest"]
 
 # TLS options (mutually exclusive)
-rustls = ["dep:rustls", "dep:rustls-native-certs", "dep:webpki-roots", "reqwest?/rustls-tls"]
+rustls = ["dep:rustls", "dep:rustls-native-certs", "dep:webpki-roots", "reqwest?/rustls"]
 native-tls = ["reqwest?/native-tls"]
 
 # Optional features
