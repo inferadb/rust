@@ -72,8 +72,12 @@ impl Ed25519PrivateKey {
     /// println!("Public key: {}", hex::encode(public_key));
     /// ```
     pub fn generate() -> Self {
-        let mut csprng = rand::rngs::OsRng;
-        Self { key: SigningKey::generate(&mut csprng) }
+        // Use getrandom directly to avoid rand_core version conflicts
+        // (ed25519-dalek uses rand_core 0.6.x, while some deps use 0.9.x)
+        let mut key_bytes = Zeroizing::new([0u8; SECRET_KEY_LENGTH]);
+        getrandom::getrandom(key_bytes.as_mut_slice())
+            .expect("Failed to generate random bytes for Ed25519 key");
+        Self { key: SigningKey::from_bytes(&key_bytes) }
     }
 
     /// Creates a key from raw bytes.
