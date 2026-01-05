@@ -679,7 +679,8 @@ pub mod authorization_service_client {
         pub async fn write_relationships(
             &mut self,
             request: impl tonic::IntoStreamingRequest<Message = super::WriteRelationshipsRequest>,
-        ) -> std::result::Result<tonic::Response<super::WriteRelationshipsResponse>, tonic::Status> {
+        ) -> std::result::Result<tonic::Response<super::WriteRelationshipsResponse>, tonic::Status>
+        {
             self.inner.ready().await.map_err(|e| {
                 tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
             })?;
@@ -698,7 +699,8 @@ pub mod authorization_service_client {
         pub async fn delete_relationships(
             &mut self,
             request: impl tonic::IntoStreamingRequest<Message = super::DeleteRelationshipsRequest>,
-        ) -> std::result::Result<tonic::Response<super::DeleteRelationshipsResponse>, tonic::Status> {
+        ) -> std::result::Result<tonic::Response<super::DeleteRelationshipsResponse>, tonic::Status>
+        {
             self.inner.ready().await.map_err(|e| {
                 tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
             })?;
