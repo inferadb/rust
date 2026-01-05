@@ -225,16 +225,16 @@ pub struct Leaf {
     #[prost(string, repeated, tag = "1")]
     pub users: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
-/// Write request
+/// Request to write relationships to the store
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct WriteRequest {
+pub struct WriteRelationshipsRequest {
     /// Relationships to write
     #[prost(message, repeated, tag = "1")]
     pub relationships: ::prost::alloc::vec::Vec<Relationship>,
 }
-/// Write response
+/// Response after writing relationships
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct WriteResponse {
+pub struct WriteRelationshipsResponse {
     /// Revision token
     #[prost(string, tag = "1")]
     pub revision: ::prost::alloc::string::String,
@@ -257,9 +257,9 @@ pub struct DeleteFilter {
     #[prost(string, optional, tag = "3")]
     pub subject: ::core::option::Option<::prost::alloc::string::String>,
 }
-/// Delete request
+/// Request to delete relationships from the store
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct DeleteRequest {
+pub struct DeleteRelationshipsRequest {
     /// Optional filter for bulk deletion
     /// If provided, all relationships matching the filter will be deleted
     #[prost(message, optional, tag = "1")]
@@ -274,9 +274,9 @@ pub struct DeleteRequest {
     #[prost(uint32, optional, tag = "3")]
     pub limit: ::core::option::Option<u32>,
 }
-/// Delete response
+/// Response after deleting relationships
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct DeleteResponse {
+pub struct DeleteRelationshipsResponse {
     /// Revision token
     #[prost(string, tag = "1")]
     pub revision: ::prost::alloc::string::String,
@@ -678,8 +678,8 @@ pub mod authorization_service_client {
         /// Write relationships to the store
         pub async fn write_relationships(
             &mut self,
-            request: impl tonic::IntoStreamingRequest<Message = super::WriteRequest>,
-        ) -> std::result::Result<tonic::Response<super::WriteResponse>, tonic::Status> {
+            request: impl tonic::IntoStreamingRequest<Message = super::WriteRelationshipsRequest>,
+        ) -> std::result::Result<tonic::Response<super::WriteRelationshipsResponse>, tonic::Status> {
             self.inner.ready().await.map_err(|e| {
                 tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
             })?;
@@ -697,8 +697,8 @@ pub mod authorization_service_client {
         /// Delete relationships from the store
         pub async fn delete_relationships(
             &mut self,
-            request: impl tonic::IntoStreamingRequest<Message = super::DeleteRequest>,
-        ) -> std::result::Result<tonic::Response<super::DeleteResponse>, tonic::Status> {
+            request: impl tonic::IntoStreamingRequest<Message = super::DeleteRelationshipsRequest>,
+        ) -> std::result::Result<tonic::Response<super::DeleteRelationshipsResponse>, tonic::Status> {
             self.inner.ready().await.map_err(|e| {
                 tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
             })?;

@@ -369,7 +369,7 @@ impl TransportClient for GrpcTransport {
     async fn write(&self, request: WriteRequest) -> Result<WriteResponse, Error> {
         self.increment_requests();
 
-        let pb_request = pb::WriteRequest {
+        let pb_request = pb::WriteRelationshipsRequest {
             relationships: vec![pb::Relationship {
                 resource: request.relationship.resource().to_string(),
                 relation: request.relationship.relation().to_string(),
@@ -399,7 +399,7 @@ impl TransportClient for GrpcTransport {
             })
             .collect();
 
-        let pb_request = pb::WriteRequest { relationships };
+        let pb_request = pb::WriteRelationshipsRequest { relationships };
 
         let stream = futures::stream::once(async { pb_request });
         let mut client = self.client.clone();
@@ -414,7 +414,7 @@ impl TransportClient for GrpcTransport {
     async fn delete(&self, relationship: Relationship<'static>) -> Result<(), Error> {
         self.increment_requests();
 
-        let pb_request = pb::DeleteRequest {
+        let pb_request = pb::DeleteRelationshipsRequest {
             filter: None,
             relationships: vec![pb::Relationship {
                 resource: relationship.resource().to_string(),
