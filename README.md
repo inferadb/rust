@@ -10,7 +10,8 @@
     <p>Ergonomic, type-safe access to InferaDB's authorization and management APIs</p>
 </div>
 
-<br />
+> [!IMPORTANT]
+> Under active development. Not production-ready.
 
 [InferaDB](https://inferadb.com/) is a distributed, [Google Zanzibar](https://research.google/pubs/zanzibar-googles-consistent-global-authorization-system/)‑inspired authorization engine that replaces ad‑hoc database lookups and scattered logic with a unified, millisecond‑latency source of truth. With this SDK, you define permissions as policy‑as‑code and wire up a type‑safe client in just a few lines.
 
