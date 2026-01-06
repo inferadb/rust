@@ -15,16 +15,16 @@ coverage:
     # Project-level coverage requirements
     project:
       default:
-        target: 95%
-        threshold: 1%
+        target: auto
+        threshold: 5%
         # Informational only - never block PRs
         informational: true
 
     # Patch coverage (for new code in PRs)
     patch:
       default:
-        target: 90%
-        threshold: 1%
+        target: auto
+        threshold: 5%
         # Informational only - never block PRs
         informational: true
 

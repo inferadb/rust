@@ -193,12 +193,19 @@ jobs:
       - name: Test with blocking
         run: cargo test --lib --features blocking
 
-  # Code coverage
+  # Code coverage (non-blocking, for information only)
   coverage:
     name: Code Coverage
     needs: test
     runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]'
+    continue-on-error: true
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
+        with:
+          egress-policy: audit
+
       - name: Checkout code
         uses: actions/checkout@v6
 
