@@ -1,298 +1,59 @@
-# Contributing to InferaDB Rust SDK
+# Contributing to InferaDB
 
-Thank you for your interest in contributing to the InferaDB Rust SDK! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to InferaDB! We welcome contributions from the community and are grateful for any help you can provide.
 
-## Development Setup
+## Code of Conduct
 
-### Prerequisites
+This project and everyone participating in it is governed by the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to [open@inferadb.com](mailto:open@inferadb.com).
 
-- [Mise](https://mise.jdx.dev/) - Tool version manager (recommended)
-- Rust 1.88.0+ (stable) - Managed by mise or rustup
-- Rust nightly (for formatting)
-- Docker and Docker Compose (for integration tests)
-- [inferadb/deploy](https://github.com/inferadb/deploy) - Development environment (for integration tests)
+## How to Contribute
 
-### Minimum Supported Rust Version (MSRV)
+### Reporting Issues
 
-The SDK requires Rust **1.88.0** or later. We maintain the MSRV at two releases behind the latest stable release where possible (e.g., if stable is 1.90, MSRV would be 1.88).
+- **Bug Reports**: Search existing issues first to avoid duplicates. Include version information, steps to reproduce, expected vs actual behavior, and relevant logs.
+- **Feature Requests**: Describe the use case, proposed solution, and alternatives considered.
+- **Security Issues**: Do **not** open public issues for security vulnerabilities. Instead, email [security@inferadb.com](mailto:security@inferadb.com).
 
-- MSRV increases will be called out in the [CHANGELOG](CHANGELOG.md)
-- We do not guarantee builds on compiler versions earlier than the MSRV
-- The `rust-version` field in `Cargo.toml` enforces this at build time
+### Pull Requests
 
-### Getting Started
+1. **Fork the repository** and create your branch from `main`
+2. **Follow the development workflow** documented in the repository's README
+3. **Write clear commit messages** following [Conventional Commits](https://www.conventionalcommits.org/):
+   - `feat:` New features
+   - `fix:` Bug fixes
+   - `docs:` Documentation changes
+   - `test:` Test additions or improvements
+   - `refactor:` Code refactoring
+   - `chore:` Maintenance tasks
+4. **Ensure all tests pass** before submitting
+5. **Update documentation** if your changes affect public APIs or user-facing behavior
+6. **Submit a pull request** with a clear description of your changes
 
-```bash
-# Clone the SDK repository
-git clone https://github.com/inferadb/rust
-cd rust-sdk
+### Development Setup
 
-# One-time setup (installs Rust toolchain and dev tools)
-make setup
+Each repository has its own development setup and workflow. Please refer to:
 
-# Build the project
-make build
+- **[DEVELOPMENT.md](./DEVELOPMENT.md)** for repository-specific development and contribution guidance
+- **README.md** for general project information and quick start instructions
 
-# Run tests
-make test
+These documents cover prerequisites, dependencies, build commands, code style guidelines, and repository-specific requirements.
 
-# See all available commands
-make help
-```
+## Review Process
 
-### Makefile Targets
-
-| Target          | Description                             |
-| --------------- | --------------------------------------- |
-| `make setup`    | One-time dev environment setup via Mise |
-| `make build`    | Build all workspace crates              |
-| `make test`     | Run unit tests                          |
-| `make test-all` | Run unit + integration tests            |
-| `make check`    | Run format check + clippy               |
-| `make coverage` | Run tests with coverage report          |
-| `make doc`      | Build documentation                     |
-| `make proto`    | Regenerate protobuf code and format     |
-| `make ci`       | Full CI pipeline (format, lint, test)   |
-
-### Running with Local InferaDB
-
-Integration tests require a running InferaDB instance. Use the official development environment from [inferadb/deploy](https://github.com/inferadb/deploy):
-
-```bash
-# Start the development environment using the InferaDB CLI
-inferadb dev start
-
-# The environment includes:
-# - InferaDB Engine (authorization API)
-# - InferaDB Control (management API)
-# - FoundationDB (storage)
-# - Supporting services
-```
-
-Once the development environment is running, return to the SDK directory and run integration tests:
-
-```bash
-cd /path/to/inferadb-rust-sdk
-
-# Run integration tests against local InferaDB
-make test-integration
-
-# Or run specific integration tests
-cargo test --test integration --features "rest,insecure" -- --ignored
-```
-
-#### Environment Variables
-
-The integration tests use these environment variables (with defaults for local development):
-
-| Variable               | Default                 | Description                                 |
-| ---------------------- | ----------------------- | ------------------------------------------- |
-| `INFERADB_URL`         | `http://localhost:8080` | InferaDB Engine URL                         |
-| `INFERADB_CONTROL_URL` | `http://localhost:8081` | InferaDB Control URL                        |
-| `INFERADB_CLIENT_ID`   | -                       | Test client ID (created by dev environment) |
-| `INFERADB_PRIVATE_KEY` | -                       | Path to test private key                    |
-
-The dev environment from `inferadb/deploy` automatically configures test credentials.
-
-## Code Style
-
-We use Rust's standard formatting and linting tools. Use the Makefile for convenience:
-
-```bash
-# Format code (requires nightly)
-make fmt
-
-# Lint with clippy
-make clippy
-
-# Run all checks (format + clippy)
-make check
-
-# Build documentation
-make doc
-```
-
-### Style Guidelines
-
-- Follow the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
-- Use `rustfmt` defaults (no custom configuration)
-- All public items must have documentation
-- No `unwrap()` or `expect()` in library code (except in tests)
-- Prefer `?` operator over explicit `match` for error handling
-
-## gRPC Code Generation
-
-The SDK uses [tonic](https://github.com/hyperium/tonic) for gRPC support. Protobuf definitions are in `proto/inferadb.proto` and generated Rust code lives in `src/transport/proto/`.
-
-### When to Regenerate
-
-Regenerate protobuf code when:
-
-- The `proto/inferadb.proto` file is updated
-- Upgrading tonic or prost versions
-- Generated code gets out of sync
-
-### How to Regenerate
-
-```bash
-make proto
-```
-
-This command:
-
-1. Touches the proto file to trigger regeneration
-2. Runs `cargo build --features grpc` to invoke tonic-build
-3. Formats the generated code with `make fmt`
-
-### Notes
-
-- Generated code is committed to the repository for reproducible builds
-- The `build.rs` script handles code generation via tonic-build
-- Only the gRPC client is generated (no server code)
-
-## Testing Guidelines
-
-### Unit Tests
-
-Use mocks for unit tests to avoid network dependencies:
-
-```rust
-use inferadb::testing::MockClient;
-
-#[tokio::test]
-async fn test_check_returns_true_for_allowed() {
-    let mock = MockClient::builder()
-        .check("user:alice", "view", "doc:1", true)
-        .build();
-
-    assert!(mock.check("user:alice", "view", "doc:1").await.unwrap());
-}
-
-#[tokio::test]
-async fn test_check_returns_false_for_denied() {
-    let mock = MockClient::builder()
-        .check("user:bob", "delete", "doc:1", false)
-        .build();
-
-    assert!(!mock.check("user:bob", "delete", "doc:1").await.unwrap());
-}
-```
-
-### Integration Tests
-
-Integration tests require a running InferaDB instance. See [Running with Local InferaDB](#running-with-local-inferadb) for setup instructions using the [inferadb/deploy](https://github.com/inferadb/deploy) development environment.
-
-Use `#[ignore]` for tests that require a running InferaDB instance:
-
-```rust
-#[tokio::test]
-#[ignore]  // Run with: cargo test --ignored
-async fn integration_test_check() {
-    let client = test_client().await;
-    let vault = TestVault::create(&client).await.unwrap();
-
-    vault.write(Relationship::new("doc:1", "viewer", "user:alice")).await.unwrap();
-    assert!(vault.check("user:alice", "view", "doc:1").await.unwrap());
-}
-```
-
-Run integration tests with:
-
-```bash
-# Ensure inferadb/deploy dev environment is running first
-make test-integration
-```
-
-### Test Organization
-
-```text
-tests/
-├── unit/           # Unit tests with mocks
-├── integration/    # Tests requiring InferaDB instance
-└── fixtures/       # Shared test data and helpers
-```
-
-## Pull Request Process
-
-### Before Submitting
-
-Run the full CI pipeline locally:
-
-```bash
-make ci
-```
-
-This runs format checks, clippy, tests, and documentation checks.
-
-Or run individual steps:
-
-```bash
-make fmt        # Format code
-make check      # Format check + clippy
-make test       # Run tests
-make doc-check  # Check documentation
-```
-
-### PR Checklist
-
-- [ ] CI passes (`make ci`)
-- [ ] Tests pass (`make test`)
-- [ ] No clippy warnings (`make clippy`)
-- [ ] Code formatted (`make fmt`)
-- [ ] Documentation updated for public API changes
-- [ ] CHANGELOG.md updated (under `[Unreleased]`)
-- [ ] Version bumped if needed (for breaking changes)
-
-### Commit Messages
-
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-```text
-feat: add batch check support
-fix: resolve token refresh race condition
-docs: update authentication examples
-refactor: simplify error handling
-test: add integration tests for watch streams
-chore: update dependencies
-```
-
-### Breaking Changes
-
-For breaking changes:
-
-1. Add `BREAKING CHANGE:` footer to commit message
-2. Document upgrade instructions in CHANGELOG.md
-3. Bump major version (or minor for 0.x)
-
-## Reporting Issues
-
-File issues at: <https://github.com/inferadb/rust/issues>
-
-### Bug Reports
-
-Include:
-
-- SDK version (`cargo pkgid inferadb`)
-- Rust version (`rustc --version`)
-- Operating system and version
-- Minimal reproduction code
-- Full error message with request ID if available
-- Expected vs actual behavior
-
-### Feature Requests
-
-Include:
-
-- Use case description
-- Proposed API (if applicable)
-- Alternative solutions considered
-
-## Getting Help
-
-- **Questions:** Open a [Discussion](https://github.com/inferadb/rust/discussions)
-- **Bugs:** Open an [Issue](https://github.com/inferadb/rust/issues)
-- **Security:** Email <security@inferadb.com> (do not open public issues)
+1. **Automated Checks**: CI will run tests, linters, and formatters
+2. **Peer Review**: At least one maintainer will review your contribution
+3. **Feedback**: Address any review comments
+4. **Approval**: Once approved, a maintainer will merge your contribution
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
+By contributing to InferaDB, you agree that your contributions will be licensed under the same license as the repository you are contributing to. See the LICENSE file in each repository for details.
+
+## Questions?
+
+If you have questions or need help:
+
+- Open a [Discussion](https://github.com/inferadb/inferadb/discussions) on GitHub
+- Email us at [open@inferadb.com](mailto:open@inferadb.com)
+
+Thank you for helping make InferaDB better!
