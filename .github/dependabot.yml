@@ -1,8 +1,13 @@
-# yaml-language-server: $schema=https://www.schemastore.org/dependabot-2.0.json
+# yaml-language-server: $schema=https://json.schemastore.org/dependabot-2.0.json
+#
+# Dependabot configuration for inferadb/rust
+# Managed by github/tools/repos.sh - manual edits will be overwritten
+#
+# To customize: update repos.json and run ./repos.sh --dependabot
 
 version: 2
 updates:
-  # Cargo dependencies (Rust crates)
+
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
@@ -16,33 +21,29 @@ updates:
     commit-message:
       prefix: "deps"
       include: "scope"
-    groups:
-      # Group ALL patch updates into a single PR
-      patch-updates:
-        patterns:
-          - "*"
+    ignore:
+      - dependency-name: "tonic"
         update-types:
-          - "patch"
-      # Group ALL minor updates into a single PR
-      minor-updates:
+          - "version-update:semver-major"
+      - dependency-name: "prost"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "reqwest"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "tokio"
+        update-types:
+          - "version-update:semver-major"
+    groups:
+      rust-minor-patch:
         patterns:
           - "*"
         update-types:
           - "minor"
-    # Ignore major version bumps for stability (review manually)
-    ignore:
-      - dependency-name: "tonic"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "prost"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "reqwest"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "tokio"
-        update-types: ["version-update:semver-major"]
+          - "patch"
 
-  # GitHub Actions workflow dependencies
   - package-ecosystem: "github-actions"
-    directory: "/"
+    directory: "/.github/workflows"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -56,7 +57,6 @@ updates:
       prefix: "ci"
       include: "scope"
     groups:
-      # Group all GitHub Actions updates together
-      actions:
+      github-actions:
         patterns:
           - "*"
