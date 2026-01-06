@@ -37,3 +37,36 @@ jobs:
         with:
           fail-on-severity: high
           comment-summary-in-pr: always
+
+  # Security scan summary - aggregates all security job results
+  security-summary:
+    name: Security Summary
+    needs: [dependency-review]
+    runs-on: ubuntu-latest
+    if: always()
+    permissions:
+      contents: read
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@df199fb7be9f65074067a9eb93f12bb4c5547cf2 # v2.13.3
+        with:
+          egress-policy: audit
+
+      - name: Check security scan results
+        env:
+          DEPENDENCY_REVIEW_RESULT: ${{ needs.dependency-review.result }}
+        run: |
+          echo "## Security Scan Results"
+          echo ""
+          echo "| Scanner | Status |"
+          echo "|---------|--------|"
+          echo "| Dependency Review | $DEPENDENCY_REVIEW_RESULT |"
+          echo ""
+
+          # Fail if any security job failed
+          if [[ "$DEPENDENCY_REVIEW_RESULT" != "success" && "$DEPENDENCY_REVIEW_RESULT" != "skipped" ]]; then
+            echo "❌ Security checks failed"
+            exit 1
+          fi
+
+          echo "✅ All security checks passed!"
