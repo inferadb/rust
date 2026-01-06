@@ -5,7 +5,7 @@
         <a href="https://crates.io/crates/inferadb"><img src="https://img.shields.io/crates/v/inferadb.svg" /></a>
         <a href="https://docs.rs/inferadb"><img src="https://docs.rs/inferadb/badge.svg" /></a>
         <a href="https://codecov.io/github/inferadb/rust"><img src="https://codecov.io/github/inferadb/rust/branch/main/graph/badge.svg?token=HBlxbXsvny" /></a>
-        <a href="./LICENSE"><img src="https://img.shields.io/crates/l/inferadb.svg"></a>
+        <a href="#license"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg"></a>
     </p>
     <p>Ergonomic, type-safe access to InferaDB's authorization and management APIs</p>
 </div>
@@ -279,4 +279,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## License
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+Licensed under either of:
+
+- [Apache License, Version 2.0](LICENSE-APACHE)
+- [MIT License](LICENSE-MIT)
+
+at your option.
