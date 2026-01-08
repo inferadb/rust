@@ -68,11 +68,16 @@ jobs:
         with:
           components: clippy
 
-      - name: Install protobuf compiler and mold linker
+      - name: Install mold linker
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq protobuf-compiler mold
-          protoc --version
+          sudo apt-get install -y -qq mold
+
+      - name: Install development tools via Mise
+        uses: step-security/mise-action@2fa1b2b4fa1577588d8ac75f4dfa0f67c266d2a0 # v3.4.1
+        with:
+          install_args: protobuf
+          cache: true
 
       - name: Cache Rust dependencies
         uses: step-security/rust-cache@f8fba7098297c8c53a7c9a30575ec2ad4ad85056 # v2.8.2
@@ -111,10 +116,16 @@ jobs:
         with:
           toolchain: ${{ matrix.msrv }}
 
-      - name: Install protobuf compiler and mold linker
+      - name: Install mold linker
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq protobuf-compiler mold
+          sudo apt-get install -y -qq mold
+
+      - name: Install development tools via Mise
+        uses: step-security/mise-action@2fa1b2b4fa1577588d8ac75f4dfa0f67c266d2a0 # v3.4.1
+        with:
+          install_args: protobuf
+          cache: true
 
       - name: Cache Rust dependencies
         uses: step-security/rust-cache@f8fba7098297c8c53a7c9a30575ec2ad4ad85056 # v2.8.2
@@ -145,24 +156,17 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7 # stable
 
-      - name: Install protobuf compiler and mold linker (Linux)
+      - name: Install mold linker (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq protobuf-compiler mold
-          protoc --version
+          sudo apt-get install -y -qq mold
 
-      - name: Install protobuf compiler (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install protobuf
-          protoc --version
-
-      - name: Install protobuf compiler (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          choco install protoc
-          protoc --version
+      - name: Install development tools via Mise
+        uses: step-security/mise-action@2fa1b2b4fa1577588d8ac75f4dfa0f67c266d2a0 # v3.4.1
+        with:
+          install_args: protobuf
+          cache: true
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@dfcb1ee29051d97c8d0f2d437199570008fd5612 # v2.65.15
@@ -206,15 +210,16 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7 # stable
 
-      - name: Install protobuf compiler and mold linker
+      - name: Install mold linker
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq protobuf-compiler mold
+          sudo apt-get install -y -qq mold
 
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@dfcb1ee29051d97c8d0f2d437199570008fd5612 # v2.65.15
+      - name: Install development tools via Mise
+        uses: step-security/mise-action@2fa1b2b4fa1577588d8ac75f4dfa0f67c266d2a0 # v3.4.1
         with:
-          tool: cargo-nextest
+          install_args: protobuf cargo:cargo-nextest
+          cache: true
 
       - name: Cache Rust dependencies
         uses: step-security/rust-cache@f8fba7098297c8c53a7c9a30575ec2ad4ad85056 # v2.8.2
@@ -265,15 +270,16 @@ jobs:
         with:
           components: llvm-tools-preview
 
-      - name: Install protobuf compiler and mold linker
+      - name: Install mold linker
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq protobuf-compiler mold
+          sudo apt-get install -y -qq mold
 
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@dfcb1ee29051d97c8d0f2d437199570008fd5612 # v2.65.15
+      - name: Install development tools via Mise
+        uses: step-security/mise-action@2fa1b2b4fa1577588d8ac75f4dfa0f67c266d2a0 # v3.4.1
         with:
-          tool: cargo-llvm-cov
+          install_args: protobuf cargo:cargo-llvm-cov
+          cache: true
 
       - name: Cache Rust dependencies
         uses: step-security/rust-cache@f8fba7098297c8c53a7c9a30575ec2ad4ad85056 # v2.8.2
@@ -312,10 +318,16 @@ jobs:
       - name: Install Rust nightly toolchain
         uses: dtolnay/rust-toolchain@881ba7bf39a41cda34ac9e123fb41b44ed08232f # nightly
 
-      - name: Install protobuf compiler and mold linker
+      - name: Install mold linker
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq protobuf-compiler mold
+          sudo apt-get install -y -qq mold
+
+      - name: Install development tools via Mise
+        uses: step-security/mise-action@2fa1b2b4fa1577588d8ac75f4dfa0f67c266d2a0 # v3.4.1
+        with:
+          install_args: protobuf
+          cache: true
 
       - name: Cache Rust dependencies
         uses: step-security/rust-cache@f8fba7098297c8c53a7c9a30575ec2ad4ad85056 # v2.8.2
@@ -345,10 +357,16 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7 # stable
 
-      - name: Install protobuf compiler and mold linker
+      - name: Install mold linker
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq protobuf-compiler mold
+          sudo apt-get install -y -qq mold
+
+      - name: Install development tools via Mise
+        uses: step-security/mise-action@2fa1b2b4fa1577588d8ac75f4dfa0f67c266d2a0 # v3.4.1
+        with:
+          install_args: protobuf
+          cache: true
 
       - name: Cache Rust dependencies
         uses: step-security/rust-cache@f8fba7098297c8c53a7c9a30575ec2ad4ad85056 # v2.8.2
