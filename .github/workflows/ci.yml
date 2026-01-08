@@ -8,10 +8,10 @@ on:
   pull_request:
     branches: [main]
 
-# Cancel in-progress runs for PRs, queue for main
+# Cancel in-progress runs when new commits are pushed
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 # Default to read-only permissions
 permissions:
@@ -19,6 +19,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
   MSRV: "1.75"
 
@@ -48,6 +49,8 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-C codegen-units=16 -C link-arg=-fuse-ld=mold"
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
@@ -62,10 +65,10 @@ jobs:
         with:
           components: clippy
 
-      - name: Install protobuf compiler
+      - name: Install protobuf compiler and mold linker
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq protobuf-compiler
+          sudo apt-get install -y -qq protobuf-compiler mold
           protoc --version
 
       - name: Cache Rust dependencies
@@ -86,6 +89,8 @@ jobs:
   msrv:
     name: MSRV (${{ matrix.msrv }})
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-C codegen-units=16 -C link-arg=-fuse-ld=mold"
     strategy:
       matrix:
         msrv: ["1.88"]
@@ -103,10 +108,10 @@ jobs:
         with:
           toolchain: ${{ matrix.msrv }}
 
-      - name: Install protobuf compiler
+      - name: Install protobuf compiler and mold linker
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq protobuf-compiler
+          sudo apt-get install -y -qq protobuf-compiler mold
 
       - name: Cache Rust dependencies
         uses: step-security/rust-cache@f8fba7098297c8c53a7c9a30575ec2ad4ad85056 # v2.8.2
@@ -137,11 +142,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7 # stable
 
-      - name: Install protobuf compiler (Linux)
+      - name: Install protobuf compiler and mold linker (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq protobuf-compiler
+          sudo apt-get install -y -qq protobuf-compiler mold
           protoc --version
 
       - name: Install protobuf compiler (macOS)
@@ -156,16 +161,25 @@ jobs:
           choco install protoc
           protoc --version
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@dfcb1ee29051d97c8d0f2d437199570008fd5612 # v2.65.15
+        with:
+          tool: cargo-nextest
+
       - name: Cache Rust dependencies
         uses: step-security/rust-cache@f8fba7098297c8c53a7c9a30575ec2ad4ad85056 # v2.8.2
         with:
           shared-key: test-${{ matrix.os }}
 
       - name: Run unit tests (default features)
-        run: cargo test --lib
+        env:
+          RUSTFLAGS: ${{ runner.os == 'Linux' && '-C codegen-units=16 -C link-arg=-fuse-ld=mold' || '' }}
+        run: cargo nextest run --lib
 
       - name: Run unit tests (all features)
-        run: cargo test --lib --all-features
+        env:
+          RUSTFLAGS: ${{ runner.os == 'Linux' && '-C codegen-units=16 -C link-arg=-fuse-ld=mold' || '' }}
+        run: cargo nextest run --lib --all-features
 
       - name: Run doc tests
         run: cargo test --doc --all-features
@@ -175,6 +189,8 @@ jobs:
     name: Feature Combinations
     needs: [fmt, clippy]
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-C codegen-units=16 -C link-arg=-fuse-ld=mold"
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
@@ -187,10 +203,15 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7 # stable
 
-      - name: Install protobuf compiler
+      - name: Install protobuf compiler and mold linker
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq protobuf-compiler
+          sudo apt-get install -y -qq protobuf-compiler mold
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@dfcb1ee29051d97c8d0f2d437199570008fd5612 # v2.65.15
+        with:
+          tool: cargo-nextest
 
       - name: Cache Rust dependencies
         uses: step-security/rust-cache@f8fba7098297c8c53a7c9a30575ec2ad4ad85056 # v2.8.2
@@ -198,25 +219,25 @@ jobs:
           shared-key: features
 
       - name: Test no default features
-        run: cargo test --lib --no-default-features
+        run: cargo nextest run --lib --no-default-features
 
       - name: Test gRPC only
-        run: cargo test --lib --no-default-features --features grpc,rustls
+        run: cargo nextest run --lib --no-default-features --features grpc,rustls
 
       - name: Test REST only
-        run: cargo test --lib --no-default-features --features rest,rustls
+        run: cargo nextest run --lib --no-default-features --features rest,rustls
 
       - name: Test with native-tls
-        run: cargo test --lib --no-default-features --features rest,native-tls
+        run: cargo nextest run --lib --no-default-features --features rest,native-tls
 
       - name: Test with tracing
-        run: cargo test --lib --features tracing
+        run: cargo nextest run --lib --features tracing
 
       - name: Test with derive macros
-        run: cargo test --lib --features derive
+        run: cargo nextest run --lib --features derive
 
       - name: Test with blocking
-        run: cargo test --lib --features blocking
+        run: cargo nextest run --lib --features blocking
 
   # Code coverage (non-blocking, for information only)
   coverage:
@@ -225,6 +246,8 @@ jobs:
     runs-on: ubuntu-latest
     if: github.actor != 'dependabot[bot]'
     continue-on-error: true
+    env:
+      RUSTFLAGS: "-C codegen-units=16 -C link-arg=-fuse-ld=mold"
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
@@ -239,10 +262,10 @@ jobs:
         with:
           components: llvm-tools-preview
 
-      - name: Install protobuf compiler
+      - name: Install protobuf compiler and mold linker
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq protobuf-compiler
+          sudo apt-get install -y -qq protobuf-compiler mold
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@dfcb1ee29051d97c8d0f2d437199570008fd5612 # v2.65.15
@@ -272,6 +295,8 @@ jobs:
   docs:
     name: Documentation
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-C codegen-units=16 -C link-arg=-fuse-ld=mold"
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
@@ -284,10 +309,10 @@ jobs:
       - name: Install Rust nightly toolchain
         uses: dtolnay/rust-toolchain@881ba7bf39a41cda34ac9e123fb41b44ed08232f # nightly
 
-      - name: Install protobuf compiler
+      - name: Install protobuf compiler and mold linker
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq protobuf-compiler
+          sudo apt-get install -y -qq protobuf-compiler mold
 
       - name: Cache Rust dependencies
         uses: step-security/rust-cache@f8fba7098297c8c53a7c9a30575ec2ad4ad85056 # v2.8.2
@@ -303,6 +328,8 @@ jobs:
   examples:
     name: Examples
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-C codegen-units=16 -C link-arg=-fuse-ld=mold"
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
@@ -315,10 +342,10 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7 # stable
 
-      - name: Install protobuf compiler
+      - name: Install protobuf compiler and mold linker
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq protobuf-compiler
+          sudo apt-get install -y -qq protobuf-compiler mold
 
       - name: Cache Rust dependencies
         uses: step-security/rust-cache@f8fba7098297c8c53a7c9a30575ec2ad4ad85056 # v2.8.2

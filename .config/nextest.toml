@@ -1,0 +1,37 @@
+# Nextest configuration for InferaDB Rust SDK
+# Documentation: https://nexte.st/book/configuration.html
+
+[profile.default]
+# Run tests with all available CPU cores
+test-threads = "num-cpus"
+
+# Don't retry failed tests by default (developers should fix immediately)
+retries = 0
+
+# Show only failing tests and summary
+status-level = "pass"
+
+# Default timeout per test: 60 seconds
+slow-timeout = { period = "60s", terminate-after = 2 }
+
+[profile.ci]
+# CI profile: used in GitHub Actions
+
+# Retry flaky tests once in CI
+retries = { backoff = "fixed", count = 1, delay = "1s" }
+
+# Stricter timeout for CI
+slow-timeout = { period = "60s", terminate-after = 2 }
+
+# Show all test output in CI for debugging
+status-level = "all"
+
+# Use all available CPUs in CI
+test-threads = "num-cpus"
+
+# Profile for local development with watch mode
+[profile.dev]
+test-threads = "num-cpus"
+status-level = "fail"        # Only show failures
+retries = 0
+failure-output = "immediate" # Show failures immediately
