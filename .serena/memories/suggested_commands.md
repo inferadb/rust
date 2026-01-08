@@ -14,12 +14,13 @@
 
 ```bash
 mise trust && mise install
-mise run setup    # Configures git hooks and initializes proto submodule
+mise run setup    # Configures git and initializes proto submodule
 ```
 
 The setup task runs:
-- `git config core.hooksPath .githooks` - Use version-controlled hooks
-- `git submodule update --init --recursive` - Initialize proto submodule
+- `git config submodule.recurse true` - Auto-update submodules on git commands
+- `git config fetch.recurseSubmodules on-demand` - Auto-fetch submodule changes
+- `git submodule update --init --recursive --remote` - Initialize proto submodule
 - Installs rustfmt, clippy, and nightly toolchain
 
 ## Build Commands
