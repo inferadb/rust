@@ -14,11 +14,11 @@
 > [!IMPORTANT]
 > Under active development. Not production-ready.
 
-[InferaDB](https://inferadb.com/) is a distributed, [Google Zanzibar](https://research.google/pubs/zanzibar-googles-consistent-global-authorization-system/)‑inspired authorization engine that replaces ad‑hoc database lookups and scattered logic with a unified, millisecond‑latency source of truth. With this SDK, you define permissions as policy‑as‑code and wire up a type‑safe client in just a few lines.
+[InferaDB](https://inferadb.com/) is a distributed, [Google Zanzibar](https://research.google/pubs/zanzibar-googles-consistent-global-authorization-system/)‑inspired authorization engine that replaces ad‑hoc database lookups and scattered logic with a unified, millisecond‑latency source of truth. Define permissions as policy‑as‑code and wire up a type‑safe client in a few lines.
 
-- **Rust‑Native & Async:** Fully integrated with the ecosystem ([Tokio](https://crates.io/crates/tokio), [Tracing](https://crates.io/crates/tracing)) so you don't have to adapt generic policy engines to your runtime.
-- **Compile‑Time Safety:** Catch permission model mistakes in your build pipeline and tests, preventing surprises in production.
-- **Standards‑Based & Audit‑Ready:** Built on [AuthZen](https://openid.net/wg/authzen/) with automatic multi‑tenant isolation and cryptographically verifiable audit trails out of the box.
+- **Rust‑Native & Async:** Integrates with [Tokio](https://crates.io/crates/tokio) and [Tracing](https://crates.io/crates/tracing)—no adapting generic policy engines to your runtime.
+- **Compile‑Time Safety:** Catch permission model mistakes at build time, not in production.
+- **Standards‑Based & Audit‑Ready:** Built on [AuthZen](https://openid.net/wg/authzen/) with automatic multi‑tenant isolation and cryptographically verifiable audit trails.
 
 ## Quick Start
 
@@ -59,7 +59,7 @@
 
 ### "Can this user do this?"
 
-The most common question in any app. One line:
+The most common authorization question. One line:
 
 ```rust
 if vault.check("user:alice", "edit", "document:readme").await? {
@@ -69,7 +69,7 @@ if vault.check("user:alice", "edit", "document:readme").await? {
 
 ### "Who can access this?"
 
-Building a share dialog or audit view? List everyone with access:
+Building a share dialog or audit view? List all subjects with access:
 
 ```rust
 let viewers = vault.subjects()
@@ -82,7 +82,7 @@ let viewers = vault.subjects()
 
 ### "What can this user see?"
 
-Filtering a dashboard or search results by what the user can actually access:
+Filter a dashboard or search results by accessible resources:
 
 ```rust
 let docs = vault.resources()
@@ -95,7 +95,7 @@ let docs = vault.resources()
 
 ### "Grant access to a team"
 
-When Alice shares a folder with her team, everyone on that team gets access:
+When Alice shares a folder with her team, all team members gain access:
 
 ```rust
 vault.relationships()
@@ -105,7 +105,7 @@ vault.relationships()
 
 ### "Inherit permissions from a parent"
 
-Documents inside a folder should inherit the folder's permissions:
+Documents inherit their parent folder's permissions:
 
 ```rust
 vault.relationships()
@@ -117,7 +117,7 @@ vault.relationships()
 
 ### "Check multiple permissions at once"
 
-Rendering a UI with edit, delete, and share buttons? Check them all in one round-trip:
+Rendering edit, delete, and share buttons? Check all permissions in one call:
 
 ```rust
 let [can_edit, can_delete, can_share] = vault.batch_check(&[
@@ -159,7 +159,7 @@ let docs = vault.resources()
     .await?;
 ```
 
-See the [Authorization API Guide](docs/guides/authorization-api.md) for ABAC context, batch checks, explain, simulate, watch, and more.
+See the [Authorization API Guide](docs/guides/authorization-api.md) for ABAC context, batch checks, explain, simulate, and watch.
 
 ### Management API
 
@@ -210,7 +210,7 @@ See the [Management API Guide](docs/guides/management-api.md) for organizations,
 
 ## Local Development
 
-[Deploy a local instance of InferaDB](https://github.com/inferadb/deploy/), then configure your client to connect to it.
+[Deploy InferaDB locally](https://github.com/inferadb/deploy/), then configure your client:
 
 ```rust
 let client = Client::builder()
@@ -305,7 +305,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## Community
 
-Join us on [Discord](https://discord.gg/inferadb) to discuss InferaDB, get help with your projects, and connect with other developers. Whether you have questions, want to share what you're building, or are interested in contributing, we'd love to have you!
+Join us on [Discord](https://discord.gg/inferadb) to discuss InferaDB, get help, and connect with other developers.
 
 ## License
 
