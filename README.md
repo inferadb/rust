@@ -274,6 +274,31 @@ cargo run -p inferadb-examples --bin batch_operations
 cargo run -p inferadb-examples --bin axum_middleware
 ```
 
+## Development
+
+```bash
+# Setup (one-time)
+mise trust && mise install
+rustup component add rustfmt clippy
+rustup toolchain install nightly --component rustfmt
+
+# Build
+cargo build --workspace --all-features
+
+# Run tests
+cargo test --lib
+
+# Format and lint
+cargo +nightly fmt --all
+cargo clippy --workspace --all-targets -- -D warnings
+
+# Generate documentation
+cargo doc --workspace --no-deps --open
+
+# Code coverage
+cargo llvm-cov --lib --ignore-filename-regex 'proto|inferadb\.authorization\.v1'
+```
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
