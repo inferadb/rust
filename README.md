@@ -8,17 +8,17 @@
         <a href="https://codecov.io/github/inferadb/rust"><img src="https://codecov.io/github/inferadb/rust/branch/main/graph/badge.svg?token=HBlxbXsvny" alt="Code Coverage" /></a>
         <a href="#license"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License" /></a>
     </p>
-    <p>Ergonomic, type-safe access to InferaDB's authorization and management APIs</p>
+    <p>Type-safe Rust client for InferaDB</p>
 </div>
 
 > [!IMPORTANT]
 > Under active development. Not production-ready.
 
-[InferaDB](https://inferadb.com/) is a distributed, [Google Zanzibar](https://research.google/pubs/zanzibar-googles-consistent-global-authorization-system/)‑inspired authorization engine that replaces ad‑hoc database lookups and scattered logic with a unified, millisecond‑latency source of truth. Define permissions as policy‑as‑code and wire up a type‑safe client in a few lines.
+[InferaDB](https://inferadb.com/) is a [Zanzibar](https://research.google/pubs/zanzibar-googles-consistent-global-authorization-system/)-inspired authorization engine. Define permissions as policy-as-code; integrate in a few lines.
 
-- **Rust‑Native & Async:** Integrates with [Tokio](https://crates.io/crates/tokio) and [Tracing](https://crates.io/crates/tracing)—no adapting generic policy engines to your runtime.
-- **Compile‑Time Safety:** Catch permission model mistakes at build time, not in production.
-- **Standards‑Based & Audit‑Ready:** Built on [AuthZen](https://openid.net/wg/authzen/) with automatic multi‑tenant isolation and cryptographically verifiable audit trails.
+- **Async-first:** Built on [Tokio](https://crates.io/crates/tokio) and [Tracing](https://crates.io/crates/tracing)
+- **Compile-time safety:** Catch permission model mistakes before production
+- **Standards-based:** [AuthZEN](https://openid.net/wg/authzen/) compliant with multi-tenant isolation
 
 ## Quick Start
 
@@ -305,13 +305,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## Community
 
-Join us on [Discord](https://discord.gg/inferadb) to discuss InferaDB, get help, and connect with other developers.
+Join us on [Discord](https://discord.gg/inferadb) for questions, discussions, and contributions.
 
 ## License
 
-Licensed under either of:
-
-- [Apache License, Version 2.0](LICENSE-APACHE)
-- [MIT License](LICENSE-MIT)
-
-at your option.
+Dual-licensed under [MIT](LICENSE-MIT) or [Apache 2.0](LICENSE-APACHE).
