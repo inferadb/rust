@@ -14,9 +14,13 @@
 
 ```bash
 mise trust && mise install
-rustup component add rustfmt clippy
-rustup toolchain install nightly --component rustfmt
+mise run setup    # Configures git hooks and initializes proto submodule
 ```
+
+The setup task runs:
+- `git config core.hooksPath .githooks` - Use version-controlled hooks
+- `git submodule update --init --recursive` - Initialize proto submodule
+- Installs rustfmt, clippy, and nightly toolchain
 
 ## Build Commands
 
