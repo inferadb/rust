@@ -218,8 +218,13 @@ jobs:
       - name: Install development tools via Mise
         uses: step-security/mise-action@2fa1b2b4fa1577588d8ac75f4dfa0f67c266d2a0 # v3.4.1
         with:
-          install_args: protobuf cargo:cargo-nextest
+          install_args: protobuf
           cache: true
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@3522286d40783523f9c7880e33f785905b4c20d0 # v2.66.1
+        with:
+          tool: cargo-nextest
 
       - name: Cache Rust dependencies
         uses: step-security/rust-cache@f8fba7098297c8c53a7c9a30575ec2ad4ad85056 # v2.8.2
