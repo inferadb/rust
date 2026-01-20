@@ -16,7 +16,7 @@ Published to crates.io as `inferadb`.
 
 ## Tech Stack
 
-- **Language**: Rust (MSRV 1.88.0)
+- **Language**: Rust (MSRV 1.92.0)
 - **Async Runtime**: Tokio
 - **gRPC**: Tonic + Prost
 - **HTTP/REST**: Reqwest

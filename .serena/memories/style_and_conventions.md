@@ -15,7 +15,7 @@
 ## Rust Guidelines
 
 - Follow the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
-- MSRV: Rust 1.88.0+ (stable)
+- MSRV: Rust 1.92.0+ (stable)
 - All public items must have documentation
 - No `unwrap()` or `expect()` in library code (only in tests)
 - Prefer `?` operator over explicit `match` for error handling
