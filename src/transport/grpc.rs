@@ -100,19 +100,18 @@ impl GrpcTransport {
             }
 
             // Add client certificate for mTLS if configured
-            if tls_config.is_mtls_configured() {
-                if let (Some(ref cert_path), Some(ref key_path)) =
+            if tls_config.is_mtls_configured()
+                && let (Some(cert_path), Some(key_path)) =
                     (&tls_config.client_cert_file, &tls_config.client_key_file)
-                {
-                    let cert_pem = std::fs::read_to_string(cert_path).map_err(|e| {
-                        Error::configuration(format!("Failed to read client cert: {}", e))
-                    })?;
-                    let key_pem = std::fs::read_to_string(key_path).map_err(|e| {
-                        Error::configuration(format!("Failed to read client key: {}", e))
-                    })?;
-                    let identity = tonic::transport::Identity::from_pem(&cert_pem, &key_pem);
-                    tls = tls.identity(identity);
-                }
+            {
+                let cert_pem = std::fs::read_to_string(cert_path).map_err(|e| {
+                    Error::configuration(format!("Failed to read client cert: {}", e))
+                })?;
+                let key_pem = std::fs::read_to_string(key_path).map_err(|e| {
+                    Error::configuration(format!("Failed to read client key: {}", e))
+                })?;
+                let identity = tonic::transport::Identity::from_pem(&cert_pem, &key_pem);
+                tls = tls.identity(identity);
             }
 
             endpoint
