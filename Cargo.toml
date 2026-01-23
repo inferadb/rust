@@ -99,7 +99,7 @@ jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 [[test]]
 name = "integration"
 path = "tests/integration/main.rs"
-required-features = ["rest"]
+required-features = ["rest", "integration-tests"]
 
 [features]
 default = ["grpc", "rest", "rustls"]
@@ -119,6 +119,9 @@ derive = ["dep:inferadb-derive"]
 
 # WASM support
 wasm = ["getrandom/js"]
+
+# Testing (not for production use)
+integration-tests = []
 
 [package.metadata.docs.rs]
 all-features = true

@@ -10,13 +10,13 @@
 //! inferadb dev start
 //!
 //! # Run integration tests (single-threaded to avoid conflicts)
-//! cargo test --test integration -- --test-threads=1
+//! cargo test --features integration-tests --test integration -- --test-threads=1
 //!
 //! # Run with verbose output
-//! cargo test --test integration -- --test-threads=1 --nocapture
+//! cargo test --features integration-tests --test integration -- --test-threads=1 --nocapture
 //!
 //! # Run a specific test
-//! cargo test --test integration test_fixture_creation -- --nocapture
+//! cargo test --features integration-tests --test integration test_fixture_creation -- --nocapture
 //! ```
 //!
 //! # Environment Variables
