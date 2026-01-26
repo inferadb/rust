@@ -1,7 +1,5 @@
 //! Error kind enumeration for categorizing SDK errors.
 
-use std::fmt;
-
 /// Categorization of SDK errors.
 ///
 /// This enum provides a stable interface for matching on error types, enabling
@@ -24,7 +22,7 @@ use std::fmt;
 /// | `InvalidArgument` | No        | Fix input                  |
 ///
 /// *Conflict errors may be retriable after resolving the underlying conflict.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, thiserror::Error)]
 #[non_exhaustive]
 pub enum ErrorKind {
     /// Authentication failed (invalid or expired credentials).
@@ -33,6 +31,7 @@ pub enum ErrorKind {
     /// gRPC: UNAUTHENTICATED
     ///
     /// **Not retriable.** Fix credentials and retry.
+    #[error("unauthorized")]
     Unauthorized,
 
     /// Authorization failed (valid credentials but insufficient permissions).
@@ -47,6 +46,7 @@ pub enum ErrorKind {
     /// **Not retriable.** Fix permissions and retry.
     ///
     /// [`AccessDenied`]: crate::AccessDenied
+    #[error("forbidden")]
     Forbidden,
 
     /// Requested resource was not found.
@@ -55,6 +55,7 @@ pub enum ErrorKind {
     /// gRPC: NOT_FOUND
     ///
     /// **Not retriable.** The resource doesn't exist.
+    #[error("not found")]
     NotFound,
 
     /// Invalid request argument or payload.
@@ -63,6 +64,7 @@ pub enum ErrorKind {
     /// gRPC: INVALID_ARGUMENT
     ///
     /// **Not retriable.** Fix the input and retry.
+    #[error("invalid argument")]
     InvalidArgument,
 
     /// Request violates the schema (invalid relation, type, or permission).
@@ -71,6 +73,7 @@ pub enum ErrorKind {
     /// gRPC: FAILED_PRECONDITION
     ///
     /// **Not retriable.** Fix the schema or query.
+    #[error("schema violation")]
     SchemaViolation,
 
     /// Rate limit exceeded.
@@ -79,6 +82,7 @@ pub enum ErrorKind {
     /// gRPC: RESOURCE_EXHAUSTED
     ///
     /// **Retriable.** Use `Error::retry_after()` for the recommended delay.
+    #[error("rate limited")]
     RateLimited,
 
     /// Service temporarily unavailable.
@@ -87,6 +91,7 @@ pub enum ErrorKind {
     /// gRPC: UNAVAILABLE
     ///
     /// **Retriable.** Retry with exponential backoff.
+    #[error("service unavailable")]
     Unavailable,
 
     /// Request timed out.
@@ -95,6 +100,7 @@ pub enum ErrorKind {
     /// gRPC: DEADLINE_EXCEEDED
     ///
     /// **Retriable.** Retry with exponential backoff.
+    #[error("timeout")]
     Timeout,
 
     /// Internal server error.
@@ -103,6 +109,7 @@ pub enum ErrorKind {
     /// gRPC: INTERNAL
     ///
     /// **Not retriable** by default. May indicate a bug on the server.
+    #[error("internal error")]
     Internal,
 
     /// Request was cancelled (typically by the client).
@@ -110,6 +117,7 @@ pub enum ErrorKind {
     /// gRPC: CANCELLED
     ///
     /// **Not retriable.** The operation was intentionally cancelled.
+    #[error("cancelled")]
     Cancelled,
 
     /// Circuit breaker is open, requests are being rejected.
@@ -118,26 +126,31 @@ pub enum ErrorKind {
     /// has tripped due to too many failures.
     ///
     /// **Retriable** after the circuit breaker timeout.
+    #[error("circuit breaker open")]
     CircuitOpen,
 
     /// Connection error (DNS, TLS handshake, network unreachable).
     ///
     /// **Retriable.** May indicate transient network issues.
+    #[error("connection error")]
     Connection,
 
     /// Protocol error (malformed response, unexpected status).
     ///
     /// **Not retriable.** May indicate version mismatch or corruption.
+    #[error("protocol error")]
     Protocol,
 
     /// Configuration error (invalid URL, missing credentials).
     ///
     /// **Not retriable.** Fix the configuration.
+    #[error("configuration error")]
     Configuration,
 
     /// Unknown or unexpected error.
     ///
     /// Used as a catch-all for unrecognized error codes.
+    #[error("unknown error")]
     Unknown,
 
     /// Conflict with existing resource state.
@@ -147,12 +160,14 @@ pub enum ErrorKind {
     ///
     /// **Conditionally retriable.** Resolve the conflict (e.g., re-fetch
     /// and merge) before retrying.
+    #[error("conflict")]
     Conflict,
 
     /// Transport layer error.
     ///
     /// Generic transport error for HTTP/gRPC issues that don't fit
     /// more specific categories.
+    #[error("transport error")]
     Transport,
 
     /// Invalid response from server.
@@ -160,6 +175,7 @@ pub enum ErrorKind {
     /// Response could not be parsed or was malformed.
     ///
     /// **Not retriable** without server-side fix.
+    #[error("invalid response")]
     InvalidResponse,
 }
 
@@ -267,30 +283,6 @@ impl ErrorKind {
     }
 }
 
-impl fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ErrorKind::Unauthorized => write!(f, "unauthorized"),
-            ErrorKind::Forbidden => write!(f, "forbidden"),
-            ErrorKind::NotFound => write!(f, "not found"),
-            ErrorKind::InvalidArgument => write!(f, "invalid argument"),
-            ErrorKind::SchemaViolation => write!(f, "schema violation"),
-            ErrorKind::RateLimited => write!(f, "rate limited"),
-            ErrorKind::Unavailable => write!(f, "service unavailable"),
-            ErrorKind::Timeout => write!(f, "timeout"),
-            ErrorKind::Internal => write!(f, "internal error"),
-            ErrorKind::Cancelled => write!(f, "cancelled"),
-            ErrorKind::CircuitOpen => write!(f, "circuit breaker open"),
-            ErrorKind::Connection => write!(f, "connection error"),
-            ErrorKind::Protocol => write!(f, "protocol error"),
-            ErrorKind::Configuration => write!(f, "configuration error"),
-            ErrorKind::Unknown => write!(f, "unknown error"),
-            ErrorKind::Conflict => write!(f, "conflict"),
-            ErrorKind::Transport => write!(f, "transport error"),
-            ErrorKind::InvalidResponse => write!(f, "invalid response"),
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

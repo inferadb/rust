@@ -13,7 +13,7 @@ use super::health::ShutdownGuard;
 #[cfg(feature = "rest")]
 use crate::error::{Error, ErrorKind};
 #[cfg(any(feature = "grpc", feature = "rest"))]
-use crate::transport::TransportClient;
+use crate::transport::AnyTransport;
 use crate::{
     auth::Credentials,
     config::{CacheConfig, DegradationConfig, RetryConfig, TlsConfig},
@@ -43,7 +43,7 @@ pub(crate) struct ClientInner {
 
     /// Transport client for Engine API calls.
     #[cfg(any(feature = "grpc", feature = "rest"))]
-    pub transport: Option<Arc<dyn TransportClient + Send + Sync>>,
+    pub transport: Option<Arc<AnyTransport>>,
 
     /// HTTP client for Control API calls.
     #[cfg(feature = "rest")]

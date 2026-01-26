@@ -346,7 +346,7 @@ mod tests {
     use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
     async fn create_test_client() -> Client {
-        let mock_transport = Arc::new(MockTransport::new());
+        let mock_transport = Arc::new(MockTransport::new().into_any());
         Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))

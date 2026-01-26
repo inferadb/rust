@@ -21,7 +21,6 @@ path = "src/lib.rs"
 [dependencies]
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
-async-trait = "0.1"
 futures = "0.3"
 
 # Serialization
@@ -55,6 +54,9 @@ webpki-roots = { version = "1", optional = true }
 
 # Error handling
 thiserror = "2"
+
+# Builder pattern
+bon = "=3.8.2"
 
 # Utilities
 uuid = { version = "1", features = ["v4"] }

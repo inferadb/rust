@@ -138,9 +138,7 @@ impl Client {
 
     /// Returns the transport client, if available.
     #[cfg(feature = "rest")]
-    pub(crate) fn transport(
-        &self,
-    ) -> Option<&std::sync::Arc<dyn crate::transport::TransportClient + Send + Sync>> {
+    pub(crate) fn transport(&self) -> Option<&std::sync::Arc<crate::transport::AnyTransport>> {
         self.inner.transport.as_ref()
     }
 
@@ -535,7 +533,7 @@ mod tests {
     use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
     async fn create_test_client() -> Client {
-        let mock_transport = Arc::new(MockTransport::new());
+        let mock_transport = Arc::new(MockTransport::new().into_any());
         Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))

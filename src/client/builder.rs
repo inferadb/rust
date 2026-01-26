@@ -7,6 +7,8 @@ use super::inner::ClientInner;
 use crate::transport::GrpcTransport;
 #[cfg(feature = "rest")]
 use crate::transport::RestTransport;
+#[cfg(any(feature = "grpc", feature = "rest"))]
+use crate::transport::AnyTransport;
 use crate::{
     Client, Error,
     auth::Credentials,
@@ -31,12 +33,23 @@ pub struct HasCredentials;
 /// Uses the typestate pattern to ensure required configuration
 /// (URL and credentials) is provided at compile time.
 ///
-/// ## Required Configuration
+/// # Typestate Pattern
+///
+/// This builder uses phantom types to enforce compile-time requirements:
+/// - `url()` must be called (transitions `NoUrl` → `HasUrl`)
+/// - `credentials()` must be called (transitions `NoCredentials` → `HasCredentials`)
+/// - Only `ClientBuilder<HasUrl, HasCredentials>` can call `build()`
+///
+/// This pattern is intentionally **not** converted to `bon` to preserve
+/// these compile-time safety guarantees, which prevent misconfiguration
+/// errors from reaching runtime.
+///
+/// # Required Configuration
 ///
 /// - `url()`: The InferaDB API endpoint
 /// - `credentials()`: Authentication credentials
 ///
-/// ## Optional Configuration
+/// # Optional Configuration
 ///
 /// - `retry_config()`: Retry behavior for transient failures
 /// - `cache_config()`: Local caching configuration
@@ -44,7 +57,7 @@ pub struct HasCredentials;
 /// - `degradation_config()`: Graceful degradation behavior
 /// - `timeout()`: Request timeout
 ///
-/// ## Example
+/// # Example
 ///
 /// ```rust,ignore
 /// use inferadb::{Client, ClientCredentialsConfig, Ed25519PrivateKey};
@@ -56,7 +69,7 @@ pub struct HasCredentials;
 ///         private_key: Ed25519PrivateKey::from_pem_file("key.pem")?,
 ///         certificate_id: None,
 ///     })
-///     .retry_config(RetryConfig::new().with_max_retries(5))
+///     .retry_config(RetryConfig::builder().max_retries(5).build())
 ///     .timeout(Duration::from_secs(10))
 ///     .build()
 ///     .await?;
@@ -178,7 +191,7 @@ impl<U, C> ClientBuilder<U, C> {
     /// use inferadb::RetryConfig;
     ///
     /// let builder = builder.retry_config(
-    ///     RetryConfig::new().with_max_retries(5)
+    ///     RetryConfig::builder().max_retries(5).build()
     /// );
     /// ```
     #[must_use]
@@ -196,7 +209,7 @@ impl<U, C> ClientBuilder<U, C> {
     /// use std::time::Duration;
     ///
     /// let builder = builder.cache_config(
-    ///     CacheConfig::enabled().with_ttl(Duration::from_secs(60))
+    ///     CacheConfig::builder().enabled(true).ttl(Duration::from_secs(60)).build()
     /// );
     /// ```
     #[must_use]
@@ -213,7 +226,7 @@ impl<U, C> ClientBuilder<U, C> {
     /// use inferadb::TlsConfig;
     ///
     /// let builder = builder.tls_config(
-    ///     TlsConfig::new().with_ca_cert_file("/path/to/ca.crt")
+    ///     TlsConfig::builder().ca_cert_file("/path/to/ca.crt").build()
     /// );
     /// ```
     #[must_use]
@@ -332,7 +345,7 @@ impl<U, C> ClientBuilder<U, C> {
         url: &url::Url,
         timeout: Duration,
         initial_token: Option<&String>,
-    ) -> Result<Option<Arc<dyn crate::transport::TransportClient + Send + Sync>>, Error> {
+    ) -> Result<Option<Arc<AnyTransport>>, Error> {
         match &self.transport_strategy {
             #[cfg(feature = "grpc")]
             TransportStrategy::GrpcOnly => {
@@ -344,7 +357,7 @@ impl<U, C> ClientBuilder<U, C> {
                     timeout,
                 )
                 .await?;
-                Ok(Some(Arc::new(grpc)))
+                Ok(Some(Arc::new(AnyTransport::Grpc(grpc))))
             },
             #[cfg(not(feature = "grpc"))]
             TransportStrategy::GrpcOnly => Err(Error::configuration(
@@ -362,7 +375,7 @@ impl<U, C> ClientBuilder<U, C> {
                 if let Some(token) = initial_token {
                     rest.set_auth_token(token.clone());
                 }
-                Ok(Some(Arc::new(rest)))
+                Ok(Some(Arc::new(AnyTransport::Rest(rest))))
             },
             #[cfg(not(feature = "rest"))]
             TransportStrategy::RestOnly => Err(Error::configuration(
@@ -380,7 +393,7 @@ impl<U, C> ClientBuilder<U, C> {
                 )
                 .await
                 {
-                    Ok(grpc) => Ok(Some(Arc::new(grpc))),
+                    Ok(grpc) => Ok(Some(Arc::new(AnyTransport::Grpc(grpc)))),
                     Err(_) => {
                         // Fall back to REST
                         let rest = RestTransport::new(
@@ -393,7 +406,7 @@ impl<U, C> ClientBuilder<U, C> {
                         if let Some(token) = initial_token {
                             rest.set_auth_token(token.clone());
                         }
-                        Ok(Some(Arc::new(rest)))
+                        Ok(Some(Arc::new(AnyTransport::Rest(rest))))
                     },
                 }
             },
@@ -407,7 +420,7 @@ impl<U, C> ClientBuilder<U, C> {
                     timeout,
                 )
                 .await?;
-                Ok(Some(Arc::new(grpc)))
+                Ok(Some(Arc::new(AnyTransport::Grpc(grpc))))
             },
             #[cfg(all(not(feature = "grpc"), feature = "rest"))]
             TransportStrategy::PreferGrpc { .. } => {
@@ -422,7 +435,7 @@ impl<U, C> ClientBuilder<U, C> {
                 if let Some(token) = initial_token {
                     rest.set_auth_token(token.clone());
                 }
-                Ok(Some(Arc::new(rest)))
+                Ok(Some(Arc::new(AnyTransport::Rest(rest))))
             },
             #[cfg(all(feature = "grpc", feature = "rest"))]
             TransportStrategy::PreferRest { .. } => {
@@ -438,7 +451,7 @@ impl<U, C> ClientBuilder<U, C> {
                         if let Some(token) = initial_token {
                             rest.set_auth_token(token.clone());
                         }
-                        Ok(Some(Arc::new(rest)))
+                        Ok(Some(Arc::new(AnyTransport::Rest(rest))))
                     },
                     Err(_) => {
                         // Fall back to gRPC
@@ -450,7 +463,7 @@ impl<U, C> ClientBuilder<U, C> {
                             timeout,
                         )
                         .await?;
-                        Ok(Some(Arc::new(grpc)))
+                        Ok(Some(Arc::new(AnyTransport::Grpc(grpc))))
                     },
                 }
             },
@@ -466,7 +479,7 @@ impl<U, C> ClientBuilder<U, C> {
                 if let Some(token) = initial_token {
                     rest.set_auth_token(token.clone());
                 }
-                Ok(Some(Arc::new(rest)))
+                Ok(Some(Arc::new(AnyTransport::Rest(rest))))
             },
             #[cfg(all(not(feature = "rest"), feature = "grpc"))]
             TransportStrategy::PreferRest { .. } => {
@@ -479,7 +492,7 @@ impl<U, C> ClientBuilder<U, C> {
                     timeout,
                 )
                 .await?;
-                Ok(Some(Arc::new(grpc)))
+                Ok(Some(Arc::new(AnyTransport::Grpc(grpc))))
             },
             #[cfg(not(any(feature = "grpc", feature = "rest")))]
             _ => Ok(None),
@@ -494,7 +507,7 @@ impl ClientBuilder<HasUrl, HasCredentials> {
     #[cfg(test)]
     pub async fn build_with_transport(
         self,
-        transport: Arc<dyn crate::transport::TransportClient + Send + Sync>,
+        transport: Arc<AnyTransport>,
     ) -> Result<Client, Error> {
         let url = self.url.ok_or_else(|| Error::configuration("URL is required"))?;
 
@@ -778,7 +791,7 @@ mod tests {
     #[tokio::test]
     async fn test_build_with_client_credentials() {
         let key = Ed25519PrivateKey::generate();
-        let mock_transport = Arc::new(MockTransport::new());
+        let mock_transport = Arc::new(MockTransport::new().into_any());
         let result = ClientBuilder::new()
             .url("https://api.example.com")
             .credentials(ClientCredentialsConfig::new("client_id", key))
@@ -794,7 +807,7 @@ mod tests {
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("token"))
             .retry_config(RetryConfig::disabled())
-            .cache_config(CacheConfig::enabled())
+            .cache_config(CacheConfig::enabled_config())
             .timeout(Duration::from_secs(60));
 
         assert_eq!(builder.retry_config.max_retries, 0);
@@ -881,13 +894,12 @@ mod tests {
 
     #[test]
     fn test_builder_all_configs_combined() {
-        let mut cache_config = CacheConfig::new();
-        cache_config.enabled = false;
+        let cache_config = CacheConfig::builder().enabled(false).build();
 
         let builder = ClientBuilder::new()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("token"))
-            .retry_config(RetryConfig::new().with_max_retries(10))
+            .retry_config(RetryConfig::builder().max_retries(10).build())
             .cache_config(cache_config)
             .tls_config(TlsConfig::default())
             .degradation_config(DegradationConfig::fail_closed())

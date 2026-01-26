@@ -11,6 +11,11 @@ use std::{
 
 use parking_lot::RwLock;
 
+/// Default latency histogram buckets for metrics collection.
+fn default_latency_buckets() -> Vec<f64> {
+    vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
+}
+
 /// Configuration for metrics collection.
 ///
 /// ## Example
@@ -18,57 +23,34 @@ use parking_lot::RwLock;
 /// ```rust
 /// use inferadb::tracing_support::MetricsConfig;
 ///
-/// let config = MetricsConfig::default()
-///     .with_prefix("inferadb")
-///     .with_histograms_enabled(true);
+/// let config = MetricsConfig::builder()
+///     .prefix("inferadb")
+///     .histograms_enabled(true)
+///     .build();
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, bon::Builder)]
 pub struct MetricsConfig {
     /// Prefix for all metric names.
+    #[builder(into, default = "inferadb".to_string())]
     pub prefix: String,
     /// Whether to collect histogram metrics.
+    #[builder(default = true)]
     pub histograms_enabled: bool,
     /// Histogram bucket boundaries for latency metrics (in seconds).
+    #[builder(default = default_latency_buckets())]
     pub latency_buckets: Vec<f64>,
     /// Labels to add to all metrics.
+    #[builder(default)]
     pub global_labels: HashMap<String, String>,
 }
 
 impl Default for MetricsConfig {
     fn default() -> Self {
-        Self {
-            prefix: "inferadb".to_string(),
-            histograms_enabled: true,
-            latency_buckets: vec![
-                0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
-            ],
-            global_labels: HashMap::new(),
-        }
+        Self::builder().build()
     }
 }
 
 impl MetricsConfig {
-    /// Sets the metric name prefix.
-    #[must_use]
-    pub fn with_prefix(mut self, prefix: impl Into<String>) -> Self {
-        self.prefix = prefix.into();
-        self
-    }
-
-    /// Enables or disables histogram collection.
-    #[must_use]
-    pub fn with_histograms_enabled(mut self, enabled: bool) -> Self {
-        self.histograms_enabled = enabled;
-        self
-    }
-
-    /// Sets the latency histogram buckets.
-    #[must_use]
-    pub fn with_latency_buckets(mut self, buckets: Vec<f64>) -> Self {
-        self.latency_buckets = buckets;
-        self
-    }
-
     /// Adds a global label.
     #[must_use]
     pub fn with_label(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
@@ -556,13 +538,13 @@ mod tests {
     #[test]
     fn test_metrics_config_with_latency_buckets() {
         let buckets = vec![0.01, 0.05, 0.1, 0.5, 1.0];
-        let config = MetricsConfig::default().with_latency_buckets(buckets.clone());
+        let config = MetricsConfig::builder().latency_buckets(buckets.clone()).build();
         assert_eq!(config.latency_buckets, buckets);
     }
 
     #[test]
     fn test_metrics_config_accessor() {
-        let config = MetricsConfig::default().with_prefix("test_prefix");
+        let config = MetricsConfig::builder().prefix("test_prefix").build();
         let metrics = Metrics::new(config);
         assert_eq!(metrics.config().prefix, "test_prefix");
     }

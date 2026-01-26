@@ -223,6 +223,11 @@ impl SimulateCheckBuilder {
     }
 }
 
+/// Enables ergonomic `.await` without explicit `.build()`.
+///
+/// This `IntoFuture` implementation is intentionally manual (not derived via `bon`)
+/// to preserve the ergonomic async API: `vault.simulate()...check(...).await`
+/// instead of `vault.simulate()...check(...).build().await`.
 impl std::future::IntoFuture for SimulateCheckBuilder {
     type Output = Result<SimulationResult, Error>;
     type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + Send>>;
@@ -305,6 +310,11 @@ impl SimulateCompareBuilder {
     }
 }
 
+/// Enables ergonomic `.await` without explicit `.build()`.
+///
+/// This `IntoFuture` implementation is intentionally manual (not derived via `bon`)
+/// to preserve the ergonomic async API: `vault.simulate()...compare(...).await`
+/// instead of `vault.simulate()...compare(...).build().await`.
 impl std::future::IntoFuture for SimulateCompareBuilder {
     type Output = Result<SimulationDiff, Error>;
     type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + Send>>;
@@ -795,7 +805,7 @@ mod tests {
     #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_simulate_builder_add_relationship() {
-        let mock_transport = Arc::new(MockTransport::new());
+        let mock_transport = Arc::new(MockTransport::new().into_any());
         let client = Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))
@@ -817,10 +827,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_simulate_builder_remove_relationship() {
-        let mock_transport = Arc::new(MockTransport::new());
-        // Add existing relationship
-        mock_transport
-            .add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        // Add existing relationship before wrapping
+        let mock = MockTransport::new();
+        mock.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        let mock_transport = Arc::new(mock.into_any());
 
         let client = Client::builder()
             .url("https://api.example.com")
@@ -844,7 +854,7 @@ mod tests {
     #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_simulate_builder_add_all() {
-        let mock_transport = Arc::new(MockTransport::new());
+        let mock_transport = Arc::new(MockTransport::new().into_any());
         let client = Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))
@@ -870,11 +880,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_simulate_builder_remove_all() {
-        let mock_transport = Arc::new(MockTransport::new());
-        mock_transport
-            .add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
-        mock_transport
-            .add_relationship(Relationship::new("doc:2", "viewer", "user:bob").into_owned());
+        let mock = MockTransport::new();
+        mock.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        mock.add_relationship(Relationship::new("doc:2", "viewer", "user:bob").into_owned());
+        let mock_transport = Arc::new(mock.into_any());
 
         let client = Client::builder()
             .url("https://api.example.com")
@@ -902,7 +911,7 @@ mod tests {
     #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_simulate_builder_compare() {
-        let mock_transport = Arc::new(MockTransport::new());
+        let mock_transport = Arc::new(MockTransport::new().into_any());
         let client = Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))
@@ -929,10 +938,10 @@ mod tests {
     #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_simulate_builder_chaining() {
-        let mock_transport = Arc::new(MockTransport::new());
-        // Add some initial relationships
-        mock_transport
-            .add_relationship(Relationship::new("doc:2", "viewer", "user:charlie").into_owned());
+        // Add some initial relationships before wrapping
+        let mock = MockTransport::new();
+        mock.add_relationship(Relationship::new("doc:2", "viewer", "user:charlie").into_owned());
+        let mock_transport = Arc::new(mock.into_any());
 
         let client = Client::builder()
             .url("https://api.example.com")
@@ -960,10 +969,10 @@ mod tests {
     #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_simulate_compare_now_denied() {
-        let mock_transport = Arc::new(MockTransport::new());
-        // Add existing relationship
-        mock_transport
-            .add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        // Add existing relationship before wrapping
+        let mock = MockTransport::new();
+        mock.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        let mock_transport = Arc::new(mock.into_any());
 
         let client = Client::builder()
             .url("https://api.example.com")
@@ -991,10 +1000,10 @@ mod tests {
     #[cfg(feature = "rest")]
     #[tokio::test]
     async fn test_simulate_compare_no_change() {
-        let mock_transport = Arc::new(MockTransport::new());
-        // Add existing relationship
-        mock_transport
-            .add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        // Add existing relationship before wrapping
+        let mock = MockTransport::new();
+        mock.add_relationship(Relationship::new("doc:1", "viewer", "user:alice").into_owned());
+        let mock_transport = Arc::new(mock.into_any());
 
         let client = Client::builder()
             .url("https://api.example.com")

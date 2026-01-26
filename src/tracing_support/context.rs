@@ -328,33 +328,24 @@ impl std::ops::BitOr for TraceFlags {
 }
 
 /// Error parsing trace context.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum TraceContextError {
     /// Invalid traceparent format.
+    #[error("invalid traceparent format")]
     InvalidFormat,
     /// Unsupported version.
+    #[error("unsupported trace context version")]
     UnsupportedVersion,
     /// Invalid trace ID.
+    #[error("invalid trace ID")]
     InvalidTraceId,
     /// Invalid span ID.
+    #[error("invalid span ID")]
     InvalidSpanId,
     /// Invalid flags.
+    #[error("invalid trace flags")]
     InvalidFlags,
 }
-
-impl fmt::Display for TraceContextError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TraceContextError::InvalidFormat => write!(f, "invalid traceparent format"),
-            TraceContextError::UnsupportedVersion => write!(f, "unsupported trace context version"),
-            TraceContextError::InvalidTraceId => write!(f, "invalid trace ID"),
-            TraceContextError::InvalidSpanId => write!(f, "invalid span ID"),
-            TraceContextError::InvalidFlags => write!(f, "invalid trace flags"),
-        }
-    }
-}
-
-impl std::error::Error for TraceContextError {}
 
 #[cfg(test)]
 mod tests {

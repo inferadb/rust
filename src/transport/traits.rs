@@ -3,12 +3,19 @@
 //! This module defines the core transport abstraction and related types
 //! for communication with InferaDB services.
 
-use std::time::{Duration, Instant};
+use std::{
+    future::Future,
+    pin::Pin,
+    time::{Duration, Instant},
+};
 
 use crate::{
     Error,
     types::{ConsistencyToken, Context, Decision, Relationship},
 };
+
+/// Boxed future type alias for async methods.
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 // ============================================================================
 // Transport Enum
@@ -453,52 +460,69 @@ pub struct SimulateResponse {
 ///
 /// This trait is implemented by gRPC, HTTP, and mock transports.
 /// It is internal to the SDK and not exposed to users.
-#[async_trait::async_trait]
+///
+/// Note: This trait uses `async fn` syntax which requires Rust 1.75+.
+/// The trait is not dyn-compatible; use [`AnyTransport`] for polymorphism.
 pub trait TransportClient: Send + Sync {
     /// Performs an authorization check.
-    async fn check(&self, request: CheckRequest) -> Result<CheckResponse, Error>;
+    fn check(
+        &self,
+        request: CheckRequest,
+    ) -> impl Future<Output = Result<CheckResponse, Error>> + Send;
 
     /// Performs a batch of authorization checks.
-    async fn check_batch(&self, requests: Vec<CheckRequest>) -> Result<Vec<CheckResponse>, Error>;
+    fn check_batch(
+        &self,
+        requests: Vec<CheckRequest>,
+    ) -> impl Future<Output = Result<Vec<CheckResponse>, Error>> + Send;
 
     /// Writes a relationship.
-    async fn write(&self, request: WriteRequest) -> Result<WriteResponse, Error>;
+    fn write(
+        &self,
+        request: WriteRequest,
+    ) -> impl Future<Output = Result<WriteResponse, Error>> + Send;
 
     /// Writes a batch of relationships.
-    async fn write_batch(&self, requests: Vec<WriteRequest>) -> Result<WriteResponse, Error>;
+    fn write_batch(
+        &self,
+        requests: Vec<WriteRequest>,
+    ) -> impl Future<Output = Result<WriteResponse, Error>> + Send;
 
     /// Deletes a relationship.
-    async fn delete(&self, relationship: Relationship<'static>) -> Result<(), Error>;
+    fn delete(
+        &self,
+        relationship: Relationship<'static>,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
 
     /// Lists relationships matching a filter.
-    async fn list_relationships(
+    fn list_relationships(
         &self,
         resource: Option<&str>,
         relation: Option<&str>,
         subject: Option<&str>,
         limit: Option<u32>,
         cursor: Option<&str>,
-    ) -> Result<ListRelationshipsResponse, Error>;
+    ) -> impl Future<Output = Result<ListRelationshipsResponse, Error>> + Send;
 
     /// Lists resources accessible by a subject with a permission.
-    async fn list_resources(
+    fn list_resources(
         &self,
         subject: &str,
         permission: &str,
         resource_type: Option<&str>,
         limit: Option<u32>,
         cursor: Option<&str>,
-    ) -> Result<ListResourcesResponse, Error>;
+    ) -> impl Future<Output = Result<ListResourcesResponse, Error>> + Send;
 
     /// Lists subjects with a permission on a resource.
-    async fn list_subjects(
+    fn list_subjects(
         &self,
         permission: &str,
         resource: &str,
         subject_type: Option<&str>,
         limit: Option<u32>,
         cursor: Option<&str>,
-    ) -> Result<ListSubjectsResponse, Error>;
+    ) -> impl Future<Output = Result<ListSubjectsResponse, Error>> + Send;
 
     /// Returns the transport type.
     fn transport_type(&self) -> Transport;
@@ -507,10 +531,268 @@ pub trait TransportClient: Send + Sync {
     fn stats(&self) -> TransportStats;
 
     /// Checks if the transport is healthy.
-    async fn health_check(&self) -> Result<(), Error>;
+    fn health_check(&self) -> impl Future<Output = Result<(), Error>> + Send;
 
     /// Performs a simulated authorization check with hypothetical changes.
-    async fn simulate(&self, request: SimulateRequest) -> Result<SimulateResponse, Error>;
+    fn simulate(
+        &self,
+        request: SimulateRequest,
+    ) -> impl Future<Output = Result<SimulateResponse, Error>> + Send;
+}
+
+// ============================================================================
+// AnyTransport - Enum Dispatch for Transport Implementations
+// ============================================================================
+
+/// Concrete transport implementation using enum dispatch.
+///
+/// This replaces `dyn TransportClient` with static dispatch for better performance
+/// and compatibility with native async traits (Rust 1.75+).
+pub enum AnyTransport {
+    /// gRPC transport (when `grpc` feature is enabled).
+    #[cfg(feature = "grpc")]
+    Grpc(super::grpc::GrpcTransport),
+    /// REST transport (when `rest` feature is enabled).
+    #[cfg(feature = "rest")]
+    Rest(super::rest::RestTransport),
+    /// Mock transport for testing.
+    Mock(super::mock::MockTransport),
+}
+
+impl std::fmt::Debug for AnyTransport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            #[cfg(feature = "grpc")]
+            AnyTransport::Grpc(_) => f.debug_struct("AnyTransport::Grpc").finish(),
+            #[cfg(feature = "rest")]
+            AnyTransport::Rest(_) => f.debug_struct("AnyTransport::Rest").finish(),
+            AnyTransport::Mock(_) => f.debug_struct("AnyTransport::Mock").finish(),
+        }
+    }
+}
+
+impl AnyTransport {
+    /// Performs an authorization check.
+    pub fn check(&self, request: CheckRequest) -> BoxFuture<'_, Result<CheckResponse, Error>> {
+        match self {
+            #[cfg(feature = "grpc")]
+            AnyTransport::Grpc(t) => Box::pin(t.check(request)),
+            #[cfg(feature = "rest")]
+            AnyTransport::Rest(t) => Box::pin(t.check(request)),
+            AnyTransport::Mock(t) => Box::pin(t.check(request)),
+        }
+    }
+
+    /// Performs a batch of authorization checks.
+    pub fn check_batch(
+        &self,
+        requests: Vec<CheckRequest>,
+    ) -> BoxFuture<'_, Result<Vec<CheckResponse>, Error>> {
+        match self {
+            #[cfg(feature = "grpc")]
+            AnyTransport::Grpc(t) => Box::pin(t.check_batch(requests)),
+            #[cfg(feature = "rest")]
+            AnyTransport::Rest(t) => Box::pin(t.check_batch(requests)),
+            AnyTransport::Mock(t) => Box::pin(t.check_batch(requests)),
+        }
+    }
+
+    /// Writes a relationship.
+    pub fn write(&self, request: WriteRequest) -> BoxFuture<'_, Result<WriteResponse, Error>> {
+        match self {
+            #[cfg(feature = "grpc")]
+            AnyTransport::Grpc(t) => Box::pin(t.write(request)),
+            #[cfg(feature = "rest")]
+            AnyTransport::Rest(t) => Box::pin(t.write(request)),
+            AnyTransport::Mock(t) => Box::pin(t.write(request)),
+        }
+    }
+
+    /// Writes a batch of relationships.
+    pub fn write_batch(
+        &self,
+        requests: Vec<WriteRequest>,
+    ) -> BoxFuture<'_, Result<WriteResponse, Error>> {
+        match self {
+            #[cfg(feature = "grpc")]
+            AnyTransport::Grpc(t) => Box::pin(t.write_batch(requests)),
+            #[cfg(feature = "rest")]
+            AnyTransport::Rest(t) => Box::pin(t.write_batch(requests)),
+            AnyTransport::Mock(t) => Box::pin(t.write_batch(requests)),
+        }
+    }
+
+    /// Deletes a relationship.
+    pub fn delete(&self, relationship: Relationship<'static>) -> BoxFuture<'_, Result<(), Error>> {
+        match self {
+            #[cfg(feature = "grpc")]
+            AnyTransport::Grpc(t) => Box::pin(t.delete(relationship)),
+            #[cfg(feature = "rest")]
+            AnyTransport::Rest(t) => Box::pin(t.delete(relationship)),
+            AnyTransport::Mock(t) => Box::pin(t.delete(relationship)),
+        }
+    }
+
+    /// Lists relationships matching a filter.
+    ///
+    /// Converts borrowed strings to owned internally for the async block.
+    pub fn list_relationships(
+        &self,
+        resource: Option<&str>,
+        relation: Option<&str>,
+        subject: Option<&str>,
+        limit: Option<u32>,
+        cursor: Option<&str>,
+    ) -> BoxFuture<'_, Result<ListRelationshipsResponse, Error>> {
+        // Convert to owned to move into async block
+        let resource = resource.map(str::to_owned);
+        let relation = relation.map(str::to_owned);
+        let subject = subject.map(str::to_owned);
+        let cursor = cursor.map(str::to_owned);
+
+        match self {
+            #[cfg(feature = "grpc")]
+            AnyTransport::Grpc(t) => Box::pin(async move {
+                t.list_relationships(
+                    resource.as_deref(),
+                    relation.as_deref(),
+                    subject.as_deref(),
+                    limit,
+                    cursor.as_deref(),
+                )
+                .await
+            }),
+            #[cfg(feature = "rest")]
+            AnyTransport::Rest(t) => Box::pin(async move {
+                t.list_relationships(
+                    resource.as_deref(),
+                    relation.as_deref(),
+                    subject.as_deref(),
+                    limit,
+                    cursor.as_deref(),
+                )
+                .await
+            }),
+            AnyTransport::Mock(t) => Box::pin(async move {
+                t.list_relationships(
+                    resource.as_deref(),
+                    relation.as_deref(),
+                    subject.as_deref(),
+                    limit,
+                    cursor.as_deref(),
+                )
+                .await
+            }),
+        }
+    }
+
+    /// Lists resources accessible by a subject with a permission.
+    ///
+    /// Converts borrowed strings to owned internally for the async block.
+    pub fn list_resources(
+        &self,
+        subject: &str,
+        permission: &str,
+        resource_type: Option<&str>,
+        limit: Option<u32>,
+        cursor: Option<&str>,
+    ) -> BoxFuture<'_, Result<ListResourcesResponse, Error>> {
+        // Convert to owned to move into async block
+        let subject = subject.to_owned();
+        let permission = permission.to_owned();
+        let resource_type = resource_type.map(str::to_owned);
+        let cursor = cursor.map(str::to_owned);
+
+        match self {
+            #[cfg(feature = "grpc")]
+            AnyTransport::Grpc(t) => Box::pin(async move {
+                t.list_resources(&subject, &permission, resource_type.as_deref(), limit, cursor.as_deref()).await
+            }),
+            #[cfg(feature = "rest")]
+            AnyTransport::Rest(t) => Box::pin(async move {
+                t.list_resources(&subject, &permission, resource_type.as_deref(), limit, cursor.as_deref()).await
+            }),
+            AnyTransport::Mock(t) => Box::pin(async move {
+                t.list_resources(&subject, &permission, resource_type.as_deref(), limit, cursor.as_deref()).await
+            }),
+        }
+    }
+
+    /// Lists subjects with a permission on a resource.
+    ///
+    /// Converts borrowed strings to owned internally for the async block.
+    pub fn list_subjects(
+        &self,
+        permission: &str,
+        resource: &str,
+        subject_type: Option<&str>,
+        limit: Option<u32>,
+        cursor: Option<&str>,
+    ) -> BoxFuture<'_, Result<ListSubjectsResponse, Error>> {
+        // Convert to owned to move into async block
+        let permission = permission.to_owned();
+        let resource = resource.to_owned();
+        let subject_type = subject_type.map(str::to_owned);
+        let cursor = cursor.map(str::to_owned);
+
+        match self {
+            #[cfg(feature = "grpc")]
+            AnyTransport::Grpc(t) => Box::pin(async move {
+                t.list_subjects(&permission, &resource, subject_type.as_deref(), limit, cursor.as_deref()).await
+            }),
+            #[cfg(feature = "rest")]
+            AnyTransport::Rest(t) => Box::pin(async move {
+                t.list_subjects(&permission, &resource, subject_type.as_deref(), limit, cursor.as_deref()).await
+            }),
+            AnyTransport::Mock(t) => Box::pin(async move {
+                t.list_subjects(&permission, &resource, subject_type.as_deref(), limit, cursor.as_deref()).await
+            }),
+        }
+    }
+
+    /// Returns the transport type.
+    pub fn transport_type(&self) -> Transport {
+        match self {
+            #[cfg(feature = "grpc")]
+            AnyTransport::Grpc(t) => t.transport_type(),
+            #[cfg(feature = "rest")]
+            AnyTransport::Rest(t) => t.transport_type(),
+            AnyTransport::Mock(t) => t.transport_type(),
+        }
+    }
+
+    /// Returns transport statistics.
+    pub fn stats(&self) -> TransportStats {
+        match self {
+            #[cfg(feature = "grpc")]
+            AnyTransport::Grpc(t) => t.stats(),
+            #[cfg(feature = "rest")]
+            AnyTransport::Rest(t) => t.stats(),
+            AnyTransport::Mock(t) => t.stats(),
+        }
+    }
+
+    /// Checks if the transport is healthy.
+    pub fn health_check(&self) -> BoxFuture<'_, Result<(), Error>> {
+        match self {
+            #[cfg(feature = "grpc")]
+            AnyTransport::Grpc(t) => Box::pin(t.health_check()),
+            #[cfg(feature = "rest")]
+            AnyTransport::Rest(t) => Box::pin(t.health_check()),
+            AnyTransport::Mock(t) => Box::pin(t.health_check()),
+        }
+    }
+
+    /// Performs a simulated authorization check with hypothetical changes.
+    pub fn simulate(&self, request: SimulateRequest) -> BoxFuture<'_, Result<SimulateResponse, Error>> {
+        match self {
+            #[cfg(feature = "grpc")]
+            AnyTransport::Grpc(t) => Box::pin(t.simulate(request)),
+            #[cfg(feature = "rest")]
+            AnyTransport::Rest(t) => Box::pin(t.simulate(request)),
+            AnyTransport::Mock(t) => Box::pin(t.simulate(request)),
+        }
+    }
 }
 
 /// Response from listing relationships.
@@ -545,32 +827,31 @@ pub struct ListSubjectsResponse {
 // ============================================================================
 
 /// Connection pool configuration.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, bon::Builder)]
 pub struct PoolConfig {
     /// Maximum connections in the pool.
+    #[builder(default = 100)]
     pub max_connections: u32,
     /// Idle connection timeout.
+    #[builder(default = Duration::from_secs(90))]
     pub idle_timeout: Duration,
     /// Maximum idle connections per host.
+    #[builder(default = 10)]
     pub max_idle_per_host: u32,
     /// Timeout waiting for a connection from the pool.
+    #[builder(default = Duration::from_secs(30))]
     pub pool_timeout: Duration,
     /// Force HTTP/2 (required for gRPC).
+    #[builder(default = false)]
     pub http2_only: bool,
     /// HTTP/2 keepalive interval.
+    #[builder(default = Duration::from_secs(20))]
     pub http2_keepalive: Duration,
 }
 
 impl Default for PoolConfig {
     fn default() -> Self {
-        Self {
-            max_connections: 100,
-            idle_timeout: Duration::from_secs(90),
-            max_idle_per_host: 10,
-            pool_timeout: Duration::from_secs(30),
-            http2_only: false,
-            http2_keepalive: Duration::from_secs(20),
-        }
+        Self::builder().build()
     }
 }
 

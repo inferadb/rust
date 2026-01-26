@@ -50,13 +50,60 @@ impl std::fmt::Debug for RestTransport {
     }
 }
 
+#[bon::bon]
 impl RestTransport {
     /// Creates a new REST transport builder.
-    pub fn builder() -> RestTransportBuilder {
-        RestTransportBuilder::new()
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use inferadb::transport::RestTransport;
+    ///
+    /// let transport = RestTransport::builder()
+    ///     .base_url("https://api.example.com")?
+    ///     .build()?;
+    /// # Ok::<(), inferadb::Error>(())
+    /// ```
+    #[builder(
+        builder_type(
+            name = RestTransportBuilder,
+            vis = "pub",
+            doc {
+                /// Builder for [`RestTransport`].
+                ///
+                /// Created via [`RestTransport::builder()`].
+            }
+        ),
+        state_mod(vis = "pub(crate)"),
+    )]
+    pub fn builder(
+        /// The base URL for API requests.
+        #[builder(with = |url: impl AsRef<str>| -> Result<_, Error> {
+            Url::parse(url.as_ref()).map_err(|e| {
+                Error::new(ErrorKind::Configuration, format!("Invalid base URL: {}", e))
+            })
+        })]
+        base_url: Url,
+        /// TLS configuration for secure connections.
+        #[builder(default)]
+        tls_config: TlsConfig,
+        /// Connection pool configuration.
+        #[builder(default)]
+        pool_config: PoolConfig,
+        /// Retry configuration for failed requests.
+        #[builder(default)]
+        retry_config: RetryConfig,
+        /// Request timeout duration.
+        #[builder(default = Duration::from_secs(30))]
+        timeout: Duration,
+    ) -> Result<Self, Error> {
+        Self::new(base_url, &tls_config, &pool_config, retry_config, timeout)
     }
 
     /// Creates a new REST transport with the given configuration.
+    ///
+    /// This is a lower-level constructor. Prefer using [`RestTransport::builder()`]
+    /// for a more ergonomic API.
     pub fn new(
         base_url: Url,
         tls_config: &TlsConfig,
@@ -357,78 +404,6 @@ impl RestTransport {
 }
 
 // ============================================================================
-// REST Transport Builder
-// ============================================================================
-
-/// Builder for REST transport.
-pub struct RestTransportBuilder {
-    base_url: Option<Url>,
-    tls_config: TlsConfig,
-    pool_config: PoolConfig,
-    retry_config: RetryConfig,
-    timeout: Duration,
-}
-
-impl RestTransportBuilder {
-    fn new() -> Self {
-        Self {
-            base_url: None,
-            tls_config: TlsConfig::default(),
-            pool_config: PoolConfig::default(),
-            retry_config: RetryConfig::default(),
-            timeout: Duration::from_secs(30),
-        }
-    }
-
-    /// Sets the base URL.
-    pub fn base_url(mut self, url: impl AsRef<str>) -> Result<Self, Error> {
-        self.base_url = Some(Url::parse(url.as_ref()).map_err(|e| {
-            Error::new(ErrorKind::Configuration, format!("Invalid base URL: {}", e))
-        })?);
-        Ok(self)
-    }
-
-    /// Sets the TLS configuration.
-    pub fn tls_config(mut self, config: TlsConfig) -> Self {
-        self.tls_config = config;
-        self
-    }
-
-    /// Sets the connection pool configuration.
-    pub fn pool_config(mut self, config: PoolConfig) -> Self {
-        self.pool_config = config;
-        self
-    }
-
-    /// Sets the retry configuration.
-    pub fn retry_config(mut self, config: RetryConfig) -> Self {
-        self.retry_config = config;
-        self
-    }
-
-    /// Sets the request timeout.
-    pub fn timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
-        self
-    }
-
-    /// Builds the REST transport.
-    pub fn build(self) -> Result<RestTransport, Error> {
-        let base_url = self
-            .base_url
-            .ok_or_else(|| Error::new(ErrorKind::Configuration, "Base URL is required"))?;
-
-        RestTransport::new(
-            base_url,
-            &self.tls_config,
-            &self.pool_config,
-            self.retry_config,
-            self.timeout,
-        )
-    }
-}
-
-// ============================================================================
 // API Request/Response Types
 // ============================================================================
 
@@ -639,7 +614,6 @@ fn convert_evaluation_node(node: EvaluationNodeResponse) -> super::traits::Evalu
 // TransportClient Implementation
 // ============================================================================
 
-#[async_trait::async_trait]
 impl TransportClient for RestTransport {
     async fn check(&self, request: CheckRequest) -> Result<CheckResponse, Error> {
         let api_request = EvaluateRequest {
@@ -1151,7 +1125,7 @@ mod tests {
 
     #[test]
     fn test_rest_transport_builder() {
-        let result = RestTransportBuilder::new()
+        let result = RestTransport::builder()
             .base_url("https://api.example.com")
             .unwrap()
             .timeout(Duration::from_secs(60))
@@ -1162,15 +1136,13 @@ mod tests {
 
     #[test]
     fn test_rest_transport_builder_invalid_url() {
-        let result = RestTransportBuilder::new().base_url("not a url");
+        let result = RestTransport::builder().base_url("not a url");
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_rest_transport_builder_missing_url() {
-        let result = RestTransportBuilder::new().build();
-        assert!(result.is_err());
-    }
+    // Note: test_rest_transport_builder_missing_url was removed because with bon's
+    // typestate builder, missing base_url is now a compile-time error rather than
+    // a runtime error. This is an improvement in API safety.
 
     #[test]
     fn test_map_status_error_400() {
@@ -1230,7 +1202,7 @@ mod tests {
             http2_keepalive: Duration::from_secs(10),
         };
 
-        let result = RestTransportBuilder::new()
+        let result = RestTransport::builder()
             .base_url("https://api.example.com")
             .unwrap()
             .pool_config(pool_config)
@@ -1241,11 +1213,8 @@ mod tests {
 
     #[test]
     fn test_rest_transport_stats() {
-        let transport = RestTransportBuilder::new()
-            .base_url("https://api.example.com")
-            .unwrap()
-            .build()
-            .unwrap();
+        let transport =
+            RestTransport::builder().base_url("https://api.example.com").unwrap().build().unwrap();
 
         let stats = transport.stats();
         assert_eq!(stats.active_transport, Transport::Http);
@@ -1255,22 +1224,16 @@ mod tests {
 
     #[test]
     fn test_rest_transport_type() {
-        let transport = RestTransportBuilder::new()
-            .base_url("https://api.example.com")
-            .unwrap()
-            .build()
-            .unwrap();
+        let transport =
+            RestTransport::builder().base_url("https://api.example.com").unwrap().build().unwrap();
 
         assert_eq!(transport.transport_type(), Transport::Http);
     }
 
     #[test]
     fn test_auth_token_set_and_clear() {
-        let transport = RestTransportBuilder::new()
-            .base_url("https://api.example.com")
-            .unwrap()
-            .build()
-            .unwrap();
+        let transport =
+            RestTransport::builder().base_url("https://api.example.com").unwrap().build().unwrap();
 
         // Initially no token
         assert!(transport.auth_token.read().is_none());
@@ -1286,10 +1249,10 @@ mod tests {
 
     #[test]
     fn test_rest_transport_builder_with_retry_config() {
-        let transport = RestTransportBuilder::new()
+        let transport = RestTransport::builder()
             .base_url("https://api.example.com")
             .unwrap()
-            .retry_config(RetryConfig::new().with_max_retries(5))
+            .retry_config(RetryConfig::builder().max_retries(5).build())
             .build()
             .unwrap();
 
@@ -1298,7 +1261,7 @@ mod tests {
 
     #[test]
     fn test_rest_transport_builder_with_timeout() {
-        let transport = RestTransportBuilder::new()
+        let transport = RestTransport::builder()
             .base_url("https://api.example.com")
             .unwrap()
             .timeout(Duration::from_secs(120))
@@ -1311,7 +1274,7 @@ mod tests {
     fn test_rest_transport_builder_with_tls_config() {
         let tls_config = TlsConfig { skip_verification: true, ..Default::default() };
 
-        let transport = RestTransportBuilder::new()
+        let transport = RestTransport::builder()
             .base_url("https://api.example.com")
             .unwrap()
             .tls_config(tls_config)
@@ -1347,11 +1310,8 @@ mod tests {
 
     #[test]
     fn test_rest_transport_debug_impl() {
-        let transport = RestTransportBuilder::new()
-            .base_url("https://api.example.com")
-            .unwrap()
-            .build()
-            .unwrap();
+        let transport =
+            RestTransport::builder().base_url("https://api.example.com").unwrap().build().unwrap();
 
         let debug_str = format!("{:?}", transport);
         assert!(debug_str.contains("RestTransport"));
@@ -1416,7 +1376,7 @@ mod wiremock_tests {
     use crate::Context;
 
     async fn create_test_transport(server: &MockServer) -> RestTransport {
-        RestTransportBuilder::new()
+        RestTransport::builder()
             .base_url(server.uri())
             .unwrap()
             .timeout(Duration::from_secs(5))

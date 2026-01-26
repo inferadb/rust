@@ -53,8 +53,9 @@ impl FailureMode {
 /// ```rust
 /// use inferadb::{DegradationConfig, FailureMode};
 ///
-/// let config = DegradationConfig::new()
-///     .with_failure_mode(FailureMode::FailClosed);
+/// let config = DegradationConfig::builder()
+///     .failure_mode(FailureMode::FailClosed)
+///     .build();
 /// ```
 ///
 /// ## Example: Circuit Breaker
@@ -63,105 +64,58 @@ impl FailureMode {
 /// use inferadb::DegradationConfig;
 /// use std::time::Duration;
 ///
-/// let config = DegradationConfig::new()
-///     .with_circuit_breaker_enabled(true)
-///     .with_circuit_breaker_threshold(5)
-///     .with_circuit_breaker_reset_timeout(Duration::from_secs(30));
+/// let config = DegradationConfig::builder()
+///     .circuit_breaker_enabled(true)
+///     .circuit_breaker_threshold(5)
+///     .circuit_breaker_reset_timeout(Duration::from_secs(30))
+///     .build();
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, bon::Builder)]
 pub struct DegradationConfig {
     /// How to handle requests when the service is unavailable.
+    #[builder(default)]
     pub failure_mode: FailureMode,
 
     /// Whether to enable the circuit breaker.
+    #[builder(default = true)]
     pub circuit_breaker_enabled: bool,
 
     /// Number of failures before the circuit breaker opens.
+    #[builder(default = 5)]
     pub circuit_breaker_threshold: u32,
 
     /// Time to wait before attempting to close the circuit.
+    #[builder(default = Duration::from_secs(30))]
     pub circuit_breaker_reset_timeout: Duration,
 
     /// Timeout for individual requests.
+    #[builder(default = Duration::from_secs(5))]
     pub request_timeout: Duration,
 
     /// Whether to log decisions made during degraded mode.
+    #[builder(default = true)]
     pub log_degraded_decisions: bool,
 }
 
 impl Default for DegradationConfig {
     fn default() -> Self {
-        Self {
-            failure_mode: FailureMode::default(),
-            circuit_breaker_enabled: true,
-            circuit_breaker_threshold: 5,
-            circuit_breaker_reset_timeout: Duration::from_secs(30),
-            request_timeout: Duration::from_secs(5),
-            log_degraded_decisions: true,
-        }
+        Self::builder().build()
     }
 }
 
 impl DegradationConfig {
-    /// Creates a new degradation configuration with default values.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Sets the failure mode.
-    #[must_use]
-    pub fn with_failure_mode(mut self, mode: FailureMode) -> Self {
-        self.failure_mode = mode;
-        self
-    }
-
-    /// Sets whether to enable the circuit breaker.
-    #[must_use]
-    pub fn with_circuit_breaker_enabled(mut self, enabled: bool) -> Self {
-        self.circuit_breaker_enabled = enabled;
-        self
-    }
-
-    /// Sets the circuit breaker failure threshold.
-    #[must_use]
-    pub fn with_circuit_breaker_threshold(mut self, threshold: u32) -> Self {
-        self.circuit_breaker_threshold = threshold;
-        self
-    }
-
-    /// Sets the circuit breaker reset timeout.
-    #[must_use]
-    pub fn with_circuit_breaker_reset_timeout(mut self, timeout: Duration) -> Self {
-        self.circuit_breaker_reset_timeout = timeout;
-        self
-    }
-
-    /// Sets the request timeout.
-    #[must_use]
-    pub fn with_request_timeout(mut self, timeout: Duration) -> Self {
-        self.request_timeout = timeout;
-        self
-    }
-
-    /// Sets whether to log degraded decisions.
-    #[must_use]
-    pub fn with_log_degraded_decisions(mut self, log: bool) -> Self {
-        self.log_degraded_decisions = log;
-        self
-    }
-
     /// Creates a fail-open configuration.
     ///
     /// All requests are allowed when the service is unavailable.
     pub fn fail_open() -> Self {
-        Self { failure_mode: FailureMode::FailOpen, ..Default::default() }
+        Self::builder().failure_mode(FailureMode::FailOpen).build()
     }
 
     /// Creates a fail-closed configuration.
     ///
     /// All requests are denied when the service is unavailable.
     pub fn fail_closed() -> Self {
-        Self { failure_mode: FailureMode::FailClosed, ..Default::default() }
+        Self::builder().failure_mode(FailureMode::FailClosed).build()
     }
 }
 
@@ -171,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_default_fail_closed() {
-        let config = DegradationConfig::new();
+        let config = DegradationConfig::default();
         assert_eq!(config.failure_mode, FailureMode::FailClosed);
         assert!(!config.failure_mode.allows_on_failure());
     }
@@ -194,10 +148,11 @@ mod tests {
 
     #[test]
     fn test_circuit_breaker_config() {
-        let config = DegradationConfig::new()
-            .with_circuit_breaker_enabled(true)
-            .with_circuit_breaker_threshold(10)
-            .with_circuit_breaker_reset_timeout(Duration::from_secs(60));
+        let config = DegradationConfig::builder()
+            .circuit_breaker_enabled(true)
+            .circuit_breaker_threshold(10)
+            .circuit_breaker_reset_timeout(Duration::from_secs(60))
+            .build();
 
         assert!(config.circuit_breaker_enabled);
         assert_eq!(config.circuit_breaker_threshold, 10);
@@ -206,22 +161,30 @@ mod tests {
 
     #[test]
     fn test_request_timeout() {
-        let config = DegradationConfig::new().with_request_timeout(Duration::from_secs(10));
+        let config = DegradationConfig::builder()
+            .request_timeout(Duration::from_secs(10))
+            .build();
         assert_eq!(config.request_timeout, Duration::from_secs(10));
     }
 
     #[test]
     fn test_with_failure_mode() {
-        let config = DegradationConfig::new().with_failure_mode(FailureMode::FailOpen);
+        let config = DegradationConfig::builder()
+            .failure_mode(FailureMode::FailOpen)
+            .build();
         assert_eq!(config.failure_mode, FailureMode::FailOpen);
     }
 
     #[test]
-    fn test_with_log_degraded_decisions() {
-        let config = DegradationConfig::new().with_log_degraded_decisions(false);
+    fn test_log_degraded_decisions() {
+        let config = DegradationConfig::builder()
+            .log_degraded_decisions(false)
+            .build();
         assert!(!config.log_degraded_decisions);
 
-        let config = DegradationConfig::new().with_log_degraded_decisions(true);
+        let config = DegradationConfig::builder()
+            .log_degraded_decisions(true)
+            .build();
         assert!(config.log_degraded_decisions);
     }
 

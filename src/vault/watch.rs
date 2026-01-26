@@ -391,84 +391,35 @@ impl fmt::Display for WatchEvent {
 ///
 /// When a watch stream disconnects, the SDK can automatically reconnect
 /// and resume from the last seen revision.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, bon::Builder)]
 pub struct ReconnectConfig {
     /// Maximum number of reconnection attempts (None = infinite).
     pub max_retries: Option<u32>,
 
     /// Initial backoff duration between retries.
+    #[builder(default = Duration::from_millis(100))]
     pub initial_backoff: Duration,
 
     /// Maximum backoff duration.
+    #[builder(default = Duration::from_secs(30))]
     pub max_backoff: Duration,
 
     /// Backoff multiplier (e.g., 2.0 for exponential backoff).
+    #[builder(default = 2.0)]
     pub backoff_multiplier: f64,
 
     /// Random jitter factor (0.0 - 1.0) to prevent thundering herd.
+    #[builder(default = 0.1)]
     pub jitter: f64,
 }
 
 impl Default for ReconnectConfig {
     fn default() -> Self {
-        Self {
-            max_retries: None, // Infinite retries
-            initial_backoff: Duration::from_millis(100),
-            max_backoff: Duration::from_secs(30),
-            backoff_multiplier: 2.0,
-            jitter: 0.1,
-        }
+        Self::builder().build()
     }
 }
 
 impl ReconnectConfig {
-    /// Create a new reconnect configuration with default values.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Set the maximum number of retries.
-    #[must_use]
-    pub fn max_retries(mut self, retries: u32) -> Self {
-        self.max_retries = Some(retries);
-        self
-    }
-
-    /// Set infinite retries (the default).
-    #[must_use]
-    pub fn infinite_retries(mut self) -> Self {
-        self.max_retries = None;
-        self
-    }
-
-    /// Set the initial backoff duration.
-    #[must_use]
-    pub fn initial_backoff(mut self, duration: Duration) -> Self {
-        self.initial_backoff = duration;
-        self
-    }
-
-    /// Set the maximum backoff duration.
-    #[must_use]
-    pub fn max_backoff(mut self, duration: Duration) -> Self {
-        self.max_backoff = duration;
-        self
-    }
-
-    /// Set the backoff multiplier.
-    #[must_use]
-    pub fn backoff_multiplier(mut self, multiplier: f64) -> Self {
-        self.backoff_multiplier = multiplier;
-        self
-    }
-
-    /// Set the jitter factor.
-    #[must_use]
-    pub fn jitter(mut self, jitter: f64) -> Self {
-        self.jitter = jitter.clamp(0.0, 1.0);
-        self
-    }
-
     /// Calculate the backoff duration for a given attempt.
     pub fn backoff_for_attempt(&self, attempt: u32) -> Duration {
         let base_backoff =
@@ -1031,12 +982,13 @@ mod tests {
 
     #[test]
     fn test_reconnect_config_builder() {
-        let config = ReconnectConfig::new()
+        let config = ReconnectConfig::builder()
             .max_retries(5)
             .initial_backoff(Duration::from_millis(200))
             .max_backoff(Duration::from_secs(60))
             .backoff_multiplier(1.5)
-            .jitter(0.2);
+            .jitter(0.2)
+            .build();
 
         assert_eq!(config.max_retries, Some(5));
         assert_eq!(config.initial_backoff, Duration::from_millis(200));
@@ -1046,27 +998,13 @@ mod tests {
     }
 
     #[test]
-    fn test_reconnect_config_infinite_retries() {
-        let config = ReconnectConfig::new().max_retries(5).infinite_retries();
-        assert_eq!(config.max_retries, None);
-    }
-
-    #[test]
-    fn test_reconnect_config_jitter_clamped() {
-        let config = ReconnectConfig::new().jitter(2.0);
-        assert!((config.jitter - 1.0).abs() < f64::EPSILON);
-
-        let config = ReconnectConfig::new().jitter(-0.5);
-        assert!(config.jitter.abs() < f64::EPSILON);
-    }
-
-    #[test]
     fn test_reconnect_config_backoff_calculation() {
-        let config = ReconnectConfig::new()
+        let config = ReconnectConfig::builder()
             .initial_backoff(Duration::from_millis(100))
             .max_backoff(Duration::from_secs(10))
             .backoff_multiplier(2.0)
-            .jitter(0.0); // No jitter for predictable testing
+            .jitter(0.0) // No jitter for predictable testing
+            .build();
 
         // With 0 jitter, backoff should be predictable
         let b0 = config.backoff_for_attempt(0);
@@ -1153,11 +1091,12 @@ mod tests {
 
     #[test]
     fn test_reconnect_config_backoff_with_jitter() {
-        let config = ReconnectConfig::new()
+        let config = ReconnectConfig::builder()
             .initial_backoff(Duration::from_millis(100))
             .max_backoff(Duration::from_secs(10))
             .backoff_multiplier(2.0)
-            .jitter(0.5);
+            .jitter(0.5)
+            .build();
 
         // With 50% jitter, values should be within a range
         let backoff = config.backoff_for_attempt(0);
@@ -1186,8 +1125,10 @@ mod tests {
 
     #[test]
     fn test_reconnect_config_clone() {
-        let config =
-            ReconnectConfig::new().max_retries(5).initial_backoff(Duration::from_millis(200));
+        let config = ReconnectConfig::builder()
+            .max_retries(5)
+            .initial_backoff(Duration::from_millis(200))
+            .build();
 
         let cloned = config.clone();
         assert_eq!(cloned.max_retries, Some(5));
@@ -1258,17 +1199,6 @@ mod tests {
         assert_eq!(filter, cloned);
     }
 
-    #[test]
-    fn test_reconnect_config_new_equals_default() {
-        let new = ReconnectConfig::new();
-        let default = ReconnectConfig::default();
-
-        assert_eq!(new.max_retries, default.max_retries);
-        assert_eq!(new.initial_backoff, default.initial_backoff);
-        assert_eq!(new.max_backoff, default.max_backoff);
-        assert_eq!(new.backoff_multiplier, default.backoff_multiplier);
-        assert!((new.jitter - default.jitter).abs() < f64::EPSILON);
-    }
 
     #[tokio::test]
     async fn test_watch_stream_basic() {
@@ -1276,7 +1206,7 @@ mod tests {
 
         use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
-        let mock_transport = Arc::new(MockTransport::new());
+        let mock_transport = Arc::new(MockTransport::new().into_any());
         let client = crate::Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))
@@ -1314,7 +1244,7 @@ mod tests {
 
         use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
-        let mock_transport = Arc::new(MockTransport::new());
+        let mock_transport = Arc::new(MockTransport::new().into_any());
         let client = crate::Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))
@@ -1350,7 +1280,7 @@ mod tests {
 
         use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
-        let mock_transport = Arc::new(MockTransport::new());
+        let mock_transport = Arc::new(MockTransport::new().into_any());
         let client = crate::Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))
@@ -1386,7 +1316,7 @@ mod tests {
 
         use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
-        let mock_transport = Arc::new(MockTransport::new());
+        let mock_transport = Arc::new(MockTransport::new().into_any());
         let client = crate::Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))
@@ -1402,7 +1332,7 @@ mod tests {
             .filter(WatchFilter::resource_type("document"))
             .from_revision(100)
             .resumable()
-            .reconnect(ReconnectConfig::new().max_retries(5))
+            .reconnect(ReconnectConfig::builder().max_retries(5).build())
             .run()
             .await;
 
@@ -1417,7 +1347,7 @@ mod tests {
 
         use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
-        let mock_transport = Arc::new(MockTransport::new());
+        let mock_transport = Arc::new(MockTransport::new().into_any());
         let client = crate::Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))
@@ -1459,7 +1389,7 @@ mod tests {
 
         use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
-        let mock_transport = Arc::new(MockTransport::new());
+        let mock_transport = Arc::new(MockTransport::new().into_any());
         let client = crate::Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))

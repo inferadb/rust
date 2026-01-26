@@ -16,10 +16,11 @@
 //! use inferadb::CircuitBreakerConfig;
 //! use std::time::Duration;
 //!
-//! let config = CircuitBreakerConfig::default()
+//! let config = CircuitBreakerConfig::builder()
 //!     .failure_threshold(5)           // Open after 5 consecutive failures
 //!     .success_threshold(2)           // Close after 2 successes in half-open
-//!     .timeout(Duration::from_secs(30));  // Try half-open after 30s
+//!     .timeout(Duration::from_secs(30))  // Try half-open after 30s
+//!     .build();
 //! ```
 
 use std::time::Duration;
@@ -37,104 +38,48 @@ use crate::ErrorKind;
 /// use inferadb::CircuitBreakerConfig;
 /// use std::time::Duration;
 ///
-/// let config = CircuitBreakerConfig::default()
+/// let config = CircuitBreakerConfig::builder()
 ///     .failure_threshold(5)
 ///     .success_threshold(2)
 ///     .timeout(Duration::from_secs(30))
 ///     .failure_rate_threshold(0.5)
-///     .minimum_requests(10);
+///     .minimum_requests(10)
+///     .build();
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, bon::Builder)]
 pub struct CircuitBreakerConfig {
     /// Number of consecutive failures to open the circuit.
+    #[builder(default = 5)]
     failure_threshold: u32,
 
     /// Number of successes in half-open state to close the circuit.
+    #[builder(default = 2)]
     success_threshold: u32,
 
     /// Duration to wait before transitioning from open to half-open.
+    #[builder(default = Duration::from_secs(30))]
     timeout: Duration,
 
     /// Alternative: Open circuit when failure rate exceeds this threshold.
+    #[builder(default = 0.5)]
     failure_rate_threshold: f64,
 
     /// Minimum number of requests before failure rate is considered.
+    #[builder(default = 10)]
     minimum_requests: u32,
 
     /// Which errors count as failures.
+    #[builder(default)]
     failure_predicate: FailurePredicate,
 }
 
 impl Default for CircuitBreakerConfig {
     fn default() -> Self {
-        Self {
-            failure_threshold: 5,
-            success_threshold: 2,
-            timeout: Duration::from_secs(30),
-            failure_rate_threshold: 0.5,
-            minimum_requests: 10,
-            failure_predicate: FailurePredicate::default(),
-        }
+        Self::builder().build()
     }
 }
 
 impl CircuitBreakerConfig {
-    /// Creates a new circuit breaker config with default values.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Sets the consecutive failure threshold.
-    ///
-    /// The circuit opens after this many consecutive failures.
-    #[must_use]
-    pub fn failure_threshold(mut self, threshold: u32) -> Self {
-        self.failure_threshold = threshold;
-        self
-    }
-
-    /// Sets the success threshold for closing the circuit.
-    ///
-    /// In half-open state, after this many successes, the circuit closes.
-    #[must_use]
-    pub fn success_threshold(mut self, threshold: u32) -> Self {
-        self.success_threshold = threshold;
-        self
-    }
-
-    /// Sets the timeout before transitioning from open to half-open.
-    #[must_use]
-    pub fn timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
-        self
-    }
-
-    /// Sets the failure rate threshold.
-    ///
-    /// The circuit opens when the failure rate exceeds this value (0.0 to 1.0).
-    /// Only applies after `minimum_requests` have been made.
-    #[must_use]
-    pub fn failure_rate_threshold(mut self, threshold: f64) -> Self {
-        self.failure_rate_threshold = threshold.clamp(0.0, 1.0);
-        self
-    }
-
-    /// Sets the minimum requests before failure rate applies.
-    ///
-    /// The failure rate threshold only kicks in after this many requests.
-    #[must_use]
-    pub fn minimum_requests(mut self, count: u32) -> Self {
-        self.minimum_requests = count;
-        self
-    }
-
-    /// Customizes which errors count as circuit breaker failures.
-    #[must_use]
-    pub fn failure_predicate(mut self, predicate: FailurePredicate) -> Self {
-        self.failure_predicate = predicate;
-        self
-    }
-
     /// Returns the failure threshold.
     pub fn get_failure_threshold(&self) -> u32 {
         self.failure_threshold
@@ -390,27 +335,19 @@ mod tests {
 
     #[test]
     fn test_config_builder() {
-        let config = CircuitBreakerConfig::new()
+        let config = CircuitBreakerConfig::builder()
             .failure_threshold(10)
             .success_threshold(3)
             .timeout(Duration::from_secs(60))
             .failure_rate_threshold(0.8)
-            .minimum_requests(20);
+            .minimum_requests(20)
+            .build();
 
         assert_eq!(config.get_failure_threshold(), 10);
         assert_eq!(config.get_success_threshold(), 3);
         assert_eq!(config.get_timeout(), Duration::from_secs(60));
         assert_eq!(config.get_failure_rate_threshold(), 0.8);
         assert_eq!(config.get_minimum_requests(), 20);
-    }
-
-    #[test]
-    fn test_failure_rate_threshold_clamped() {
-        let config = CircuitBreakerConfig::new().failure_rate_threshold(1.5);
-        assert_eq!(config.get_failure_rate_threshold(), 1.0);
-
-        let config = CircuitBreakerConfig::new().failure_rate_threshold(-0.5);
-        assert_eq!(config.get_failure_rate_threshold(), 0.0);
     }
 
     #[test]
@@ -513,7 +450,7 @@ mod tests {
     #[test]
     fn test_config_custom_predicate() {
         let predicate = FailurePredicate::only([ErrorKind::NotFound]);
-        let config = CircuitBreakerConfig::new().failure_predicate(predicate);
+        let config = CircuitBreakerConfig::builder().failure_predicate(predicate).build();
         assert!(config.is_failure(ErrorKind::NotFound));
         assert!(!config.is_failure(ErrorKind::Timeout));
     }

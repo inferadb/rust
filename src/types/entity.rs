@@ -149,37 +149,26 @@ pub struct EntityRef<'a> {
 }
 
 /// Error parsing an entity reference.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ParseError {
     /// Missing colon separator between type and ID.
+    #[error("missing colon separator in entity reference")]
     MissingColon,
     /// Empty entity type.
+    #[error("empty entity type")]
     EmptyType,
     /// Empty entity ID.
+    #[error("empty entity ID")]
     EmptyId,
     /// Invalid characters in entity type.
+    #[error("invalid characters in entity type: {0}")]
     InvalidTypeChars(String),
     /// Invalid characters in entity ID.
+    #[error("invalid characters in entity ID: {0}")]
     InvalidIdChars(String),
     /// Invalid userset format (for SubjectRef with #relation).
+    #[error("invalid userset format: {0}")]
     InvalidUserset(String),
-}
-
-impl std::error::Error for ParseError {}
-
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ParseError::MissingColon => write!(f, "missing colon separator in entity reference"),
-            ParseError::EmptyType => write!(f, "empty entity type"),
-            ParseError::EmptyId => write!(f, "empty entity ID"),
-            ParseError::InvalidTypeChars(s) => {
-                write!(f, "invalid characters in entity type: {}", s)
-            },
-            ParseError::InvalidIdChars(s) => write!(f, "invalid characters in entity ID: {}", s),
-            ParseError::InvalidUserset(s) => write!(f, "invalid userset format: {}", s),
-        }
-    }
 }
 
 impl<'a> EntityRef<'a> {

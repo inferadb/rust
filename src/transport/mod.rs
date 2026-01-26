@@ -49,7 +49,7 @@ pub use grpc::{GrpcTransport, GrpcTransportBuilder};
 #[cfg(feature = "rest")]
 pub use rest::{RestTransport, RestTransportBuilder};
 // Internal re-exports (used when transport is integrated with client)
-pub(crate) use traits::TransportClient;
+pub(crate) use traits::AnyTransport;
 #[cfg(feature = "rest")]
 pub(crate) use traits::{
     CheckRequest as TransportCheckRequest, SimulateRequest as TransportSimulateRequest,

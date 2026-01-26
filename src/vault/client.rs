@@ -10,7 +10,7 @@ use std::{borrow::Cow, future::Future, pin::Pin};
 use futures::Stream;
 
 #[cfg(feature = "rest")]
-use crate::transport::{TransportCheckRequest, TransportClient, TransportWriteRequest};
+use crate::transport::{TransportCheckRequest, TransportWriteRequest};
 use crate::{
     AccessDenied, Error,
     client::Client,
@@ -68,7 +68,7 @@ impl VaultClient {
 
     /// Returns the transport client, if available.
     #[cfg(feature = "rest")]
-    pub(super) fn transport(&self) -> Option<&std::sync::Arc<dyn TransportClient + Send + Sync>> {
+    pub(super) fn transport(&self) -> Option<&std::sync::Arc<crate::transport::AnyTransport>> {
         self.client.transport()
     }
 
@@ -538,6 +538,11 @@ impl<'a> CheckRequest<'a> {
     }
 }
 
+/// Enables ergonomic `.await` without explicit `.build()`.
+///
+/// This `IntoFuture` implementation is intentionally manual (not derived via `bon`)
+/// to preserve the ergonomic async API: `vault.check(...).await` instead of
+/// `vault.check(...).build().await`.
 impl<'a> std::future::IntoFuture for CheckRequest<'a> {
     type Output = Result<bool, Error>;
     type IntoFuture =
@@ -607,6 +612,11 @@ impl<'a> RequireCheckRequest<'a> {
     }
 }
 
+/// Enables ergonomic `.await` without explicit `.build()`.
+///
+/// This `IntoFuture` implementation is intentionally manual (not derived via `bon`)
+/// to preserve the ergonomic async API: `vault.check(...).require().await` instead of
+/// `vault.check(...).require().build().await`.
 impl<'a> std::future::IntoFuture for RequireCheckRequest<'a> {
     type Output = Result<(), AccessDenied>;
     type IntoFuture =
@@ -717,6 +727,11 @@ impl<'a> BatchCheckRequest<'a> {
     }
 }
 
+/// Enables ergonomic `.await` without explicit `.build()`.
+///
+/// This `IntoFuture` implementation is intentionally manual (not derived via `bon`)
+/// to preserve the ergonomic async API: `vault.check_batch(...).await` instead of
+/// `vault.check_batch(...).build().await`.
 impl<'a> std::future::IntoFuture for BatchCheckRequest<'a> {
     type Output = Result<Vec<bool>, Error>;
     type IntoFuture =
@@ -949,6 +964,11 @@ impl<'a> WriteRelationshipRequest<'a> {
     }
 }
 
+/// Enables ergonomic `.await` without explicit `.build()`.
+///
+/// This `IntoFuture` implementation is intentionally manual (not derived via `bon`)
+/// to preserve the ergonomic async API: `vault.relationships().write(...).await`
+/// instead of `vault.relationships().write(...).build().await`.
 impl<'a> std::future::IntoFuture for WriteRelationshipRequest<'a> {
     type Output = Result<ConsistencyToken, Error>;
     type IntoFuture =
@@ -998,6 +1018,11 @@ impl<'a> WriteBatchRequest<'a> {
     }
 }
 
+/// Enables ergonomic `.await` without explicit `.build()`.
+///
+/// This `IntoFuture` implementation is intentionally manual (not derived via `bon`)
+/// to preserve the ergonomic async API: `vault.relationships().write_batch(...).await`
+/// instead of `vault.relationships().write_batch(...).build().await`.
 impl<'a> std::future::IntoFuture for WriteBatchRequest<'a> {
     type Output = Result<ConsistencyToken, Error>;
     type IntoFuture =
@@ -1029,6 +1054,11 @@ impl<'a> DeleteRelationshipRequest<'a> {
     }
 }
 
+/// Enables ergonomic `.await` without explicit `.build()`.
+///
+/// This `IntoFuture` implementation is intentionally manual (not derived via `bon`)
+/// to preserve the ergonomic async API: `vault.relationships().delete(...).await`
+/// instead of `vault.relationships().delete(...).build().await`.
 impl<'a> std::future::IntoFuture for DeleteRelationshipRequest<'a> {
     type Output = Result<(), Error>;
     type IntoFuture =
@@ -1140,6 +1170,11 @@ impl DeleteWhereBuilder {
     }
 }
 
+/// Enables ergonomic `.await` without explicit `.build()`.
+///
+/// This `IntoFuture` implementation is intentionally manual (not derived via `bon`)
+/// to preserve the ergonomic async API: `vault.relationships().delete_where()...await`
+/// instead of `vault.relationships().delete_where()...build().await`.
 impl std::future::IntoFuture for DeleteWhereBuilder {
     type Output = Result<DeleteWhereResult, Error>;
     type IntoFuture =
@@ -1241,6 +1276,11 @@ impl ListRelationshipsRequest {
     }
 }
 
+/// Enables ergonomic `.await` without explicit `.build()`.
+///
+/// This `IntoFuture` implementation is intentionally manual (not derived via `bon`)
+/// to preserve the ergonomic async API: `vault.relationships().list()...await`
+/// instead of `vault.relationships().list()...build().await`.
 impl std::future::IntoFuture for ListRelationshipsRequest {
     type Output = Result<ListRelationshipsResponse, Error>;
     type IntoFuture =
@@ -1366,6 +1406,16 @@ impl<'a> ResourcesQueryBuilder<'a> {
 /// Builder for resource list queries (after subject and permission are set).
 ///
 /// Created by [`ResourcesQueryBuilder::with_permission()`].
+///
+/// # Design Notes
+///
+/// This builder is intentionally NOT converted to `bon` because it provides
+/// **dual finalizers**:
+/// - [`.stream()`](Self::stream) — memory-efficient streaming for large result sets
+/// - [`.collect()`](Self::collect) — convenience method to gather all results
+///
+/// `bon` generates builders with a single `.build()` finalizer, which would
+/// require awkward workarounds for this dual-consumption pattern.
 pub struct ResourcesListBuilder<'a> {
     vault: &'a VaultClient,
     subject: Cow<'a, str>,
@@ -1604,7 +1654,7 @@ impl IntoIterator for ResourcesPage {
 /// `TryStreamExt::try_next()` or similar methods from the futures crate.
 pub struct ResourceStream<'a> {
     #[cfg(feature = "rest")]
-    transport: Option<Arc<dyn TransportClient + Send + Sync>>,
+    transport: Option<Arc<crate::transport::AnyTransport>>,
     subject: String,
     permission: String,
     resource_type: Option<String>,
@@ -1809,6 +1859,16 @@ impl<'a> SubjectsQueryBuilder<'a> {
 /// Builder for subject list queries (after permission and resource are set).
 ///
 /// Created by [`SubjectsQueryBuilder::on_resource()`].
+///
+/// # Design Notes
+///
+/// This builder is intentionally NOT converted to `bon` because it provides
+/// **dual finalizers**:
+/// - [`.stream()`](Self::stream) — memory-efficient streaming for large result sets
+/// - [`.collect()`](Self::collect) — convenience method to gather all results
+///
+/// `bon` generates builders with a single `.build()` finalizer, which would
+/// require awkward workarounds for this dual-consumption pattern.
 pub struct SubjectsListBuilder<'a> {
     vault: &'a VaultClient,
     permission: Cow<'a, str>,
@@ -2047,7 +2107,7 @@ impl IntoIterator for SubjectsPage {
 /// `TryStreamExt::try_next()` or similar methods from the futures crate.
 pub struct SubjectStream<'a> {
     #[cfg(feature = "rest")]
-    transport: Option<Arc<dyn TransportClient + Send + Sync>>,
+    transport: Option<Arc<crate::transport::AnyTransport>>,
     permission: String,
     resource: String,
     subject_type: Option<String>,
@@ -2347,6 +2407,11 @@ impl ExplainPermissionRequest {
     }
 }
 
+/// Enables ergonomic `.await` without explicit `.build()`.
+///
+/// This `IntoFuture` implementation is intentionally manual (not derived via `bon`)
+/// to preserve the ergonomic async API: `vault.explain_permission()...await`
+/// instead of `vault.explain_permission()...build().await`.
 impl std::future::IntoFuture for ExplainPermissionRequest {
     type Output = Result<PermissionExplanation, Error>;
     type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + Send>>;
@@ -2364,7 +2429,7 @@ mod tests {
     use crate::{auth::BearerCredentialsConfig, transport::mock::MockTransport};
 
     async fn create_test_vault() -> VaultClient {
-        let mock_transport = Arc::new(MockTransport::new());
+        let mock_transport = Arc::new(MockTransport::new().into_any());
         let client = Client::builder()
             .url("https://api.example.com")
             .credentials(BearerCredentialsConfig::new("test"))
@@ -2376,10 +2441,11 @@ mod tests {
     }
 
     async fn create_test_vault_with_relationships() -> VaultClient {
-        let mock_transport = Arc::new(MockTransport::new());
+        let mock = MockTransport::new();
         // Add default relationships for tests that expect access
-        mock_transport.add_relationship(Relationship::new("doc:1", "view", "user:alice"));
-        mock_transport.add_relationship(Relationship::new("doc:1", "edit", "user:bob"));
+        mock.add_relationship(Relationship::new("doc:1", "view", "user:alice"));
+        mock.add_relationship(Relationship::new("doc:1", "edit", "user:bob"));
+        let mock_transport = Arc::new(mock.into_any());
 
         let client = Client::builder()
             .url("https://api.example.com")

@@ -20,107 +20,53 @@ use std::time::Duration;
 /// use inferadb::RetryConfig;
 /// use std::time::Duration;
 ///
-/// let config = RetryConfig::new()
-///     .with_max_retries(5)
-///     .with_initial_delay(Duration::from_millis(200))
-///     .with_max_delay(Duration::from_secs(30));
+/// let config = RetryConfig::builder()
+///     .max_retries(5)
+///     .initial_delay(Duration::from_millis(200))
+///     .max_delay(Duration::from_secs(30))
+///     .build();
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, bon::Builder)]
 pub struct RetryConfig {
     /// Maximum number of retry attempts.
+    #[builder(default = 3)]
     pub max_retries: u32,
 
     /// Initial delay before the first retry.
+    #[builder(default = Duration::from_millis(100))]
     pub initial_delay: Duration,
 
     /// Maximum delay between retries.
+    #[builder(default = Duration::from_secs(10))]
     pub max_delay: Duration,
 
     /// Multiplier for exponential backoff.
+    #[builder(default = 2.0)]
     pub multiplier: f64,
 
     /// Jitter factor (0.0 to 1.0) to add randomness to delays.
+    #[builder(default = 0.1)]
     pub jitter: f64,
 
     /// Whether to retry on timeout errors.
+    #[builder(default = true)]
     pub retry_on_timeout: bool,
 
     /// Whether to retry on connection errors.
+    #[builder(default = true)]
     pub retry_on_connection_error: bool,
 }
 
 impl Default for RetryConfig {
     fn default() -> Self {
-        Self {
-            max_retries: 3,
-            initial_delay: Duration::from_millis(100),
-            max_delay: Duration::from_secs(10),
-            multiplier: 2.0,
-            jitter: 0.1,
-            retry_on_timeout: true,
-            retry_on_connection_error: true,
-        }
+        Self::builder().build()
     }
 }
 
 impl RetryConfig {
-    /// Creates a new retry configuration with default values.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Creates a configuration that disables retries.
     pub fn disabled() -> Self {
-        Self { max_retries: 0, ..Default::default() }
-    }
-
-    /// Sets the maximum number of retry attempts.
-    #[must_use]
-    pub fn with_max_retries(mut self, max_retries: u32) -> Self {
-        self.max_retries = max_retries;
-        self
-    }
-
-    /// Sets the initial delay before the first retry.
-    #[must_use]
-    pub fn with_initial_delay(mut self, delay: Duration) -> Self {
-        self.initial_delay = delay;
-        self
-    }
-
-    /// Sets the maximum delay between retries.
-    #[must_use]
-    pub fn with_max_delay(mut self, delay: Duration) -> Self {
-        self.max_delay = delay;
-        self
-    }
-
-    /// Sets the exponential backoff multiplier.
-    #[must_use]
-    pub fn with_multiplier(mut self, multiplier: f64) -> Self {
-        self.multiplier = multiplier;
-        self
-    }
-
-    /// Sets the jitter factor.
-    #[must_use]
-    pub fn with_jitter(mut self, jitter: f64) -> Self {
-        self.jitter = jitter.clamp(0.0, 1.0);
-        self
-    }
-
-    /// Sets whether to retry on timeout errors.
-    #[must_use]
-    pub fn with_retry_on_timeout(mut self, retry: bool) -> Self {
-        self.retry_on_timeout = retry;
-        self
-    }
-
-    /// Sets whether to retry on connection errors.
-    #[must_use]
-    pub fn with_retry_on_connection_error(mut self, retry: bool) -> Self {
-        self.retry_on_connection_error = retry;
-        self
+        Self::builder().max_retries(0).build()
     }
 
     /// Calculates the delay for a given retry attempt.
@@ -175,12 +121,13 @@ mod tests {
 
     #[test]
     fn test_builder() {
-        let config = RetryConfig::new()
-            .with_max_retries(5)
-            .with_initial_delay(Duration::from_millis(200))
-            .with_max_delay(Duration::from_secs(30))
-            .with_multiplier(3.0)
-            .with_jitter(0.2);
+        let config = RetryConfig::builder()
+            .max_retries(5)
+            .initial_delay(Duration::from_millis(200))
+            .max_delay(Duration::from_secs(30))
+            .multiplier(3.0)
+            .jitter(0.2)
+            .build();
 
         assert_eq!(config.max_retries, 5);
         assert_eq!(config.initial_delay, Duration::from_millis(200));
@@ -191,10 +138,11 @@ mod tests {
 
     #[test]
     fn test_delay_for_attempt() {
-        let config = RetryConfig::new()
-            .with_jitter(0.0) // Disable jitter for predictable testing
-            .with_initial_delay(Duration::from_millis(100))
-            .with_multiplier(2.0);
+        let config = RetryConfig::builder()
+            .jitter(0.0) // Disable jitter for predictable testing
+            .initial_delay(Duration::from_millis(100))
+            .multiplier(2.0)
+            .build();
 
         assert_eq!(config.delay_for_attempt(0), Duration::ZERO);
         assert_eq!(config.delay_for_attempt(1), Duration::from_millis(100));
@@ -204,48 +152,51 @@ mod tests {
 
     #[test]
     fn test_delay_capped_at_max() {
-        let config = RetryConfig::new()
-            .with_jitter(0.0)
-            .with_initial_delay(Duration::from_secs(1))
-            .with_max_delay(Duration::from_secs(5))
-            .with_multiplier(10.0);
+        let config = RetryConfig::builder()
+            .jitter(0.0)
+            .initial_delay(Duration::from_secs(1))
+            .max_delay(Duration::from_secs(5))
+            .multiplier(10.0)
+            .build();
 
         // 1 * 10^9 would be huge, but should be capped at 5s
         assert!(config.delay_for_attempt(10) <= Duration::from_secs(5));
     }
 
     #[test]
-    fn test_jitter_clamped() {
-        let config = RetryConfig::new().with_jitter(2.0);
-        assert_eq!(config.jitter, 1.0);
+    fn test_jitter_values() {
+        // Test that jitter can be set to various values
+        let config = RetryConfig::builder().jitter(0.5).build();
+        assert_eq!(config.jitter, 0.5);
 
-        let config = RetryConfig::new().with_jitter(-0.5);
-        assert_eq!(config.jitter, 0.0);
+        let config = RetryConfig::builder().jitter(1.0).build();
+        assert_eq!(config.jitter, 1.0);
     }
 
     #[test]
-    fn test_with_retry_on_timeout() {
-        let config = RetryConfig::new().with_retry_on_timeout(false);
+    fn test_retry_on_timeout() {
+        let config = RetryConfig::builder().retry_on_timeout(false).build();
         assert!(!config.retry_on_timeout);
 
-        let config = RetryConfig::new().with_retry_on_timeout(true);
+        let config = RetryConfig::builder().retry_on_timeout(true).build();
         assert!(config.retry_on_timeout);
     }
 
     #[test]
-    fn test_with_retry_on_connection_error() {
-        let config = RetryConfig::new().with_retry_on_connection_error(false);
+    fn test_retry_on_connection_error() {
+        let config = RetryConfig::builder().retry_on_connection_error(false).build();
         assert!(!config.retry_on_connection_error);
 
-        let config = RetryConfig::new().with_retry_on_connection_error(true);
+        let config = RetryConfig::builder().retry_on_connection_error(true).build();
         assert!(config.retry_on_connection_error);
     }
 
     #[test]
     fn test_delay_with_jitter() {
-        let config = RetryConfig::new()
-            .with_jitter(0.5) // 50% jitter
-            .with_initial_delay(Duration::from_millis(100));
+        let config = RetryConfig::builder()
+            .jitter(0.5) // 50% jitter
+            .initial_delay(Duration::from_millis(100))
+            .build();
 
         // With jitter, the delay should vary but still be reasonable
         let delay = config.delay_for_attempt(1);

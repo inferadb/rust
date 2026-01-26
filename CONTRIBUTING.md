@@ -41,6 +41,88 @@ By contributing to [InferaDB](https://github.com/inferadb), you agree that your 
 - [Apache License, Version 2.0](LICENSE-APACHE)
 - [MIT License](LICENSE-MIT)
 
+## Builder Pattern Guidelines
+
+This SDK uses two builder approaches. Choose based on the pattern requirements:
+
+### When to Use `#[bon::builder]`
+
+Use `bon`-derived builders for **transport and configuration internals**:
+
+- Simple constructors with no async finalization patterns
+- No IntoFuture requirement (users call `.build()` explicitly)
+- No typestate enforcement needed
+- Single finalizer method
+
+```rust
+// Example: Transport builder using bon
+#[bon]
+impl RestTransport {
+    #[builder]
+    pub fn new(
+        base_url: Url,
+        #[builder(default)] tls_config: Option<TlsConfig>,
+        #[builder(default)] timeout: Option<Duration>,
+    ) -> Result<Self, Error> { /* ... */ }
+}
+
+// Usage
+let transport = RestTransport::builder()
+    .base_url(url)
+    .tls_config(tls)
+    .build()?;
+```
+
+### When to Use Manual Builders
+
+Use manual builders for **client-facing async APIs**:
+
+| Pattern | Reason | Example |
+|---------|--------|---------|
+| **IntoFuture** | Enables ergonomic `.await` without `.build()` | `vault.check(...).await` |
+| **Typestate** | Compile-time enforcement of required fields | `ClientBuilder<HasUrl, HasCredentials>` |
+| **Dual Finalizers** | Multiple consumption methods | `.stream()` and `.collect()` |
+
+```rust
+// Example: IntoFuture builder (manual)
+pub struct CheckRequest { /* ... */ }
+
+impl IntoFuture for CheckRequest {
+    type Output = Result<bool, Error>;
+    type IntoFuture = /* ... */;
+    
+    fn into_future(self) -> Self::IntoFuture { /* ... */ }
+}
+
+// Usage - no .build() needed
+let allowed = vault.check("user:alice", "view", "doc:1").await?;
+```
+
+### Decision Tree
+
+```
+Need .await without .build()?
+  └─ Yes → Manual builder with IntoFuture
+  └─ No → Continue
+
+Need compile-time required field enforcement?
+  └─ Yes → Manual builder with typestate
+  └─ No → Continue
+
+Need multiple finalizers (.stream() + .collect())?
+  └─ Yes → Manual builder with dual finalizers
+  └─ No → Use #[bon::builder]
+```
+
+### Future `bon` Migration Opportunities
+
+The `bon` crate is actively developed. Features that would enable more migrations:
+- **IntoFuture support**: Would allow converting async request builders
+- **Multiple finalizers**: Would allow converting streaming builders
+- **Typestate support**: Would allow converting `ClientBuilder`
+
+Track progress: [GitHub Issue #23](https://github.com/inferadb/rust/issues/23)
+
 ## Questions?
 
 If you have questions or need help:

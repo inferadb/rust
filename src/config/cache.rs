@@ -23,30 +23,38 @@ use std::time::Duration;
 /// use std::time::Duration;
 ///
 /// // Short TTL for frequently changing permissions
-/// let config = CacheConfig::new()
-///     .with_ttl(Duration::from_secs(30))
-///     .with_max_entries(10_000);
+/// let config = CacheConfig::builder()
+///     .enabled(true)
+///     .ttl(Duration::from_secs(30))
+///     .max_entries(10_000)
+///     .build();
 ///
 /// // Longer TTL with negative caching disabled
-/// let config = CacheConfig::new()
-///     .with_ttl(Duration::from_secs(300))
-///     .with_negative_caching(false);
+/// let config = CacheConfig::builder()
+///     .enabled(true)
+///     .ttl(Duration::from_secs(300))
+///     .negative_caching(false)
+///     .build();
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, bon::Builder)]
 pub struct CacheConfig {
     /// Whether caching is enabled.
+    #[builder(default = false)]
     pub enabled: bool,
 
     /// Time-to-live for cached entries.
+    #[builder(default = Duration::from_secs(60))]
     pub ttl: Duration,
 
     /// Maximum number of entries in the cache.
+    #[builder(default = 10_000)]
     pub max_entries: usize,
 
     /// Whether to cache negative (denied) results.
     ///
     /// Set to `false` if you want denial decisions to be re-evaluated
     /// more frequently (e.g., for time-sensitive permissions).
+    #[builder(default = true)]
     pub negative_caching: bool,
 
     /// TTL for negative cache entries (if different from positive).
@@ -55,60 +63,14 @@ pub struct CacheConfig {
 
 impl Default for CacheConfig {
     fn default() -> Self {
-        Self {
-            enabled: false,
-            ttl: Duration::from_secs(60),
-            max_entries: 10_000,
-            negative_caching: true,
-            negative_ttl: None,
-        }
+        Self::builder().build()
     }
 }
 
 impl CacheConfig {
-    /// Creates a new cache configuration with caching disabled.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Creates a configuration with caching enabled.
-    pub fn enabled() -> Self {
-        Self { enabled: true, ..Default::default() }
-    }
-
-    /// Enables or disables caching.
-    #[must_use]
-    pub fn with_enabled(mut self, enabled: bool) -> Self {
-        self.enabled = enabled;
-        self
-    }
-
-    /// Sets the TTL for cached entries.
-    #[must_use]
-    pub fn with_ttl(mut self, ttl: Duration) -> Self {
-        self.ttl = ttl;
-        self
-    }
-
-    /// Sets the maximum number of cache entries.
-    #[must_use]
-    pub fn with_max_entries(mut self, max_entries: usize) -> Self {
-        self.max_entries = max_entries;
-        self
-    }
-
-    /// Sets whether to cache negative (denied) results.
-    #[must_use]
-    pub fn with_negative_caching(mut self, enabled: bool) -> Self {
-        self.negative_caching = enabled;
-        self
-    }
-
-    /// Sets a separate TTL for negative cache entries.
-    #[must_use]
-    pub fn with_negative_ttl(mut self, ttl: Duration) -> Self {
-        self.negative_ttl = Some(ttl);
-        self
+    pub fn enabled_config() -> Self {
+        Self::builder().enabled(true).build()
     }
 
     /// Returns the effective TTL for negative entries.
@@ -123,23 +85,25 @@ mod tests {
 
     #[test]
     fn test_default_disabled() {
-        let config = CacheConfig::new();
+        let config = CacheConfig::default();
         assert!(!config.enabled);
     }
 
     #[test]
-    fn test_enabled() {
-        let config = CacheConfig::enabled();
+    fn test_enabled_config() {
+        let config = CacheConfig::enabled_config();
         assert!(config.enabled);
         assert_eq!(config.ttl, Duration::from_secs(60));
     }
 
     #[test]
     fn test_builder() {
-        let config = CacheConfig::enabled()
-            .with_ttl(Duration::from_secs(120))
-            .with_max_entries(5000)
-            .with_negative_caching(false);
+        let config = CacheConfig::builder()
+            .enabled(true)
+            .ttl(Duration::from_secs(120))
+            .max_entries(5000)
+            .negative_caching(false)
+            .build();
 
         assert!(config.enabled);
         assert_eq!(config.ttl, Duration::from_secs(120));
@@ -149,16 +113,21 @@ mod tests {
 
     #[test]
     fn test_negative_ttl() {
-        let config = CacheConfig::enabled()
-            .with_ttl(Duration::from_secs(300))
-            .with_negative_ttl(Duration::from_secs(30));
+        let config = CacheConfig::builder()
+            .enabled(true)
+            .ttl(Duration::from_secs(300))
+            .negative_ttl(Duration::from_secs(30))
+            .build();
 
         assert_eq!(config.effective_negative_ttl(), Duration::from_secs(30));
     }
 
     #[test]
     fn test_effective_negative_ttl_fallback() {
-        let config = CacheConfig::enabled().with_ttl(Duration::from_secs(60));
+        let config = CacheConfig::builder()
+            .enabled(true)
+            .ttl(Duration::from_secs(60))
+            .build();
         assert_eq!(config.effective_negative_ttl(), Duration::from_secs(60));
     }
 }

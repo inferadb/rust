@@ -13,8 +13,9 @@ use std::path::PathBuf;
 /// ```rust
 /// use inferadb::TlsConfig;
 ///
-/// let config = TlsConfig::new()
-///     .with_ca_cert_file("/path/to/ca.crt");
+/// let config = TlsConfig::builder()
+///     .ca_cert_file("/path/to/ca.crt")
+///     .build();
 /// ```
 ///
 /// ## Example: Client Certificate (mTLS)
@@ -22,62 +23,43 @@ use std::path::PathBuf;
 /// ```rust
 /// use inferadb::TlsConfig;
 ///
-/// let config = TlsConfig::new()
-///     .with_client_cert_file("/path/to/client.crt")
-///     .with_client_key_file("/path/to/client.key");
+/// let config = TlsConfig::builder()
+///     .client_cert_file("/path/to/client.crt")
+///     .client_key_file("/path/to/client.key")
+///     .build();
 /// ```
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, bon::Builder)]
 pub struct TlsConfig {
     /// Custom CA certificate file path.
+    #[builder(into)]
     pub ca_cert_file: Option<PathBuf>,
 
     /// Custom CA certificate PEM data.
+    #[builder(into)]
     pub ca_cert_pem: Option<String>,
 
     /// Client certificate file path (for mTLS).
+    #[builder(into)]
     pub client_cert_file: Option<PathBuf>,
 
     /// Client key file path (for mTLS).
+    #[builder(into)]
     pub client_key_file: Option<PathBuf>,
 
     /// Whether to skip certificate verification.
     ///
     /// **WARNING**: This is insecure and should only be used for local development.
+    #[builder(default = false)]
     pub skip_verification: bool,
 }
 
 impl TlsConfig {
-    /// Creates a new TLS configuration with default settings.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Sets the CA certificate file path.
-    #[must_use]
-    pub fn with_ca_cert_file(mut self, path: impl Into<PathBuf>) -> Self {
-        self.ca_cert_file = Some(path.into());
-        self
-    }
-
-    /// Sets the CA certificate PEM data directly.
-    #[must_use]
-    pub fn with_ca_cert_pem(mut self, pem: impl Into<String>) -> Self {
-        self.ca_cert_pem = Some(pem.into());
-        self
-    }
-
-    /// Sets the client certificate file path for mTLS.
-    #[must_use]
-    pub fn with_client_cert_file(mut self, path: impl Into<PathBuf>) -> Self {
-        self.client_cert_file = Some(path.into());
-        self
-    }
-
-    /// Sets the client key file path for mTLS.
-    #[must_use]
-    pub fn with_client_key_file(mut self, path: impl Into<PathBuf>) -> Self {
-        self.client_key_file = Some(path.into());
-        self
+    /// Creates an insecure TLS config that skips verification.
+    ///
+    /// **WARNING**: This makes connections vulnerable to man-in-the-middle attacks.
+    /// Only use this for local development with self-signed certificates.
+    pub fn insecure() -> Self {
+        Self::builder().skip_verification(true).build()
     }
 
     /// Returns `true` if mTLS is configured.
@@ -89,16 +71,6 @@ impl TlsConfig {
     pub fn has_custom_ca(&self) -> bool {
         self.ca_cert_file.is_some() || self.ca_cert_pem.is_some()
     }
-
-    /// Disables certificate verification (insecure, for development only).
-    ///
-    /// **WARNING**: This makes connections vulnerable to man-in-the-middle attacks.
-    /// Only use this for local development with self-signed certificates.
-    #[must_use]
-    pub fn insecure(mut self) -> Self {
-        self.skip_verification = true;
-        self
-    }
 }
 
 #[cfg(test)]
@@ -107,7 +79,7 @@ mod tests {
 
     #[test]
     fn test_default() {
-        let config = TlsConfig::new();
+        let config = TlsConfig::default();
         assert!(config.ca_cert_file.is_none());
         assert!(!config.is_mtls_configured());
         assert!(!config.has_custom_ca());
@@ -115,35 +87,40 @@ mod tests {
 
     #[test]
     fn test_ca_cert_file() {
-        let config = TlsConfig::new().with_ca_cert_file("/path/to/ca.crt");
+        let config = TlsConfig::builder().ca_cert_file("/path/to/ca.crt").build();
         assert!(config.has_custom_ca());
         assert_eq!(config.ca_cert_file, Some(PathBuf::from("/path/to/ca.crt")));
     }
 
     #[test]
     fn test_ca_cert_pem() {
-        let config = TlsConfig::new().with_ca_cert_pem("-----BEGIN CERTIFICATE-----");
+        let config = TlsConfig::builder()
+            .ca_cert_pem("-----BEGIN CERTIFICATE-----")
+            .build();
         assert!(config.has_custom_ca());
     }
 
     #[test]
     fn test_mtls() {
-        let config = TlsConfig::new()
-            .with_client_cert_file("/path/to/client.crt")
-            .with_client_key_file("/path/to/client.key");
+        let config = TlsConfig::builder()
+            .client_cert_file("/path/to/client.crt")
+            .client_key_file("/path/to/client.key")
+            .build();
         assert!(config.is_mtls_configured());
     }
 
     #[test]
     fn test_partial_mtls() {
         // Only cert, no key
-        let config = TlsConfig::new().with_client_cert_file("/path/to/client.crt");
+        let config = TlsConfig::builder()
+            .client_cert_file("/path/to/client.crt")
+            .build();
         assert!(!config.is_mtls_configured());
     }
 
     #[test]
     fn test_insecure() {
-        let config = TlsConfig::new().insecure();
+        let config = TlsConfig::insecure();
         assert!(config.skip_verification);
     }
 }

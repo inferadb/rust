@@ -366,15 +366,15 @@ impl TraceContext {
     }
 
     fn random_trace_id() -> String {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        format!("{:032x}", now)
+        use rand::Rng;
+        let bytes: [u8; 16] = rand::rng().random();
+        hex::encode(bytes)
     }
 
     fn random_span_id() -> String {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        format!("{:016x}", now & 0xFFFFFFFFFFFFFFFF)
+        use rand::Rng;
+        let bytes: [u8; 8] = rand::rng().random();
+        hex::encode(bytes)
     }
 }
 

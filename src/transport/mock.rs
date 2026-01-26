@@ -81,6 +81,25 @@ impl MockTransport {
     fn increment_requests(&self) {
         self.request_count.fetch_add(1, Ordering::Relaxed);
     }
+
+    /// Wraps this transport in an `AnyTransport` enum for use with the client.
+    ///
+    /// This is a convenience method for testing. It consumes the transport.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use std::sync::Arc;
+    /// use inferadb::transport::mock::MockTransport;
+    ///
+    /// let mock = MockTransport::new();
+    /// // Configure the mock...
+    /// let transport = Arc::new(mock.into_any());
+    /// ```
+    #[must_use]
+    pub fn into_any(self) -> super::traits::AnyTransport {
+        super::traits::AnyTransport::Mock(self)
+    }
 }
 
 impl Default for MockTransport {
@@ -89,7 +108,6 @@ impl Default for MockTransport {
     }
 }
 
-#[async_trait::async_trait]
 impl TransportClient for MockTransport {
     async fn check(&self, request: CheckRequest) -> Result<CheckResponse, Error> {
         self.increment_requests();
