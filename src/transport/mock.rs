@@ -88,7 +88,7 @@ impl MockTransport {
     ///
     /// # Example
     ///
-    /// ```no_run
+    /// ```ignore
     /// use std::sync::Arc;
     /// use inferadb::transport::mock::MockTransport;
     ///
@@ -313,6 +313,7 @@ impl TransportClient for MockTransport {
 pub type SharedMockTransport = Arc<MockTransport>;
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 

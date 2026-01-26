@@ -1,5 +1,6 @@
 //! Testing utilities for InferaDB SDK.
-//!
+// Testing utilities intentionally use unwrap/expect/panic - these are for test code
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 //! This module provides tools for testing applications that use the SDK:
 //!
 //! - [`MockClient`]: A mock client with expectation verification

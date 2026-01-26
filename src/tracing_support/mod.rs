@@ -44,6 +44,7 @@ pub use propagator::{B3Propagator, HeaderExtractor, HeaderInjector, Propagator, 
 pub use span::{InferaDbSpan, SpanKind, SpanStatus};
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 

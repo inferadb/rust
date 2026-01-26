@@ -6,12 +6,15 @@
 use std::sync::OnceLock;
 
 /// SDK name used in the User-Agent string.
+#[allow(dead_code)] // Used only when transports are enabled
 const SDK_NAME: &str = "inferadb-rust";
 
 /// SDK version from Cargo.toml.
+#[allow(dead_code)] // Used only when transports are enabled
 const SDK_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Cached User-Agent string (computed once on first access).
+#[allow(dead_code)] // Used only when transports are enabled
 static USER_AGENT: OnceLock<String> = OnceLock::new();
 
 /// Returns the User-Agent string for SDK requests.
@@ -24,6 +27,7 @@ static USER_AGENT: OnceLock<String> = OnceLock::new();
 /// - OS and architecture
 ///
 /// The string is computed once and cached for subsequent calls.
+#[allow(dead_code)] // Used only when transports are enabled
 pub fn user_agent() -> &'static str {
     USER_AGENT.get_or_init(|| {
         format!(
@@ -37,21 +41,15 @@ pub fn user_agent() -> &'static str {
     })
 }
 
-/// Returns a short SDK identifier for contexts with length limits.
-///
-/// Format: `inferadb-rust/0.1.0`
-#[allow(dead_code)]
-pub fn short_user_agent() -> String {
-    format!("{}/{}", SDK_NAME, SDK_VERSION)
-}
-
 /// Returns the Rust version string.
+#[allow(dead_code)] // Used only when transports are enabled
 fn rust_version() -> &'static str {
     // This is set at compile time by rustc
     concat!("rust/", env!("CARGO_PKG_RUST_VERSION"))
 }
 
 /// Returns a normalized OS name.
+#[allow(dead_code)] // Used only when transports are enabled
 fn os_name() -> &'static str {
     match std::env::consts::OS {
         "macos" => "darwin",
@@ -60,6 +58,7 @@ fn os_name() -> &'static str {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -87,13 +86,6 @@ mod tests {
         let ua1 = user_agent();
         let ua2 = user_agent();
         assert!(std::ptr::eq(ua1, ua2));
-    }
-
-    #[test]
-    fn test_short_user_agent() {
-        let short = short_user_agent();
-        assert!(short.starts_with("inferadb-rust/"));
-        assert!(!short.contains('('));
     }
 
     #[test]

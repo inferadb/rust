@@ -433,6 +433,7 @@ impl Histogram {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -446,9 +447,10 @@ mod tests {
 
     #[test]
     fn test_metrics_config_builder() {
-        let config = MetricsConfig::default()
-            .with_prefix("custom")
-            .with_histograms_enabled(false)
+        let config = MetricsConfig::builder()
+            .prefix("custom")
+            .histograms_enabled(false)
+            .build()
             .with_label("env", "test");
 
         assert_eq!(config.prefix, "custom");

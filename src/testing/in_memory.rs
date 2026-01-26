@@ -1,5 +1,8 @@
 //! InMemoryClient for testing with real graph semantics.
 
+// Testing utilities use unwrap() for lock acquisition - poison errors indicate test failures
+#![allow(clippy::unwrap_used)]
+
 use std::{
     collections::HashSet,
     future::Future,
@@ -164,6 +167,7 @@ impl AuthorizationClient for InMemoryClient {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 

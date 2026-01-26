@@ -366,14 +366,16 @@ impl TraceContext {
     }
 
     fn random_trace_id() -> String {
-        use rand::Rng;
-        let bytes: [u8; 16] = rand::rng().random();
+        let mut bytes = [0u8; 16];
+        // Fallback to zeros if getrandom fails (extremely rare, only if OS is broken)
+        let _ = getrandom::getrandom(&mut bytes);
         hex::encode(bytes)
     }
 
     fn random_span_id() -> String {
-        use rand::Rng;
-        let bytes: [u8; 8] = rand::rng().random();
+        let mut bytes = [0u8; 8];
+        // Fallback to zeros if getrandom fails (extremely rare, only if OS is broken)
+        let _ = getrandom::getrandom(&mut bytes);
         hex::encode(bytes)
     }
 }
@@ -658,6 +660,7 @@ impl Middleware for PassthroughMiddleware {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use std::sync::{
         Arc,

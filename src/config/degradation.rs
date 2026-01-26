@@ -120,6 +120,7 @@ impl DegradationConfig {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -161,30 +162,22 @@ mod tests {
 
     #[test]
     fn test_request_timeout() {
-        let config = DegradationConfig::builder()
-            .request_timeout(Duration::from_secs(10))
-            .build();
+        let config = DegradationConfig::builder().request_timeout(Duration::from_secs(10)).build();
         assert_eq!(config.request_timeout, Duration::from_secs(10));
     }
 
     #[test]
     fn test_with_failure_mode() {
-        let config = DegradationConfig::builder()
-            .failure_mode(FailureMode::FailOpen)
-            .build();
+        let config = DegradationConfig::builder().failure_mode(FailureMode::FailOpen).build();
         assert_eq!(config.failure_mode, FailureMode::FailOpen);
     }
 
     #[test]
     fn test_log_degraded_decisions() {
-        let config = DegradationConfig::builder()
-            .log_degraded_decisions(false)
-            .build();
+        let config = DegradationConfig::builder().log_degraded_decisions(false).build();
         assert!(!config.log_degraded_decisions);
 
-        let config = DegradationConfig::builder()
-            .log_degraded_decisions(true)
-            .build();
+        let config = DegradationConfig::builder().log_degraded_decisions(true).build();
         assert!(config.log_degraded_decisions);
     }
 

@@ -9,7 +9,6 @@ use base64::Engine;
 use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
-use rand::RngCore;
 use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -23,9 +22,8 @@ static API_BASE_URL: OnceLock<String> = OnceLock::new();
 /// Generate a random Ed25519 signing key
 #[allow(dead_code)]
 pub fn generate_signing_key() -> SigningKey {
-    let mut rng = rand::rng();
     let mut bytes = [0u8; 32];
-    rng.fill_bytes(&mut bytes);
+    getrandom::getrandom(&mut bytes).expect("Failed to generate random bytes for signing key");
     SigningKey::from_bytes(&bytes)
 }
 
@@ -552,7 +550,7 @@ impl TestFixture {
         let client = inferadb::Client::builder()
             .url(&self.ctx.api_base_url)
             .credentials(inferadb::BearerCredentialsConfig::new(jwt))
-            .tls_config(inferadb::TlsConfig::new().insecure())
+            .tls_config(inferadb::TlsConfig::insecure())
             .build()
             .await
             .context("Failed to create SDK client")?;

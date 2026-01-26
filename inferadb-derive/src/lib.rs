@@ -42,8 +42,6 @@
 //! assert_eq!(user.as_subject_ref(), "user:alice");
 //! ```
 
-#![deny(unsafe_code)]
-
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;

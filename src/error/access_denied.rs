@@ -215,6 +215,7 @@ impl From<AccessDenied> for super::Error {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 

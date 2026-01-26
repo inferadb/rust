@@ -233,6 +233,7 @@ impl ClientInner {
 }
 
 #[cfg(all(test, feature = "rest"))]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use reqwest::StatusCode;
 

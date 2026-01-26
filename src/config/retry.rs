@@ -85,7 +85,7 @@ impl RetryConfig {
         // Add jitter
         let jittered = if self.jitter > 0.0 {
             let jitter_range = capped_delay * self.jitter;
-            let jitter_offset = (rand::random::<f64>() - 0.5) * 2.0 * jitter_range;
+            let jitter_offset = (fastrand::f64() - 0.5) * 2.0 * jitter_range;
             (capped_delay + jitter_offset).max(0.0)
         } else {
             capped_delay
@@ -101,6 +101,7 @@ impl RetryConfig {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 

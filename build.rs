@@ -4,6 +4,9 @@
 //! This build script only regenerates if the generated file is missing.
 //! Use `make proto` to manually regenerate after updating proto files.
 
+// Build scripts should panic on failure - that's how they signal build errors
+#![allow(clippy::expect_used)]
+
 fn main() {
     #[cfg(feature = "grpc")]
     {

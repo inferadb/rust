@@ -348,6 +348,7 @@ impl From<serde_json::Error> for Error {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 

@@ -12,6 +12,7 @@
 [tools]
 rust = "1.92"
 "cargo:cargo-llvm-cov" = "latest"
+"cargo:cargo-udeps" = "latest"
 
 [env]
 # Rust optimization settings for development

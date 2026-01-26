@@ -238,6 +238,7 @@ impl From<BearerCredentialsConfig> for Credentials {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 

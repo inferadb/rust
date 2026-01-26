@@ -495,6 +495,7 @@ impl std::fmt::Debug for SessionsClient {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use std::sync::Arc;
 
@@ -709,6 +710,7 @@ mod tests {
 
 #[cfg(test)]
 #[cfg(feature = "rest")]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod wiremock_tests {
     use wiremock::{
         Mock, MockServer, ResponseTemplate,

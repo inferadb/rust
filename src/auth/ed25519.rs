@@ -71,6 +71,7 @@ impl Ed25519PrivateKey {
     /// let public_key = key.public_key_bytes();
     /// println!("Public key: {}", hex::encode(public_key));
     /// ```
+    #[allow(clippy::expect_used)] // Cryptographic key generation requires working RNG - no recovery possible
     pub fn generate() -> Self {
         // Use getrandom directly to avoid rand_core version conflicts
         // (ed25519-dalek uses rand_core 0.6.x, while some deps use 0.9.x)
@@ -259,6 +260,7 @@ impl fmt::Debug for Ed25519PrivateKey {
 // Clone is intentionally NOT implemented to prevent accidental key duplication
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 

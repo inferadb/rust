@@ -471,21 +471,6 @@ impl ExplainBuilder {
         self.context = Some(context);
         self
     }
-
-    /// Validates the builder configuration.
-    #[allow(dead_code)] // Will be used when transport is wired
-    pub(crate) fn validate(&self) -> Result<(), crate::Error> {
-        if self.subject.is_none() {
-            return Err(crate::Error::invalid_argument("subject is required"));
-        }
-        if self.permission.is_none() {
-            return Err(crate::Error::invalid_argument("permission is required"));
-        }
-        if self.resource.is_none() {
-            return Err(crate::Error::invalid_argument("resource is required"));
-        }
-        Ok(())
-    }
 }
 
 impl Default for ExplainBuilder {
@@ -517,6 +502,7 @@ mod duration_millis {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -672,19 +658,6 @@ mod tests {
         assert_eq!(builder.subject, Some("user:alice".to_string()));
         assert_eq!(builder.permission, Some("view".to_string()));
         assert_eq!(builder.resource, Some("doc:1".to_string()));
-    }
-
-    #[test]
-    fn test_explain_builder_validate() {
-        let builder = ExplainBuilder::new();
-        assert!(builder.validate().is_err());
-
-        let builder2 = ExplainBuilder::new().subject("user:alice");
-        assert!(builder2.validate().is_err());
-
-        let builder3 =
-            ExplainBuilder::new().subject("user:alice").permission("view").resource("doc:1");
-        assert!(builder3.validate().is_ok());
     }
 
     #[test]

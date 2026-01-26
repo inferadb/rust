@@ -706,14 +706,35 @@ impl AnyTransport {
         match self {
             #[cfg(feature = "grpc")]
             AnyTransport::Grpc(t) => Box::pin(async move {
-                t.list_resources(&subject, &permission, resource_type.as_deref(), limit, cursor.as_deref()).await
+                t.list_resources(
+                    &subject,
+                    &permission,
+                    resource_type.as_deref(),
+                    limit,
+                    cursor.as_deref(),
+                )
+                .await
             }),
             #[cfg(feature = "rest")]
             AnyTransport::Rest(t) => Box::pin(async move {
-                t.list_resources(&subject, &permission, resource_type.as_deref(), limit, cursor.as_deref()).await
+                t.list_resources(
+                    &subject,
+                    &permission,
+                    resource_type.as_deref(),
+                    limit,
+                    cursor.as_deref(),
+                )
+                .await
             }),
             AnyTransport::Mock(t) => Box::pin(async move {
-                t.list_resources(&subject, &permission, resource_type.as_deref(), limit, cursor.as_deref()).await
+                t.list_resources(
+                    &subject,
+                    &permission,
+                    resource_type.as_deref(),
+                    limit,
+                    cursor.as_deref(),
+                )
+                .await
             }),
         }
     }
@@ -738,14 +759,35 @@ impl AnyTransport {
         match self {
             #[cfg(feature = "grpc")]
             AnyTransport::Grpc(t) => Box::pin(async move {
-                t.list_subjects(&permission, &resource, subject_type.as_deref(), limit, cursor.as_deref()).await
+                t.list_subjects(
+                    &permission,
+                    &resource,
+                    subject_type.as_deref(),
+                    limit,
+                    cursor.as_deref(),
+                )
+                .await
             }),
             #[cfg(feature = "rest")]
             AnyTransport::Rest(t) => Box::pin(async move {
-                t.list_subjects(&permission, &resource, subject_type.as_deref(), limit, cursor.as_deref()).await
+                t.list_subjects(
+                    &permission,
+                    &resource,
+                    subject_type.as_deref(),
+                    limit,
+                    cursor.as_deref(),
+                )
+                .await
             }),
             AnyTransport::Mock(t) => Box::pin(async move {
-                t.list_subjects(&permission, &resource, subject_type.as_deref(), limit, cursor.as_deref()).await
+                t.list_subjects(
+                    &permission,
+                    &resource,
+                    subject_type.as_deref(),
+                    limit,
+                    cursor.as_deref(),
+                )
+                .await
             }),
         }
     }
@@ -784,7 +826,10 @@ impl AnyTransport {
     }
 
     /// Performs a simulated authorization check with hypothetical changes.
-    pub fn simulate(&self, request: SimulateRequest) -> BoxFuture<'_, Result<SimulateResponse, Error>> {
+    pub fn simulate(
+        &self,
+        request: SimulateRequest,
+    ) -> BoxFuture<'_, Result<SimulateResponse, Error>> {
         match self {
             #[cfg(feature = "grpc")]
             AnyTransport::Grpc(t) => Box::pin(t.simulate(request)),
@@ -856,6 +901,7 @@ impl Default for PoolConfig {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 

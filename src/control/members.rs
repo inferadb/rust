@@ -632,6 +632,7 @@ impl std::future::IntoFuture for ListInvitationsRequest {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use std::sync::Arc;
 
@@ -917,6 +918,7 @@ mod tests {
 }
 
 #[cfg(all(test, feature = "rest"))]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod wiremock_tests {
     use wiremock::{
         Mock, MockServer, ResponseTemplate,

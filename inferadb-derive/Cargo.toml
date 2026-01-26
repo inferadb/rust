@@ -20,3 +20,6 @@ syn = { version = "2", features = ["full", "extra-traits"] }
 
 [dev-dependencies]
 inferadb = { path = ".." }
+
+[lints]
+workspace = true

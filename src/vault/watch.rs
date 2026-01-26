@@ -428,7 +428,7 @@ impl ReconnectConfig {
 
         // Apply jitter
         let jitter_range = capped * self.jitter;
-        let jittered = capped - jitter_range / 2.0 + rand::random::<f64>() * jitter_range;
+        let jittered = capped - jitter_range / 2.0 + fastrand::f64() * jitter_range;
 
         Duration::from_secs_f64(jittered.max(0.0))
     }
@@ -453,7 +453,8 @@ impl ReconnectConfig {
 ///     .await?;
 /// ```
 pub struct WatchBuilder {
-    #[cfg_attr(not(feature = "rest"), allow(dead_code))]
+    // Client is stored for when SSE transport is fully implemented
+    #[allow(dead_code)]
     client: Client,
     organization_id: String,
     vault_id: String,
@@ -643,15 +644,7 @@ impl WatchBuilder {
 
         // For now, return a placeholder stream since SSE/WebSocket transport
         // requires additional implementation
-        Ok(WatchStream::new(
-            self.client,
-            self.organization_id,
-            self.vault_id,
-            self.filters,
-            self.from_revision,
-            self.resumable,
-            self.reconnect_config,
-        ))
+        Ok(WatchStream::new(self.filters, self.from_revision))
     }
 
     /// Start the watch stream.
@@ -681,6 +674,7 @@ pub struct WatchShutdownHandle {
 
 impl WatchShutdownHandle {
     /// Create a new shutdown handle.
+    #[allow(dead_code)] // Used only when transports are enabled
     fn new() -> (Self, tokio::sync::watch::Receiver<bool>) {
         let (sender, receiver) = tokio::sync::watch::channel(false);
         (Self { sender }, receiver)
@@ -703,18 +697,8 @@ impl WatchShutdownHandle {
 ///
 /// This stream implements `futures::Stream<Item = Result<WatchEvent, Error>>`.
 pub struct WatchStream {
-    #[allow(dead_code)]
-    client: Client,
-    #[allow(dead_code)]
-    organization_id: String,
-    #[allow(dead_code)]
-    vault_id: String,
     filters: Vec<WatchFilter>,
     last_revision: Option<u64>,
-    #[allow(dead_code)]
-    resumable: bool,
-    #[allow(dead_code)]
-    reconnect_config: Option<ReconnectConfig>,
     shutdown_receiver: tokio::sync::watch::Receiver<bool>,
     shutdown_handle: WatchShutdownHandle,
     // Internal stream state
@@ -722,25 +706,13 @@ pub struct WatchStream {
 }
 
 impl WatchStream {
-    fn new(
-        client: Client,
-        organization_id: String,
-        vault_id: String,
-        filters: Vec<WatchFilter>,
-        from_revision: Option<u64>,
-        resumable: bool,
-        reconnect_config: Option<ReconnectConfig>,
-    ) -> Self {
+    #[allow(dead_code)] // Used only when transports are enabled
+    fn new(filters: Vec<WatchFilter>, from_revision: Option<u64>) -> Self {
         let (shutdown_handle, shutdown_receiver) = WatchShutdownHandle::new();
 
         Self {
-            client,
-            organization_id,
-            vault_id,
             filters,
             last_revision: from_revision,
-            resumable,
-            reconnect_config,
             shutdown_receiver,
             shutdown_handle,
             inner: None,
@@ -813,16 +785,14 @@ impl Stream for WatchStream {
 impl fmt::Debug for WatchStream {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WatchStream")
-            .field("organization_id", &self.organization_id)
-            .field("vault_id", &self.vault_id)
             .field("filters", &self.filters)
             .field("last_revision", &self.last_revision)
-            .field("resumable", &self.resumable)
             .finish_non_exhaustive()
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -1199,7 +1169,6 @@ mod tests {
         assert_eq!(filter, cloned);
     }
 
-
     #[tokio::test]
     async fn test_watch_stream_basic() {
         use std::sync::Arc;
@@ -1214,15 +1183,10 @@ mod tests {
             .await
             .unwrap();
 
-        let stream = WatchStream::new(
-            client,
-            "org_test".to_string(),
-            "vlt_test".to_string(),
-            vec![],
-            None,
-            false,
-            None,
-        );
+        // Suppress unused variable warning since we only need to verify the client builds
+        let _ = client;
+
+        let stream = WatchStream::new(vec![], None);
 
         // Stream should be debuggable
         let debug = format!("{:?}", stream);
@@ -1252,15 +1216,10 @@ mod tests {
             .await
             .unwrap();
 
-        let mut stream = WatchStream::new(
-            client,
-            "org_test".to_string(),
-            "vlt_test".to_string(),
-            vec![],
-            Some(100),
-            true,
-            Some(ReconnectConfig::default()),
-        );
+        // Suppress unused variable warning since we only need to verify the client builds
+        let _ = client;
+
+        let mut stream = WatchStream::new(vec![], Some(100));
 
         // Get shutdown handle and trigger shutdown
         let handle = stream.shutdown_handle();
@@ -1288,20 +1247,15 @@ mod tests {
             .await
             .unwrap();
 
+        // Suppress unused variable warning since we only need to verify the client builds
+        let _ = client;
+
         let filters = vec![
             WatchFilter::resource_type("document"),
             WatchFilter::operations([Operation::Create]),
         ];
 
-        let mut stream = WatchStream::new(
-            client,
-            "org_test".to_string(),
-            "vlt_test".to_string(),
-            filters,
-            None,
-            false,
-            None,
-        );
+        let mut stream = WatchStream::new(filters, None);
 
         // Shutdown and verify
         stream.shutdown_handle().shutdown();

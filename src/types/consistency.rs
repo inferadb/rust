@@ -181,6 +181,7 @@ impl From<ConsistencyToken> for ConsistencyRequirement {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 

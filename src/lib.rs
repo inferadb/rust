@@ -58,16 +58,12 @@
 //! [CHANGELOG]: https://github.com/inferadb/rust/blob/main/CHANGELOG.md
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
-// Documentation lints
-#![warn(missing_docs)]
+// Rustdoc-specific lints (not in workspace lints)
 #![warn(rustdoc::broken_intra_doc_links)]
 #![warn(rustdoc::private_intra_doc_links)]
 #![warn(rustdoc::invalid_codeblock_attributes)]
 #![warn(rustdoc::invalid_html_tags)]
 #![warn(rustdoc::bare_urls)]
-// Code quality lints
-#![warn(clippy::all)]
-#![deny(unsafe_code)]
 
 // Core modules
 pub mod auth;
@@ -120,7 +116,7 @@ pub use config::{
     CacheConfig, CircuitBreakerConfig, CircuitEvent, CircuitState, CircuitStats, DegradationConfig,
     FailureMode, FailurePredicate, RetryConfig, TlsConfig,
 };
-pub use error::{AccessDenied, Error, ErrorKind};
+pub use error::{AccessDenied, Error, ErrorKind, Result};
 // Testing support
 pub use testing::{AuthorizationClient, InMemoryClient, MockClient};
 // Re-export transport types
@@ -170,6 +166,7 @@ pub mod derive {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 

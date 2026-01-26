@@ -258,19 +258,15 @@ impl ReadinessCriteria {
 /// ```
 pub struct ShutdownHandle {
     shutdown_flag: Arc<AtomicBool>,
-    #[allow(dead_code)] // Will be used when transport supports shutdown
-    shutdown_complete: tokio::sync::oneshot::Sender<()>,
 }
 
 impl ShutdownHandle {
     /// Creates a new shutdown handle.
     pub fn new() -> (Self, ShutdownGuard) {
         let shutdown_flag = Arc::new(AtomicBool::new(false));
-        let (tx, rx) = tokio::sync::oneshot::channel();
 
-        let handle = Self { shutdown_flag: Arc::clone(&shutdown_flag), shutdown_complete: tx };
-
-        let guard = ShutdownGuard { shutdown_flag, _shutdown_signal: rx };
+        let handle = Self { shutdown_flag: Arc::clone(&shutdown_flag) };
+        let guard = ShutdownGuard { shutdown_flag };
 
         (handle, guard)
     }
@@ -320,7 +316,6 @@ impl std::fmt::Debug for ShutdownHandle {
 /// Guard that tracks shutdown state within the client.
 pub struct ShutdownGuard {
     shutdown_flag: Arc<AtomicBool>,
-    _shutdown_signal: tokio::sync::oneshot::Receiver<()>,
 }
 
 impl ShutdownGuard {
@@ -384,6 +379,7 @@ mod duration_millis_opt {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 

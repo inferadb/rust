@@ -80,6 +80,7 @@ impl CacheConfig {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -124,10 +125,7 @@ mod tests {
 
     #[test]
     fn test_effective_negative_ttl_fallback() {
-        let config = CacheConfig::builder()
-            .enabled(true)
-            .ttl(Duration::from_secs(60))
-            .build();
+        let config = CacheConfig::builder().enabled(true).ttl(Duration::from_secs(60)).build();
         assert_eq!(config.effective_negative_ttl(), Duration::from_secs(60));
     }
 }

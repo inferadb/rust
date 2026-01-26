@@ -93,6 +93,43 @@ jobs:
       - name: Run clippy (no default features)
         run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 
+  # Check for unused dependencies
+  udeps:
+    name: Unused Dependencies
+    runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-C codegen-units=16 -C link-arg=-fuse-ld=mold"
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@20cf305ff2072d973412fa9b1e3a4f227bda3c76 # v2.14.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Install Rust nightly toolchain
+        uses: dtolnay/rust-toolchain@881ba7bf39a41cda34ac9e123fb41b44ed08232f # nightly
+
+      - name: Install mold linker
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mold
+
+      - name: Install development tools via Mise
+        uses: step-security/mise-action@2fa1b2b4fa1577588d8ac75f4dfa0f67c266d2a0 # v3.4.1
+        with:
+          install_args: protobuf cargo:cargo-udeps
+          cache: true
+
+      - name: Cache Rust dependencies
+        uses: step-security/rust-cache@f8fba7098297c8c53a7c9a30575ec2ad4ad85056 # v2.8.2
+        with:
+          shared-key: udeps
+
+      - name: Check for unused dependencies
+        run: cargo +nightly udeps --workspace --all-features
+
   # Check MSRV (Minimum Supported Rust Version)
   msrv:
     name: MSRV (${{ matrix.msrv }})
@@ -384,7 +421,7 @@ jobs:
   # Overall status check
   ci-success:
     name: CI Success
-    needs: [fmt, clippy, msrv, test, features, coverage, docs, examples]
+    needs: [fmt, clippy, udeps, msrv, test, features, coverage, docs, examples]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -397,6 +434,7 @@ jobs:
         env:
           FMT_RESULT: ${{ needs.fmt.result }}
           CLIPPY_RESULT: ${{ needs.clippy.result }}
+          UDEPS_RESULT: ${{ needs.udeps.result }}
           MSRV_RESULT: ${{ needs.msrv.result }}
           TEST_RESULT: ${{ needs.test.result }}
           FEATURES_RESULT: ${{ needs.features.result }}
@@ -404,7 +442,7 @@ jobs:
           EXAMPLES_RESULT: ${{ needs.examples.result }}
           COVERAGE_RESULT: ${{ needs.coverage.result }}
         run: |
-          results="$FMT_RESULT $CLIPPY_RESULT $MSRV_RESULT $TEST_RESULT $FEATURES_RESULT $DOCS_RESULT $EXAMPLES_RESULT"
+          results="$FMT_RESULT $CLIPPY_RESULT $UDEPS_RESULT $MSRV_RESULT $TEST_RESULT $FEATURES_RESULT $DOCS_RESULT $EXAMPLES_RESULT"
 
           for result in $results; do
             if [[ "$result" != "success" && "$result" != "skipped" ]]; then

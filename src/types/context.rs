@@ -371,6 +371,7 @@ impl<'a> IntoIterator for &'a Context {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 

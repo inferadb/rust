@@ -594,6 +594,7 @@ impl TransportClient for GrpcTransport {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
     use crate::{config::TlsConfig, transport::traits::PoolConfig};

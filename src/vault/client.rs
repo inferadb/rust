@@ -2422,6 +2422,7 @@ impl std::future::IntoFuture for ExplainPermissionRequest {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use std::sync::Arc;
 

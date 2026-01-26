@@ -1,14 +1,16 @@
 //! Client builder with typestate pattern.
 
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+#[cfg(any(feature = "grpc", feature = "rest"))]
+use std::sync::Arc;
+use std::{marker::PhantomData, time::Duration};
 
 use super::inner::ClientInner;
+#[cfg(any(feature = "grpc", feature = "rest"))]
+use crate::transport::AnyTransport;
 #[cfg(feature = "grpc")]
 use crate::transport::GrpcTransport;
 #[cfg(feature = "rest")]
 use crate::transport::RestTransport;
-#[cfg(any(feature = "grpc", feature = "rest"))]
-use crate::transport::AnyTransport;
 use crate::{
     Client, Error,
     auth::Credentials,
@@ -339,6 +341,7 @@ impl<U, C> ClientBuilder<U, C> {
 
 impl<U, C> ClientBuilder<U, C> {
     /// Creates the transport based on the configured strategy.
+    #[cfg(any(feature = "grpc", feature = "rest"))]
     #[allow(unused_variables)]
     async fn create_transport(
         &self,
@@ -494,9 +497,19 @@ impl<U, C> ClientBuilder<U, C> {
                 .await?;
                 Ok(Some(Arc::new(AnyTransport::Grpc(grpc))))
             },
-            #[cfg(not(any(feature = "grpc", feature = "rest")))]
-            _ => Ok(None),
         }
+    }
+
+    /// Creates the transport when no transport features are enabled.
+    #[cfg(not(any(feature = "grpc", feature = "rest")))]
+    #[allow(unused_variables)]
+    async fn create_transport(
+        &self,
+        url: &url::Url,
+        timeout: Duration,
+        initial_token: Option<&String>,
+    ) -> Result<Option<()>, Error> {
+        Ok(None)
     }
 }
 
@@ -505,10 +518,7 @@ impl ClientBuilder<HasUrl, HasCredentials> {
     ///
     /// This is useful for injecting mock transports in tests.
     #[cfg(test)]
-    pub async fn build_with_transport(
-        self,
-        transport: Arc<AnyTransport>,
-    ) -> Result<Client, Error> {
+    pub async fn build_with_transport(self, transport: Arc<AnyTransport>) -> Result<Client, Error> {
         let url = self.url.ok_or_else(|| Error::configuration("URL is required"))?;
 
         let credentials =
@@ -581,7 +591,10 @@ impl ClientBuilder<HasUrl, HasCredentials> {
         let initial_token: Option<String> = None;
 
         // Create transport based on strategy (before consuming self)
+        #[cfg(any(feature = "grpc", feature = "rest"))]
         let transport = self.create_transport(&parsed_url, timeout, initial_token.as_ref()).await?;
+        #[cfg(not(any(feature = "grpc", feature = "rest")))]
+        let _ = self.create_transport(&parsed_url, timeout, initial_token.as_ref()).await?;
 
         // Now extract credentials (consuming self)
         let credentials =
@@ -678,7 +691,10 @@ impl ClientBuilder<HasUrl, HasCredentials> {
         let initial_token: Option<String> = None;
 
         // Create transport based on strategy (before consuming self)
+        #[cfg(any(feature = "grpc", feature = "rest"))]
         let transport = self.create_transport(&parsed_url, timeout, initial_token.as_ref()).await?;
+        #[cfg(not(any(feature = "grpc", feature = "rest")))]
+        let _ = self.create_transport(&parsed_url, timeout, initial_token.as_ref()).await?;
 
         // Now extract credentials (consuming self)
         let credentials =
@@ -730,6 +746,7 @@ impl ClientBuilder<HasUrl, HasCredentials> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
     use crate::{

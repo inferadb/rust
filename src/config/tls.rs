@@ -74,6 +74,7 @@ impl TlsConfig {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -94,9 +95,7 @@ mod tests {
 
     #[test]
     fn test_ca_cert_pem() {
-        let config = TlsConfig::builder()
-            .ca_cert_pem("-----BEGIN CERTIFICATE-----")
-            .build();
+        let config = TlsConfig::builder().ca_cert_pem("-----BEGIN CERTIFICATE-----").build();
         assert!(config.has_custom_ca());
     }
 
@@ -112,9 +111,7 @@ mod tests {
     #[test]
     fn test_partial_mtls() {
         // Only cert, no key
-        let config = TlsConfig::builder()
-            .client_cert_file("/path/to/client.crt")
-            .build();
+        let config = TlsConfig::builder().client_cert_file("/path/to/client.crt").build();
         assert!(!config.is_mtls_configured());
     }
 

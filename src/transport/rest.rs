@@ -21,7 +21,7 @@ use crate::{
         ListSubjectsResponse, PoolConfig, RestStats, SimulateRequest, SimulateResponse, Transport,
         TransportClient, TransportStats, WriteRequest, WriteResponse,
     },
-    types::{ConsistencyToken, Decision, Relationship},
+    types::{ConsistencyToken, Context, Decision, Relationship},
     user_agent,
 };
 
@@ -418,7 +418,7 @@ struct EvaluateItem {
     resource: String,
     permission: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    context: Option<serde_json::Value>,
+    context: Option<Context>,
     #[serde(skip_serializing_if = "Option::is_none")]
     trace: Option<bool>,
 }
@@ -457,6 +457,11 @@ struct EvaluationNodeResponse {
     children: Vec<EvaluationNodeResponse>,
 }
 
+/// Marker type for presence detection - accepts any JSON value and discards it.
+#[derive(Debug, Deserialize)]
+#[serde(transparent)]
+struct Present(serde::de::IgnoredAny);
+
 /// Node type from the engine API.
 #[derive(Debug, Deserialize)]
 struct NodeTypeResponse {
@@ -467,11 +472,11 @@ struct NodeTypeResponse {
     #[serde(default)]
     related_object_userset: Option<RelatedObjectUsersetResponse>,
     #[serde(default)]
-    union: Option<serde_json::Value>,
+    union: Option<Present>,
     #[serde(default)]
-    intersection: Option<serde_json::Value>,
+    intersection: Option<Present>,
     #[serde(default)]
-    exclusion: Option<serde_json::Value>,
+    exclusion: Option<Present>,
     #[serde(default)]
     wasm_module: Option<WasmModuleResponse>,
 }
@@ -516,8 +521,8 @@ struct RelationshipDto {
 #[derive(Debug, Deserialize)]
 struct WriteRelationshipsResponse {
     revision: String,
-    #[allow(dead_code)]
-    relationships_written: usize,
+    #[serde(rename = "relationships_written")]
+    _relationships_written: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -621,7 +626,7 @@ impl TransportClient for RestTransport {
                 subject: request.subject.clone(),
                 resource: request.resource.clone(),
                 permission: request.permission.clone(),
-                context: request.context.map(|c| c.into_value()),
+                context: request.context,
                 trace: if request.trace { Some(true) } else { None },
             }],
         };
@@ -656,7 +661,7 @@ impl TransportClient for RestTransport {
                     subject: r.subject.clone(),
                     resource: r.resource.clone(),
                     permission: r.permission.clone(),
-                    context: r.context.clone().map(|c| c.into_value()),
+                    context: r.context.clone(),
                     trace: if r.trace { Some(true) } else { None },
                 })
                 .collect(),
@@ -894,7 +899,7 @@ impl TransportClient for RestTransport {
             permission: String,
             resource: String,
             #[serde(skip_serializing_if = "Option::is_none")]
-            context: Option<serde_json::Value>,
+            context: Option<Context>,
             #[serde(skip_serializing_if = "Vec::is_empty")]
             additions: Vec<RelationshipDto>,
             #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -908,16 +913,11 @@ impl TransportClient for RestTransport {
             decision_id: Option<String>,
         }
 
-        let context_value = request.context.map(|ctx| {
-            serde_json::to_value(ctx)
-                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()))
-        });
-
         let api_request = SimulateApiRequest {
             subject: request.subject,
             permission: request.permission,
             resource: request.resource,
-            context: context_value,
+            context: request.context,
             additions: request
                 .additions
                 .iter()
@@ -985,7 +985,7 @@ fn parse_sse_stream<T: DeserializeOwned + 'static>(
                                 s.sse_active = s.sse_active.saturating_sub(1);
                             }
 
-                            match serde_json::from_str::<T>(&data) {
+                            match serde_json::from_slice::<T>(data.as_bytes()) {
                                 Ok(item) => {
                                     return Some((Ok(item), (stream, buffer, stats, done)));
                                 },
@@ -1053,17 +1053,23 @@ fn map_reqwest_error(e: reqwest::Error) -> Error {
     }
 }
 
+/// API error response structure.
+#[derive(Deserialize)]
+struct ApiErrorResponse {
+    #[serde(default)]
+    error: Option<String>,
+}
+
 /// Maps HTTP status codes to SDK errors.
 fn map_status_error(status: u16, body: &str) -> Error {
     let message = if body.is_empty() {
         format!("HTTP {}", status)
     } else {
         // Try to parse as JSON error
-        if let Ok(error) = serde_json::from_str::<serde_json::Value>(body) {
-            error.get("error").and_then(|e| e.as_str()).unwrap_or(body).to_string()
-        } else {
-            body.to_string()
-        }
+        serde_json::from_slice::<ApiErrorResponse>(body.as_bytes())
+            .ok()
+            .and_then(|e| e.error)
+            .unwrap_or_else(|| body.to_string())
     };
 
     match status {
@@ -1083,6 +1089,7 @@ fn map_status_error(status: u16, body: &str) -> Error {
 // ============================================================================
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -1366,6 +1373,7 @@ mod tests {
 
 // Wiremock-based async tests
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod wiremock_tests {
     use wiremock::{
         Mock, MockServer, ResponseTemplate,

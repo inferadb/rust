@@ -316,16 +316,20 @@ impl Client {
     /// println!("Service is ready");
     /// ```
     pub async fn wait_ready(&self, timeout: std::time::Duration) -> Result<(), crate::Error> {
-        let start = std::time::Instant::now();
+        let deadline = tokio::time::Instant::now() + timeout;
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
 
-        while start.elapsed() < timeout {
+        loop {
+            interval.tick().await;
+
             if self.health_check().await.unwrap_or(false) {
                 return Ok(());
             }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        }
 
-        Err(crate::Error::timeout("Timed out waiting for service readiness"))
+            if tokio::time::Instant::now() >= deadline {
+                return Err(crate::Error::timeout("Timed out waiting for service readiness"));
+            }
+        }
     }
 
     /// Waits for the service to become ready with custom criteria.
@@ -348,9 +352,12 @@ impl Client {
         timeout: std::time::Duration,
         criteria: ReadinessCriteria,
     ) -> Result<(), crate::Error> {
-        let start = std::time::Instant::now();
+        let deadline = tokio::time::Instant::now() + timeout;
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
 
-        while start.elapsed() < timeout {
+        loop {
+            interval.tick().await;
+
             let health = self.health().await?;
 
             let mut ready = health.is_healthy();
@@ -363,10 +370,10 @@ impl Client {
                 return Ok(());
             }
 
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            if tokio::time::Instant::now() >= deadline {
+                return Err(crate::Error::timeout("Timed out waiting for service readiness"));
+            }
         }
-
-        Err(crate::Error::timeout("Timed out waiting for service readiness"))
     }
 
     /// Returns `true` if the client is in shutdown mode.
@@ -526,6 +533,7 @@ impl std::fmt::Debug for OrganizationClient {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use std::sync::Arc;
 
@@ -657,6 +665,7 @@ mod tests {
 }
 
 #[cfg(all(test, feature = "rest"))]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod wiremock_tests {
     use wiremock::{
         Mock, MockServer, ResponseTemplate,

@@ -22,7 +22,7 @@ async fn test_rest_transport_strategy() {
     let client = inferadb::Client::builder()
         .url(&fixture.ctx.api_base_url)
         .credentials(inferadb::BearerCredentialsConfig::new(jwt))
-        .tls_config(inferadb::TlsConfig::new().insecure())
+        .tls_config(inferadb::TlsConfig::insecure())
         .transport_strategy(TransportStrategy::RestOnly)
         .build()
         .await;
@@ -65,7 +65,7 @@ async fn test_grpc_transport_strategy() {
     let client = inferadb::Client::builder()
         .url(&fixture.ctx.api_base_url)
         .credentials(inferadb::BearerCredentialsConfig::new(jwt))
-        .tls_config(inferadb::TlsConfig::new().insecure())
+        .tls_config(inferadb::TlsConfig::insecure())
         .transport_strategy(TransportStrategy::GrpcOnly)
         .build()
         .await;
@@ -109,7 +109,7 @@ async fn test_prefer_grpc_strategy() {
     let client = inferadb::Client::builder()
         .url(&fixture.ctx.api_base_url)
         .credentials(inferadb::BearerCredentialsConfig::new(jwt))
-        .tls_config(inferadb::TlsConfig::new().insecure())
+        .tls_config(inferadb::TlsConfig::insecure())
         .transport_strategy(TransportStrategy::PreferGrpc {
             fallback_on: FallbackTrigger::default(),
         })
@@ -154,7 +154,7 @@ async fn test_default_transport_strategy() {
     let client = inferadb::Client::builder()
         .url(&fixture.ctx.api_base_url)
         .credentials(inferadb::BearerCredentialsConfig::new(jwt))
-        .tls_config(inferadb::TlsConfig::new().insecure())
+        .tls_config(inferadb::TlsConfig::insecure())
         .build()
         .await;
 
@@ -209,7 +209,7 @@ async fn test_pool_configuration() {
     let client = inferadb::Client::builder()
         .url(&fixture.ctx.api_base_url)
         .credentials(inferadb::BearerCredentialsConfig::new(jwt))
-        .tls_config(inferadb::TlsConfig::new().insecure())
+        .tls_config(inferadb::TlsConfig::insecure())
         .pool_config(pool_config)
         .build()
         .await;
@@ -283,7 +283,7 @@ async fn test_timeout_configuration() {
     let client = inferadb::Client::builder()
         .url(&fixture.ctx.api_base_url)
         .credentials(inferadb::BearerCredentialsConfig::new(jwt))
-        .tls_config(inferadb::TlsConfig::new().insecure())
+        .tls_config(inferadb::TlsConfig::insecure())
         .timeout(Duration::from_secs(60))
         .build()
         .await;
@@ -316,15 +316,16 @@ async fn test_retry_configuration() {
         .expect("Failed to generate JWT");
 
     // Create client with custom retry config
-    let retry_config = inferadb::RetryConfig::default()
-        .with_max_retries(5)
-        .with_initial_delay(Duration::from_millis(100))
-        .with_max_delay(Duration::from_secs(5));
+    let retry_config = inferadb::RetryConfig::builder()
+        .max_retries(5)
+        .initial_delay(Duration::from_millis(100))
+        .max_delay(Duration::from_secs(5))
+        .build();
 
     let client = inferadb::Client::builder()
         .url(&fixture.ctx.api_base_url)
         .credentials(inferadb::BearerCredentialsConfig::new(jwt))
-        .tls_config(inferadb::TlsConfig::new().insecure())
+        .tls_config(inferadb::TlsConfig::insecure())
         .retry_config(retry_config)
         .build()
         .await;
