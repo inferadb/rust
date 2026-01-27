@@ -278,25 +278,18 @@ cargo run -p inferadb-examples --bin axum_middleware
 
 ```bash
 # Setup (one-time)
-mise trust && mise install
-rustup component add rustfmt clippy
-rustup toolchain install nightly --component rustfmt
+mise trust && mise install && mise run setup
 
-# Build
-cargo build --workspace --all-features
+# Common commands (via just)
+just          # Run all checks (format, lint, test)
+just fmt      # Format code
+just lint     # Run clippy
+just test     # Run tests
+just doc-open # Build and view documentation
+just coverage # Generate coverage report
 
-# Run tests
-cargo test --lib
-
-# Format and lint
-cargo +nightly fmt --all
-cargo clippy --workspace --all-targets -- -D warnings
-
-# Generate documentation
-cargo doc --workspace --no-deps --open
-
-# Code coverage
-cargo llvm-cov --lib --ignore-filename-regex 'proto|inferadb\.authorization\.v1'
+# See all available commands
+just --list
 ```
 
 ## Contributing

@@ -19,7 +19,7 @@ This project and everyone participating in it is governed by the [Contributor Co
 1. **Fork the repository** and create your branch from `main`
 2. **Follow the development workflow** documented in the repository's [README.md](README.md)
 3. **Write clear commit messages** following [Conventional Commits](https://www.conventionalcommits.org/)
-4. **Ensure all tests pass** before submitting
+4. **Run `just` before submitting** to verify formatting, lints, and tests pass
 5. **Update documentation** if your changes affect public APIs or user-facing behavior
 6. **Submit a pull request** with a clear description of your changes
 
